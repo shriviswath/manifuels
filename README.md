@@ -92,3 +92,13 @@ owner_drawings      — owner withdrawal tracking
 ManiFuels supports multiple family/staff logins, each with their own display name and role. Passwords are stored as SHA-256 hashes — never plain text. Every record is tagged with created_by and updated_by for full accountability.
 Owner  → full access to all modules
 Staff  → shift entry, stock, ledger
+
+# Images
+
+<img width="1674" height="748" alt="image" src="https://github.com/user-attachments/assets/47d867bf-7ba0-4995-845a-ccaf43743e77" />
+
+<img width="1920" height="1023" alt="image" src="https://github.com/user-attachments/assets/bc6d2035-888a-4cb7-a848-9fcae1cfe185" />
+
+<img width="322" height="980" alt="image" src="https://github.com/user-attachments/assets/d902eef2-e22c-4432-86b8-ddf02a156e86" />
+
+
