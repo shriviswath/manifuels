@@ -1,4 +1,4 @@
-# # ManiFuels ⛽
+## ManiFuels ⛽
 
 A fuel station management system built from scratch — no frameworks, no fluff, just one HTML file running a full business.
 
