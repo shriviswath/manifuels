@@ -1,27 +1,143 @@
 -- ═══════════════════════════════════════════════════════
---  ManiFuels v2.5 — Migration: Multi-User + New Features
---
---  WHAT THIS DOES:
---    1. Adds 4 family user logins with hashed passwords
---    2. Adds customer_profiles (per-customer fixed discount rate)
---    3. Adds pack_register (40ml pack purchase log)
---    4. Adds activity_log (who did what, when)
---    5. Adds created_by / updated_by columns to existing tables
---    6. Adds indexes for speed on date-filtered queries
---
---  HOW TO RUN:
---    Paste this entire file into:
---      Supabase Dashboard → SQL Editor → New Query → Run
---
---  SAFE TO RE-RUN: Uses CREATE IF NOT EXISTS / ON CONFLICT.
---                  Will not delete or overwrite existing data.
+--  ManiFuels v2.5 — COMPLETE DATABASE SETUP
+--  Run this entire file in: Supabase → SQL Editor → New Query → Run
+--  Safe to re-run. Will not delete or overwrite existing data.
 -- ═══════════════════════════════════════════════════════
 
 
--- ─── 1. USERS TABLE ───────────────────────────────────
--- Stores the 4 family logins. Passwords are hashed with SHA256
--- (matching the hash function in index.html).
--- Last login + login count tracked for activity visibility.
+-- ╔═══════════════════════════════════════════════════════╗
+-- ║  PART 1: BASE TABLES                                  ║
+-- ╚═══════════════════════════════════════════════════════╝
+
+-- ─── SHIFT RECORDS ─────────────────────────────────────
+CREATE TABLE IF NOT EXISTS shift_records (
+  id            TEXT PRIMARY KEY,
+  user_id       TEXT NOT NULL DEFAULT 'shriviswath',
+  date          DATE NOT NULL,
+  shift         TEXT NOT NULL,
+  msd_t         NUMERIC DEFAULT 0,
+  hsd_t         NUMERIC DEFAULT 0,
+  msd_v         NUMERIC DEFAULT 0,
+  hsd_v         NUMERIC DEFAULT 0,
+  ps            INTEGER DEFAULT 0,
+  os            NUMERIC DEFAULT 0,
+  pv            NUMERIC DEFAULT 0,
+  ov            NUMERIC DEFAULT 0,
+  st_rev        NUMERIC DEFAULT 0,
+  right_total   NUMERIC DEFAULT 0,
+  left_total    NUMERIC DEFAULT 0,
+  gpay          NUMERIC DEFAULT 0,
+  paytm         NUMERIC DEFAULT 0,
+  cash          NUMERIC DEFAULT 0,
+  exp           NUMERIC DEFAULT 0,
+  credit        NUMERIC DEFAULT 0,
+  cred_back     NUMERIC DEFAULT 0,
+  bal           NUMERIC DEFAULT 0,
+  notes         TEXT DEFAULT '',
+  saved_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+
+-- ─── STOCK ITEMS ───────────────────────────────────────
+CREATE TABLE IF NOT EXISTS stock_items (
+  id            BIGINT PRIMARY KEY,
+  user_id       TEXT NOT NULL DEFAULT 'shriviswath',
+  name          TEXT NOT NULL,
+  cat           TEXT DEFAULT 'Oil',
+  qty           NUMERIC DEFAULT 0,
+  rate          NUMERIC DEFAULT 0,
+  unit          TEXT DEFAULT 'Bottle'
+);
+
+
+-- ─── LEDGER ENTRIES (Credit/Advance) ───────────────────
+CREATE TABLE IF NOT EXISTS ledger_entries (
+  id            BIGINT PRIMARY KEY,
+  user_id       TEXT NOT NULL DEFAULT 'shriviswath',
+  date          DATE NOT NULL,
+  customer      TEXT NOT NULL,
+  shift         TEXT,
+  fuel          TEXT,
+  amount        NUMERIC NOT NULL,
+  paid_back     NUMERIC DEFAULT 0
+);
+
+
+-- ─── OIL PURCHASE INVOICES ─────────────────────────────
+CREATE TABLE IF NOT EXISTS oil_invoices (
+  id            BIGINT PRIMARY KEY,
+  user_id       TEXT NOT NULL DEFAULT 'shriviswath',
+  date          DATE NOT NULL,
+  inv           TEXT,
+  company       TEXT,
+  items         JSONB DEFAULT '[]',
+  total_cost    NUMERIC DEFAULT 0,
+  total_sell    NUMERIC DEFAULT 0,
+  profit        NUMERIC DEFAULT 0,
+  amount_due    NUMERIC DEFAULT 0,
+  amount_paid   NUMERIC DEFAULT 0
+);
+
+
+-- ─── FUEL LOADS ────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS fuel_loads (
+  id            BIGINT PRIMARY KEY,
+  user_id       TEXT NOT NULL DEFAULT 'shriviswath',
+  date          DATE NOT NULL,
+  inv           TEXT,
+  supplier      TEXT,
+  driver        TEXT DEFAULT '',
+  lorry         TEXT DEFAULT '',
+  transport     TEXT DEFAULT '',
+  type          TEXT NOT NULL,
+  vol           NUMERIC DEFAULT 0,
+  vol_kl        NUMERIC DEFAULT 0,
+  basic_price   NUMERIC DEFAULT 0,
+  tn_vat        NUMERIC DEFAULT 0,
+  lst_pct       NUMERIC DEFAULT 0,
+  lorry_rent    NUMERIC DEFAULT 0,
+  basic_amt     NUMERIC DEFAULT 0,
+  tn_vat_amt    NUMERIC DEFAULT 0,
+  lst_amt       NUMERIC DEFAULT 0,
+  bill_total    NUMERIC DEFAULT 0,
+  sell          NUMERIC DEFAULT 0,
+  total_cost    NUMERIC DEFAULT 0,
+  revenue       NUMERIC DEFAULT 0,
+  profit        NUMERIC DEFAULT 0,
+  density       NUMERIC DEFAULT 0.82,
+  buy           NUMERIC DEFAULT 0,
+  gst_pct       NUMERIC DEFAULT 0,
+  gst_amt       NUMERIC DEFAULT 0,
+  amount_due    NUMERIC DEFAULT 0,
+  amount_paid   NUMERIC DEFAULT 0,
+  locked        BOOLEAN DEFAULT FALSE
+);
+
+
+-- ─── SETTINGS (rates + opening volumes per user) ───────
+CREATE TABLE IF NOT EXISTS settings (
+  user_id       TEXT PRIMARY KEY,
+  rates         JSONB DEFAULT '{}',
+  opening_msd   NUMERIC DEFAULT 0,
+  opening_hsd   NUMERIC DEFAULT 0,
+  updated_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+
+-- ─── PACK SIZES CONFIG ─────────────────────────────────
+CREATE TABLE IF NOT EXISTS pack_sizes (
+  size          INTEGER PRIMARY KEY,
+  user_id       TEXT NOT NULL DEFAULT 'shriviswath',
+  enabled       BOOLEAN DEFAULT FALSE,
+  rate          NUMERIC DEFAULT 0
+);
+
+
+-- ╔═══════════════════════════════════════════════════════╗
+-- ║  PART 2: USERS & AUTH                                 ║
+-- ╚═══════════════════════════════════════════════════════╝
+
+-- ─── USERS TABLE ───────────────────────────────────────
 CREATE TABLE IF NOT EXISTS users (
   username      TEXT PRIMARY KEY,
   display_name  TEXT NOT NULL,
@@ -32,9 +148,7 @@ CREATE TABLE IF NOT EXISTS users (
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Insert the 4 family users.
--- Password hashes are SHA-256 of the plain password.
--- (Generated from: shriviswath, kalimuthu, kumutha, nithin)
+-- Insert/update the 4 family users (passwords are SHA-256 hashed)
 INSERT INTO users (username, display_name, password_hash, role) VALUES
   ('shriviswath', 'Shri Viswath C K', 'e1eaca4ebf0808bb81709f12a19d05eb76987cdb963032e7a998bdfca07bf024', 'owner'),
   ('kalimuthu',   'Kalimuthu M',      '11ac4af7a255a6b5fa5dbc6cc28283678da059648fd9def8116f79192f1f7018', 'owner'),
@@ -43,13 +157,14 @@ INSERT INTO users (username, display_name, password_hash, role) VALUES
 ON CONFLICT (username) DO UPDATE SET
   display_name = EXCLUDED.display_name,
   role         = EXCLUDED.role;
--- NOTE: password_hash is NOT updated on conflict — passwords stay as set.
--- To reset a password, run:
---   UPDATE users SET password_hash = 'new_sha256_hash' WHERE username = 'xxx';
+-- Note: password_hash is NOT updated on conflict (passwords stay as set).
 
 
--- ─── 2. CUSTOMER PROFILES ─────────────────────────────
--- Per-customer settings: fixed ₹/L discount rate (only used in P&L calc).
+-- ╔═══════════════════════════════════════════════════════╗
+-- ║  PART 3: NEW FEATURE TABLES                           ║
+-- ╚═══════════════════════════════════════════════════════╝
+
+-- ─── CUSTOMER PROFILES (per-customer discount rate) ────
 CREATE TABLE IF NOT EXISTS customer_profiles (
   customer_name    TEXT PRIMARY KEY,
   user_id          TEXT NOT NULL DEFAULT 'shriviswath',
@@ -61,7 +176,7 @@ CREATE TABLE IF NOT EXISTS customer_profiles (
 );
 
 
--- ─── 3. PACK REGISTER (40ml pack purchases) ───────────
+-- ─── PACK REGISTER (40ml/20ml/etc pack purchases) ──────
 CREATE TABLE IF NOT EXISTS pack_register (
   id            BIGINT PRIMARY KEY,
   user_id       TEXT NOT NULL DEFAULT 'shriviswath',
@@ -71,32 +186,30 @@ CREATE TABLE IF NOT EXISTS pack_register (
   cost          NUMERIC DEFAULT 0,
   total_cost    NUMERIC DEFAULT 0,
   notes         TEXT DEFAULT '',
+  size          INTEGER DEFAULT 40,
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   created_by    TEXT
 );
 
 
--- ─── 4. ACTIVITY LOG ──────────────────────────────────
--- Tracks WHO did WHAT and WHEN.
--- Used by the Activity Log page in the app.
+-- ─── ACTIVITY LOG (who did what, when) ─────────────────
 CREATE TABLE IF NOT EXISTS activity_log (
   id            BIGSERIAL PRIMARY KEY,
   username      TEXT NOT NULL,
   display_name  TEXT,
-  action        TEXT NOT NULL,        -- 'login','save_shift','del_shift','add_credit','pay_credit', etc.
-  entity_type   TEXT,                 -- 'shift','ledger','stock','fuel_load','pack_register', etc.
-  entity_id     TEXT,                 -- id of the affected row
-  details       TEXT DEFAULT '',      -- short human-readable summary
+  action        TEXT NOT NULL,
+  entity_type   TEXT,
+  entity_id     TEXT,
+  details       TEXT DEFAULT '',
   ip_address    TEXT,
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
 
--- ─── 4b. RATE HISTORY ─────────────────────────────────
--- Every fuel/oil rate change is logged for accurate historical P&L.
+-- ─── RATE HISTORY (every fuel/oil rate change) ─────────
 CREATE TABLE IF NOT EXISTS rate_history (
   id            BIGSERIAL PRIMARY KEY,
-  fuel          TEXT NOT NULL,            -- 'MSD','HSD','PACK','OIL'
+  fuel          TEXT NOT NULL,
   old_rate      NUMERIC NOT NULL,
   new_rate      NUMERIC NOT NULL,
   changed_by    TEXT,
@@ -104,8 +217,7 @@ CREATE TABLE IF NOT EXISTS rate_history (
 );
 
 
--- ─── 4c. STAFF REGISTER ────────────────────────────────
--- Staff master list + per-shift attendance + monthly payments.
+-- ─── STAFF REGISTER ────────────────────────────────────
 CREATE TABLE IF NOT EXISTS staff (
   id              BIGSERIAL PRIMARY KEY,
   user_id         TEXT NOT NULL DEFAULT 'shriviswath',
@@ -119,35 +231,37 @@ CREATE TABLE IF NOT EXISTS staff (
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
+
+-- ─── STAFF ATTENDANCE ──────────────────────────────────
 CREATE TABLE IF NOT EXISTS staff_attendance (
   id            BIGSERIAL PRIMARY KEY,
   user_id       TEXT NOT NULL DEFAULT 'shriviswath',
   staff_id      BIGINT NOT NULL,
   date          DATE NOT NULL,
-  shift         TEXT NOT NULL,             -- 'morning' | 'night'
-  status        TEXT DEFAULT 'present',    -- 'present' | 'absent' | 'half'
+  shift         TEXT NOT NULL,
+  status        TEXT DEFAULT 'present',
   notes         TEXT DEFAULT '',
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(staff_id, date, shift)
 );
 
+
+-- ─── STAFF PAYMENTS ────────────────────────────────────
 CREATE TABLE IF NOT EXISTS staff_payments (
-  id            BIGSERIAL PRIMARY KEY,
-  user_id       TEXT NOT NULL DEFAULT 'shriviswath',
-  staff_id      BIGINT NOT NULL,
-  date          DATE NOT NULL,
-  type          TEXT DEFAULT 'salary',     -- 'salary' | 'advance' | 'bonus' | 'chit'
-  amount        NUMERIC NOT NULL,
-  advance_deducted NUMERIC DEFAULT 0,      -- amount deducted from pending advance (for salary entries)
-  notes         TEXT DEFAULT '',
-  created_by    TEXT,
-  created_at    TIMESTAMPTZ DEFAULT NOW()
+  id                BIGSERIAL PRIMARY KEY,
+  user_id           TEXT NOT NULL DEFAULT 'shriviswath',
+  staff_id          BIGINT NOT NULL,
+  date              DATE NOT NULL,
+  type              TEXT DEFAULT 'salary',
+  amount            NUMERIC NOT NULL,
+  advance_deducted  NUMERIC DEFAULT 0,
+  notes             TEXT DEFAULT '',
+  created_by        TEXT,
+  created_at        TIMESTAMPTZ DEFAULT NOW()
 );
-ALTER TABLE staff_payments ADD COLUMN IF NOT EXISTS advance_deducted NUMERIC DEFAULT 0;
 
 
--- ─── 4d. OWNER DRAWINGS ───────────────────────────────
--- Money taken out of the business by the owner (separate from expenses).
+-- ─── OWNER DRAWINGS ────────────────────────────────────
 CREATE TABLE IF NOT EXISTS owner_drawings (
   id            BIGSERIAL PRIMARY KEY,
   user_id       TEXT NOT NULL DEFAULT 'shriviswath',
@@ -160,9 +274,9 @@ CREATE TABLE IF NOT EXISTS owner_drawings (
 );
 
 
--- ─── 5. ADD created_by / updated_by COLUMNS ───────────
--- These tag every row with who saved/edited it.
--- Existing rows will have NULL until they're next edited.
+-- ╔═══════════════════════════════════════════════════════╗
+-- ║  PART 4: ADD MISSING COLUMNS (safe re-runs)           ║
+-- ╚═══════════════════════════════════════════════════════╝
 
 ALTER TABLE shift_records   ADD COLUMN IF NOT EXISTS created_by TEXT;
 ALTER TABLE shift_records   ADD COLUMN IF NOT EXISTS updated_by TEXT;
@@ -174,23 +288,24 @@ ALTER TABLE stock_items     ADD COLUMN IF NOT EXISTS updated_by TEXT;
 
 ALTER TABLE ledger_entries  ADD COLUMN IF NOT EXISTS created_by TEXT;
 ALTER TABLE ledger_entries  ADD COLUMN IF NOT EXISTS updated_by TEXT;
--- 'credit' (default) or 'advance' — determines how amount is interpreted in UI.
--- Convention: amount > 0 = credit given; amount < 0 = advance received.
 ALTER TABLE ledger_entries  ADD COLUMN IF NOT EXISTS kind TEXT DEFAULT 'credit';
 
 ALTER TABLE oil_invoices    ADD COLUMN IF NOT EXISTS created_by TEXT;
 
 ALTER TABLE fuel_loads      ADD COLUMN IF NOT EXISTS created_by TEXT;
 
--- pack_register: add size (in ml) for multi-pack-size support
 ALTER TABLE pack_register   ADD COLUMN IF NOT EXISTS size INTEGER DEFAULT 40;
 
+ALTER TABLE staff_payments  ADD COLUMN IF NOT EXISTS advance_deducted NUMERIC DEFAULT 0;
 
--- ─── 6. INDEXES FOR SPEED ─────────────────────────────
--- Date-filtered queries (reports, P&L, dashboard) get faster.
+
+-- ╔═══════════════════════════════════════════════════════╗
+-- ║  PART 5: INDEXES FOR SPEED                            ║
+-- ╚═══════════════════════════════════════════════════════╝
+
 CREATE INDEX IF NOT EXISTS idx_shift_records_date     ON shift_records(date DESC);
 CREATE INDEX IF NOT EXISTS idx_shift_records_savedat  ON shift_records(saved_at DESC);
-CREATE INDEX IF NOT EXISTS idx_ledger_customer       ON ledger_entries(customer);
+CREATE INDEX IF NOT EXISTS idx_ledger_customer        ON ledger_entries(customer);
 CREATE INDEX IF NOT EXISTS idx_ledger_date            ON ledger_entries(date DESC);
 CREATE INDEX IF NOT EXISTS idx_fuel_loads_date        ON fuel_loads(date DESC);
 CREATE INDEX IF NOT EXISTS idx_oil_invoices_date      ON oil_invoices(date DESC);
@@ -206,7 +321,19 @@ CREATE INDEX IF NOT EXISTS idx_payments_staff         ON staff_payments(staff_id
 CREATE INDEX IF NOT EXISTS idx_drawings_date          ON owner_drawings(date DESC);
 
 
--- ─── 7. DISABLE RLS ON NEW TABLES ─────────────────────
+-- ╔═══════════════════════════════════════════════════════╗
+-- ║  PART 6: DISABLE ROW LEVEL SECURITY                   ║
+-- ║  (so the anon key can read/write — your app uses      ║
+-- ║   custom username/password auth, not Supabase Auth)   ║
+-- ╚═══════════════════════════════════════════════════════╝
+
+ALTER TABLE shift_records      DISABLE ROW LEVEL SECURITY;
+ALTER TABLE stock_items        DISABLE ROW LEVEL SECURITY;
+ALTER TABLE ledger_entries     DISABLE ROW LEVEL SECURITY;
+ALTER TABLE oil_invoices       DISABLE ROW LEVEL SECURITY;
+ALTER TABLE fuel_loads         DISABLE ROW LEVEL SECURITY;
+ALTER TABLE settings           DISABLE ROW LEVEL SECURITY;
+ALTER TABLE pack_sizes         DISABLE ROW LEVEL SECURITY;
 ALTER TABLE users              DISABLE ROW LEVEL SECURITY;
 ALTER TABLE customer_profiles  DISABLE ROW LEVEL SECURITY;
 ALTER TABLE pack_register      DISABLE ROW LEVEL SECURITY;
@@ -218,7 +345,17 @@ ALTER TABLE staff_payments     DISABLE ROW LEVEL SECURITY;
 ALTER TABLE owner_drawings     DISABLE ROW LEVEL SECURITY;
 
 
--- ─── 8. GRANT ACCESS TO ANON ROLE ─────────────────────
+-- ╔═══════════════════════════════════════════════════════╗
+-- ║  PART 7: GRANT ACCESS TO ANON ROLE                    ║
+-- ╚═══════════════════════════════════════════════════════╝
+
+GRANT ALL ON shift_records      TO anon, authenticated;
+GRANT ALL ON stock_items        TO anon, authenticated;
+GRANT ALL ON ledger_entries     TO anon, authenticated;
+GRANT ALL ON oil_invoices       TO anon, authenticated;
+GRANT ALL ON fuel_loads         TO anon, authenticated;
+GRANT ALL ON settings           TO anon, authenticated;
+GRANT ALL ON pack_sizes         TO anon, authenticated;
 GRANT ALL ON users              TO anon, authenticated;
 GRANT ALL ON customer_profiles  TO anon, authenticated;
 GRANT ALL ON pack_register      TO anon, authenticated;
@@ -228,28 +365,38 @@ GRANT ALL ON staff              TO anon, authenticated;
 GRANT ALL ON staff_attendance   TO anon, authenticated;
 GRANT ALL ON staff_payments     TO anon, authenticated;
 GRANT ALL ON owner_drawings     TO anon, authenticated;
-GRANT USAGE, SELECT ON SEQUENCE activity_log_id_seq TO anon, authenticated;
-GRANT USAGE, SELECT ON SEQUENCE rate_history_id_seq TO anon, authenticated;
-GRANT USAGE, SELECT ON SEQUENCE staff_id_seq TO anon, authenticated;
-GRANT USAGE, SELECT ON SEQUENCE staff_attendance_id_seq TO anon, authenticated;
-GRANT USAGE, SELECT ON SEQUENCE staff_payments_id_seq TO anon, authenticated;
-GRANT USAGE, SELECT ON SEQUENCE owner_drawings_id_seq TO anon, authenticated;
+
+-- Grant sequence access (needed for BIGSERIAL primary keys)
+GRANT USAGE, SELECT ON SEQUENCE activity_log_id_seq       TO anon, authenticated;
+GRANT USAGE, SELECT ON SEQUENCE rate_history_id_seq       TO anon, authenticated;
+GRANT USAGE, SELECT ON SEQUENCE staff_id_seq              TO anon, authenticated;
+GRANT USAGE, SELECT ON SEQUENCE staff_attendance_id_seq   TO anon, authenticated;
+GRANT USAGE, SELECT ON SEQUENCE staff_payments_id_seq     TO anon, authenticated;
+GRANT USAGE, SELECT ON SEQUENCE owner_drawings_id_seq     TO anon, authenticated;
 
 
 -- ═══════════════════════════════════════════════════════
---  DONE!
+--  ✅ DONE!
 --
---  VERIFY:
---    SELECT * FROM users;
---    SELECT * FROM customer_profiles;
---    SELECT * FROM pack_register;
---    SELECT * FROM activity_log ORDER BY created_at DESC LIMIT 20;
+--  VERIFY EVERYTHING WORKED:
+--    SELECT username, display_name, role FROM users;
+--    SELECT COUNT(*) FROM shift_records;
+--    SELECT COUNT(*) FROM ledger_entries;
 --
---  TO CHANGE A USER PASSWORD:
---    1. Compute SHA-256 of the new password (or use the app)
---    2. UPDATE users SET password_hash='<hash>' WHERE username='<name>';
+--  TEST LOGIN CREDENTIALS:
+--    Username: shriviswath  | Password: shriviswath
+--    Username: kalimuthu    | Password: kalimuthu
+--    Username: kumutha      | Password: kumutha
+--    Username: nithin       | Password: nithin
 --
---  TO ADD A 5TH USER LATER:
+--  TO CHANGE A USER'S PASSWORD:
+--    1. Open browser DevTools console on the app
+--    2. Run: await sha256('your_new_password')
+--    3. Copy the hash
+--    4. Run in SQL Editor:
+--       UPDATE users SET password_hash='<paste_hash>' WHERE username='<name>';
+--
+--  TO ADD A NEW USER LATER:
 --    INSERT INTO users (username, display_name, password_hash, role)
---    VALUES ('newuser', 'Display Name', '<sha256_hash>', 'staff');
+--    VALUES ('newname', 'Display Name', '<sha256_hash>', 'staff');
 -- ═══════════════════════════════════════════════════════
