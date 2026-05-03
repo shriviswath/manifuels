@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Mani Fuels — Account Manager</title>
-<meta name="description" content="Mani Fuels Account Manager for fuel Bunk Operations">
+<title>Mani Fuels — Shift Account Manager</title>
+<meta name="description" content="Mani Fuels shift account manager for fuel bunk operations">
 <meta name="theme-color" content="#00d4a0">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -202,7 +202,7 @@ function showApp(){
     if(!_supa)_supa=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
   }
   setTimeout(function(){
-    if(typeof loadAllFromSupabase==='function') loadAllFromSupabase();
+    if(typeof loadAllFromSupabase==='function') loadAllFromSupabase().then(function(){ if(typeof initMultiDeviceSync==='function') initMultiDeviceSync(); });
     setTimeout(function(){if(typeof renderDashboard==='function')renderDashboard();},1200);
   },800);
 }
@@ -296,7 +296,8 @@ document.addEventListener('DOMContentLoaded',function(){if(_currentUser)showApp(
     </div>
   </div>
 <div style="display:flex;align-items:center;gap:8px;margin-left:8px">
-      <div id="sync-indicator" style="width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green)"></div>
+      <div id="sync-indicator" style="width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);cursor:pointer" onclick="syncNow()" title="Click to sync"></div>
+      <span id="sync-time-label" style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:.5px"></span>
       <span id="user-chip" onclick="toggleUserMenu()" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--petrol);background:rgba(0,212,160,.1);border:1px solid rgba(0,212,160,.3);padding:3px 10px;border-radius:4px;cursor:pointer">&#8212;</span>
       <button onclick="signOut()" style="background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'Syne',sans-serif;font-size:10px;padding:4px 10px;border-radius:4px;cursor:pointer;font-weight:700">&#9211; OUT</button>
     </div>
@@ -340,7 +341,7 @@ document.addEventListener('DOMContentLoaded',function(){if(_currentUser)showApp(
   <button class="hamburger" id="hamburger-btn" onclick="toggleMenu()">
     <span></span><span></span><span></span>
   </button>
-  <div class="nav-current" id="nav-current-label"><span>🏠</span> DASHBOARD</div>
+  <div class="nav-current" id="nav-current-label"><span>📋</span> SHIFT ENTRY</div>
 </nav>
 
 <!-- ════ DASHBOARD ════ -->
@@ -6069,10 +6070,9 @@ function toggleUserMenu(){
   setTimeout(function(){document.addEventListener('click',function hh(e){if(!d.contains(e.target)){d.remove();document.removeEventListener('click',hh);}},{once:true});},100);
 }
 async function syncNow(){
-  var si=document.getElementById('sync-indicator');
-  if(si){si.style.background='var(--diesel)';si.style.boxShadow='0 0 6px var(--diesel)';}
-  if(typeof loadAllFromSupabase==='function')await loadAllFromSupabase();
-  if(si){si.style.background='var(--green)';si.style.boxShadow='0 0 6px var(--green)';}
+  showToast('⟳ Syncing...');
+  await silentSync();
+  showToast('✓ Data synced!');
 }
 
 // ═══════════════════════════════════════════════════
@@ -6429,11 +6429,11 @@ async function sbLoadActivityLog(limit) {
   return JSON.parse(localStorage.getItem('activityLogLocal')||'[]').slice(0, limit||100);
 }
 
-async function loadAllFromSupabase() {
+async function loadAllFromSupabase(silent) {
   if (!_currentUser) return;
-  if (!SUPABASE_URL || !SUPABASE_URL.startsWith('https://')) { showToast('Supabase not configured'); return; }
+  if (!SUPABASE_URL || !SUPABASE_URL.startsWith('https://')) { if(!silent) showToast('Supabase not configured'); return; }
   if (!_supa) _supa = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  showToast('⟳ Syncing data...');
+  if(!silent) showToast('⟳ Syncing data...');
 
   const uid = _currentUser.id;
   try {
@@ -6550,7 +6550,9 @@ async function loadAllFromSupabase() {
     renderFuelLoads();
     if(typeof renderPackReg==='function')renderPackReg();
     if(typeof renderLiveStock==='function')renderLiveStock();
-    showToast('✓ Data synced!');
+    if(!silent) showToast('✓ Data synced!');
+    _lastSyncTime = Date.now();
+    updateSyncLabel();
 
   } catch(e) {
     console.error('Sync error:', e);
@@ -6762,6 +6764,118 @@ function togglePriceChange(type){
     if(rate2El && curRate) rate2El.value = curRate;
   }
   calc();
+}
+
+// ═══════════════════════════════════════════════════════
+// MULTI-DEVICE SYNC — 3 layers:
+//   1. Page visibility (tab focus/unfocus)
+//   2. Auto-poll every 60 seconds
+//   3. Supabase Realtime subscription
+// ═══════════════════════════════════════════════════════
+
+var _lastSyncTime = null;
+var _syncPollInterval = null;
+var _realtimeChannel = null;
+var _syncInProgress = false;
+
+// ── Layer 1: Sync when tab becomes visible ──
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState === 'visible' && _currentUser){
+    // Only sync if it's been more than 30 seconds since last sync
+    var now = Date.now();
+    if(!_lastSyncTime || (now - _lastSyncTime) > 30000){
+      silentSync();
+    }
+  }
+});
+
+// ── Layer 2: Auto-poll every 60 seconds ──
+function startSyncPolling(){
+  if(_syncPollInterval) clearInterval(_syncPollInterval);
+  _syncPollInterval = setInterval(function(){
+    if(_currentUser && document.visibilityState === 'visible'){
+      silentSync();
+    }
+  }, 60000); // every 60 seconds
+}
+
+function stopSyncPolling(){
+  if(_syncPollInterval){
+    clearInterval(_syncPollInterval);
+    _syncPollInterval = null;
+  }
+}
+
+// ── Layer 3: Supabase Realtime subscription ──
+function startRealtimeSync(){
+  if(!_supa || !_currentUser || _realtimeChannel) return;
+  try {
+    _realtimeChannel = _supa
+      .channel('manifuels-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_records' },    function(){ silentSync(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ledger_entries' },   function(){ silentSync(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fuel_loads' },       function(){ silentSync(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_items' },      function(){ silentSync(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'oil_invoices' },     function(){ silentSync(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' },     function(){ silentSync(); })
+      .subscribe();
+  } catch(e){
+    console.log('Realtime not available:', e.message);
+  }
+}
+
+function stopRealtimeSync(){
+  if(_realtimeChannel && _supa){
+    try { _supa.removeChannel(_realtimeChannel); } catch(e){}
+    _realtimeChannel = null;
+  }
+}
+
+// ── Silent sync — no toast, just pulls and updates ──
+async function silentSync(){
+  if(_syncInProgress || !_currentUser || !_supa) return;
+  _syncInProgress = true;
+
+  // Show syncing indicator (yellow pulsing dot)
+  var si = document.getElementById('sync-indicator');
+  if(si){ si.style.background='var(--diesel)'; si.style.boxShadow='0 0 8px var(--diesel)'; }
+
+  try {
+    await loadAllFromSupabase(true); // true = silent mode
+    _lastSyncTime = Date.now();
+    updateSyncLabel();
+    // Green dot on success
+    if(si){ si.style.background='var(--green)'; si.style.boxShadow='0 0 6px var(--green)'; }
+  } catch(e){
+    // Red dot on failure
+    if(si){ si.style.background='var(--red)'; si.style.boxShadow='0 0 6px var(--red)'; }
+    console.error('Silent sync failed:', e.message);
+  } finally {
+    _syncInProgress = false;
+  }
+}
+
+// ── Update the last-synced label ──
+function updateSyncLabel(){
+  var el = document.getElementById('sync-time-label');
+  if(!el || !_lastSyncTime) return;
+  var d = new Date(_lastSyncTime);
+  var h = d.getHours().toString().padStart(2,'0');
+  var m = d.getMinutes().toString().padStart(2,'0');
+  var s = d.getSeconds().toString().padStart(2,'0');
+  el.textContent = 'Synced ' + h + ':' + m + ':' + s;
+}
+
+// ── Start all sync layers after login ──
+function initMultiDeviceSync(){
+  startSyncPolling();
+  startRealtimeSync();
+}
+
+// ── Stop all sync on logout ──
+function stopAllSync(){
+  stopSyncPolling();
+  stopRealtimeSync();
 }
 </script>
 
