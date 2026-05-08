@@ -10,8 +10,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ManiFuels">
-<link rel="manifest" id="manifest-placeholder">
-<link rel="apple-touch-icon" id="apple-touch-icon-placeholder" href="">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='32' fill='%230a0e13'/%3E%3Crect x='15' y='10' width='150' height='158' rx='20' fill='%23111820' stroke='%2300d4a0' stroke-width='3.5'/%3E%3Ctext x='90' y='86' font-size='66' text-anchor='middle' dominant-baseline='middle' fill='%2300d4a0' font-family='monospace' font-weight='bold'%3EMF%3C/text%3E%3Ctext x='90' y='129' font-size='18' text-anchor='middle' fill='%236b7e96' font-family='monospace'%3EFUELS%3C/text%3E%3Ccircle cx='90' cy='153' r='9' fill='%2300d4a0'/%3E%3C/svg%3E">
 <meta name="apple-mobile-web-app-title" content="ManiFuels">
 <style>
   /* PWA install banner */
@@ -5957,75 +5957,17 @@ function showToast(msg){const t=document.getElementById('toast');t.textContent=m
 // ── PWA SETUP ──
 let deferredPrompt=null;
 
-// Inject manifest dynamically
-// Generate inline SVG icon as data URL
-function makeIcon(size,rx){
-  const r=rx||Math.round(size*0.18);
-  return `data:image/svg+xml,`+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}"><rect width="${size}" height="${size}" rx="${r}" fill="#0a0e13"/><rect x="${size*0.08}" y="${size*0.06}" width="${size*0.84}" height="${size*0.88}" rx="${r*0.6}" fill="#111820" stroke="#00d4a0" stroke-width="${size*0.02}"/><text x="${size*0.5}" y="${size*0.48}" font-size="${size*0.36}" text-anchor="middle" dominant-baseline="middle" fill="#00d4a0" font-family="monospace" font-weight="bold">MF</text><text x="${size*0.5}" y="${size*0.72}" font-size="${size*0.1}" text-anchor="middle" fill="#6b7e96" font-family="monospace">FUELS</text><circle cx="${size*0.5}" cy="${size*0.85}" r="${size*0.05}" fill="#00d4a0"/></svg>`);
-}
-const manifest={
-  name:'ManiFuels — Shift Manager',
-  short_name:'ManiFuels',
-  description:'Fuel bunk shift account & stock manager for Mani Fuels',
-  start_url:'.',
-  scope:'.',
-  display:'standalone',
-  background_color:'#0a0e13',
-  theme_color:'#00d4a0',
-  orientation:'portrait-primary',
-  categories:['business','finance','productivity'],
-  icons:[
-    {src:makeIcon(72),sizes:'72x72',type:'image/svg+xml',purpose:'any maskable'},
-    {src:makeIcon(96),sizes:'96x96',type:'image/svg+xml',purpose:'any maskable'},
-    {src:makeIcon(128),sizes:'128x128',type:'image/svg+xml',purpose:'any maskable'},
-    {src:makeIcon(144),sizes:'144x144',type:'image/svg+xml',purpose:'any maskable'},
-    {src:makeIcon(152),sizes:'152x152',type:'image/svg+xml',purpose:'any maskable'},
-    {src:makeIcon(192),sizes:'192x192',type:'image/svg+xml',purpose:'any maskable'},
-    {src:makeIcon(384),sizes:'384x384',type:'image/svg+xml',purpose:'any maskable'},
-    {src:makeIcon(512),sizes:'512x512',type:'image/svg+xml',purpose:'any maskable'},
-  ]
-};
-const blob=new Blob([JSON.stringify(manifest)],{type:'application/json'});
-const manifestURL=URL.createObjectURL(blob);
-document.getElementById('manifest-placeholder').href=manifestURL;
-// Set apple touch icon dynamically
-const appleIcon=makeIcon(180);
-const atiEl=document.getElementById('apple-touch-icon-placeholder');
-if(atiEl)atiEl.href=appleIcon;
-
-// Service worker for offline support
+// ── PWA: Register real service worker (sw.js) ──
 if('serviceWorker' in navigator){
-  const swCode=`
-const CACHE='manifuels-v3';
-const EXT=[
-  'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;700;800&display=swap',
-  'https://fonts.gstatic.com',
-  'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js'
-];
-self.addEventListener('install',e=>{
-  self.skipWaiting();
-  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(EXT).catch(()=>{})));
-});
-self.addEventListener('activate',e=>{
-  e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));
-  self.clients.claim();
-});
-self.addEventListener('fetch',e=>{
-  e.respondWith(caches.match(e.request).then(r=>{
-    if(r)return r;
-    return fetch(e.request).then(resp=>{
-      if(resp&&resp.status===200&&resp.type!=='opaque'){
-        const clone=resp.clone();
-        caches.open(CACHE).then(c=>c.put(e.request,clone));
-      }
-      return resp;
-    }).catch(()=>new Response('Offline',{status:503}));
-  }));
-});
-`;
-  const swBlob=new Blob([swCode],{type:'application/javascript'});
-  const swURL=URL.createObjectURL(swBlob);
-  navigator.serviceWorker.register(swURL).catch(()=>{});
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js', { scope: './' })
+      .then(reg => {
+        console.log('[ManiFuels SW] Registered, scope:', reg.scope);
+        // Check for updates every 60s when app is open
+        setInterval(() => reg.update(), 60000);
+      })
+      .catch(err => console.warn('[ManiFuels SW] Registration failed:', err));
+  });
 }
 
 // Install prompt
