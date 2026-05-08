@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Mani Fuels — Shift Account Manager</title>
-<meta name="description" content="Mani Fuels shift account manager for fuel bunk operations">
+<title>Mani Fuels</title>
+<meta name="description" content="Mani Fuels Operation Management">
 <meta name="theme-color" content="#00d4a0">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -341,7 +341,7 @@ document.addEventListener('DOMContentLoaded',function(){if(_currentUser)showApp(
   <button class="hamburger" id="hamburger-btn" onclick="toggleMenu()">
     <span></span><span></span><span></span>
   </button>
-  <div class="nav-current" id="nav-current-label"><span>📋</span> SHIFT ENTRY</div>
+  <div class="nav-current" id="nav-current-label"><span>🏠</span> DASHBOARD</div>
 </nav>
 
 <!-- ════ DASHBOARD ════ -->
@@ -815,7 +815,14 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
           <div><label>CLOSING (L)</label><input type="number" id="oil_cur" placeholder="0.00" step="0.01" oninput="calc()"></div>
         </div>
         <div class="frow"><span class="flabel">Rate (₹/L)</span><input type="number" id="oil_rate" oninput="saveRates();calc()"></div>
+        <div class="frow"><span class="flabel">Bottle Size</span>
+          <select id="oil_bottle_size" onchange="saveRates();calc()" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 9px;font-family:'JetBrains Mono',monospace;font-size:12px;flex:1;min-width:0">
+            <option value="1">2T Oil — 1L bottle</option>
+            <option value="0.5">2T Oil — 0.5L bottle</option>
+          </select>
+        </div>
         <div class="res"><span class="res-lbl">Sold (L)</span><span class="res-val b" id="oil_sold">—</span></div>
+        <div class="res"><span class="res-lbl">Bottles Used</span><span class="res-val b" id="oil_bottles_used">—</span></div>
         <div class="res"><span class="res-lbl">Oil Value</span><span class="res-val b" id="oil_val">—</span></div>
       </div>
       <div class="sec"><span class="dot dd"></span>CREDIT CUSTOMERS</div>
@@ -1480,12 +1487,8 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
   <!-- TAB BAR — 3 tabs -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
     <div style="display:flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden">
-      <button id="fl_tab_stock" onclick="flShowTab('stock')"
-        style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;padding:8px 20px;border:none;cursor:pointer;background:var(--petrol);color:#000;transition:all .2s">
-        &#128200; LIVE STOCK
-      </button>
       <button id="fl_tab_new" onclick="flShowTab('new')"
-        style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;padding:8px 20px;border:none;cursor:pointer;background:transparent;color:var(--muted);transition:all .2s">
+        style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;padding:8px 20px;border:none;cursor:pointer;background:var(--petrol);color:#000;transition:all .2s">
         &#9981; NEW LOAD
       </button>
       <button id="fl_tab_history" onclick="flShowTab('history')"
@@ -1496,8 +1499,8 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
     <span id="fl_tab_badge" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)"></span>
   </div>
 
-  <!-- TAB 0: LIVE STOCK -->
-  <div id="fl_panel_stock">
+  <!-- TAB 0: LIVE STOCK — REMOVED -->
+  <div id="fl_panel_stock" style="display:none">
 
     <!-- MSD + HSD Tank Gauges -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
@@ -1576,44 +1579,9 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       </div>
     </div>
 
-    <!-- Profit Margin Comparison -->
-    <div class="card" style="margin-bottom:16px;border-color:var(--border2)">
-      <div class="sec" style="margin:0 0 14px;border:none"><span class="dot dg"></span>PROFIT MARGIN — EXPECTED vs ACTUAL</div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
-        <div style="background:var(--s3);border-radius:6px;padding:12px;text-align:center">
-          <div style="font-size:9px;letter-spacing:1px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;margin-bottom:4px">EXPECTED PROFIT</div>
-          <div id="ls_exp_profit" style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--green)">&#8377;0</div>
-          <div style="font-size:9px;color:var(--muted);margin-top:2px">from load calculations</div>
-        </div>
-        <div style="background:var(--s3);border-radius:6px;padding:12px;text-align:center">
-          <div style="font-size:9px;letter-spacing:1px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;margin-bottom:4px">ACTUAL BALANCE</div>
-          <div id="ls_act_profit" style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--blue)">&#8377;0</div>
-          <div style="font-size:9px;color:var(--muted);margin-top:2px">from shift records</div>
-        </div>
-        <div style="background:var(--s3);border-radius:6px;padding:12px;text-align:center">
-          <div style="font-size:9px;letter-spacing:1px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;margin-bottom:4px">VARIANCE</div>
-          <div id="ls_variance" style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--text)">&#8377;0</div>
-          <div id="ls_variance_note" style="font-size:9px;color:var(--muted);margin-top:2px">expected vs actual</div>
-        </div>
-        <div style="background:var(--s3);border-radius:6px;padding:12px;text-align:center">
-          <div style="font-size:9px;letter-spacing:1px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;margin-bottom:4px">TARGET MET?</div>
-          <div id="ls_target_badge" style="font-family:'Syne',sans-serif;font-size:14px;font-weight:800;margin-top:4px">&#8212;</div>
-          <div id="ls_target_pct" style="font-size:9px;color:var(--muted);margin-top:2px">of expected</div>
-        </div>
-      </div>
-      <!-- Progress bar showing actual vs expected -->
-      <div style="background:var(--s3);border-radius:6px;height:12px;overflow:hidden;position:relative">
-        <div id="ls_profit_bar" style="height:100%;background:linear-gradient(90deg,var(--green),rgba(61,220,132,.4));border-radius:6px;width:0%;transition:width .8s ease"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;margin-top:4px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted)">
-        <span>&#8377;0</span>
-        <span id="ls_profit_bar_label">Target: &#8377;0</span>
-      </div>
-    </div>
-
   </div>
 
-  <!-- TAB 1: NEW LOAD -->
+  <!-- TAB 0: NEW LOAD -->
   <div id="fl_panel_new" style="display:none">
   <!-- New Load Form -->
   <div id="fuelload_form" style="margin-bottom:16px">
@@ -2015,7 +1983,8 @@ function saveRates(){
     msd:document.getElementById('msd_rate').value,
     hsd:document.getElementById('hsd_rate').value,
     pack:document.getElementById('pack_rate').value,
-    oil:document.getElementById('oil_rate').value
+    oil:document.getElementById('oil_rate').value,
+    oil_bottle_size:document.getElementById('oil_bottle_size').value
   };
   // Detect change vs previous; if changed, log to history
   const prev=JSON.parse(localStorage.getItem('fuelRates')||'null');
@@ -2056,6 +2025,7 @@ function loadRates(){
     document.getElementById('hsd_rate').value=saved.hsd||'93.11';
     document.getElementById('pack_rate').value=saved.pack||'40';
     document.getElementById('oil_rate').value=saved.oil||'250';
+    if(saved.oil_bottle_size) document.getElementById('oil_bottle_size').value=saved.oil_bottle_size;
   } else {
     document.getElementById('msd_rate').value='101.76';
     document.getElementById('hsd_rate').value='93.11';
@@ -2118,7 +2088,7 @@ function showPage(p){
   if(p==='stock')renderMasterStock();
   if(p==='ledger')renderLedger();
   if(p==='oilreg'){renderOilReg();if(typeof renderPackReg==='function')renderPackReg();}
-  if(p==='fuelload'){if(typeof flShowTab==='function')flShowTab('stock');}
+  if(p==='fuelload'){if(typeof flShowTab==='function')flShowTab('new');}
   if(p==='activity'&&typeof renderActivityLog==='function')renderActivityLog();
   if(p==='staff'&&typeof renderStaff==='function'){staffShowTab(_currentStaffTab||'list');}
   if(p==='drawings'&&typeof renderDrawings==='function')renderDrawings();
@@ -2739,7 +2709,11 @@ function calc(){
   setEl('hsd1_disp',fmtL(h1),'d');setEl('hsd2_disp',fmtL(h2),'d');
   document.getElementById('hsd_value').textContent=fmt(hsdV);
   setEl('pack_sold',ps+' packs','b');setEl('pack_val',fmt(pv),'b');
-  setEl('oil_sold',os.toFixed(2)+' L','b');setEl('oil_val',fmt(ov),'b');
+  const oilBottleSize=parseFloat((document.getElementById('oil_bottle_size')||{}).value)||1;
+  const oilBottlesUsed=os>0?Math.round((os/oilBottleSize)*1000)/1000:0;
+  setEl('oil_sold',os.toFixed(2)+' L','b');
+  setEl('oil_bottles_used',oilBottlesUsed>0?(oilBottlesUsed+' × '+(oilBottleSize===0.5?'0.5L':'1L')+' bottle'+(oilBottlesUsed!==1?'s':'')):'—','b');
+  setEl('oil_val',fmt(ov),'b');
   const gpay=v('p_gpay'),paytm=v('p_paytm'),cash=v('p_cash');
   const exp=v('e_tmsd')+v('e_thsd')+v('e_toil')+v('e_items')+v('e_tea')+v('e_chit')+v('e_other');
   document.getElementById('total_exp').textContent=fmt(exp);
@@ -2773,7 +2747,7 @@ function renderStockSales(){
     const sc=item.qty<=0?'szero':item.qty<=3?'slow':'sok';
     const nm=item.name.toLowerCase();
     const is40ml=nm.includes('40')&&nm.includes('ml')&&(nm.includes('pouch')||nm.includes('pack'));
-    const is2T=nm.includes('2t oil')||(nm.includes('2t')&&nm.includes('1l'));
+    const is2T=nm.includes('2t oil')||(nm.includes('2t')&&nm.includes('1l'))||(nm.includes('2t')&&nm.includes('0.5'));
     const is20ml=nm.includes('20')&&nm.includes('ml')&&(nm.includes('pouch')||nm.includes('pack'));
     const autoTag=is40ml?'<span style="font-size:9px;background:rgba(0,212,160,.12);color:var(--petrol);padding:1px 5px;border-radius:3px;margin-left:4px">\u21bb 40ML</span>'
       :is2T?'<span style="font-size:9px;background:rgba(0,212,160,.12);color:var(--petrol);padding:1px 5px;border-radius:3px;margin-left:4px">\u21bb OIL</span>'
@@ -3066,15 +3040,29 @@ function _doSaveShift(){
   // If you want 20ml separate - enter via stock table. Otherwise skip.
   // (kept as comment - enable if 20ml is tracked separately in pack_prev/cur)
 
-  // ── Auto-deduct 2T Oil (1L) from stock ──
-  // os = litres of loose oil sold = os bottles of 2T Oil (1L)
+  // ── Auto-deduct 2T Oil from stock (bottle-size aware) ──
+  // os = litres of loose oil sold. Bottle size determines which stock item to deduct.
+  // 1L bottle  → deduct c.os × 1   bottles from '2T Oil (1L)'
+  // 0.5L bottle → deduct c.os × 2   bottles from '2T (0.5L)'
   if(c.os > 0){
-    const oil2T = stock.find(x =>
-      x.name.toLowerCase().includes('2t oil') ||
-      (x.name.toLowerCase().includes('2t') && x.name.toLowerCase().includes('1l'))
-    );
-    if(oil2T){
-      oil2T.qty = Math.round(Math.max(0, oil2T.qty - c.os) * 1000) / 1000;
+    const bottleSize = parseFloat((document.getElementById('oil_bottle_size')||{}).value) || 1;
+    const bottlesUsed = Math.round((c.os / bottleSize) * 1000) / 1000;
+
+    let oilItem;
+    if(bottleSize === 0.5){
+      // Match '2T (0.5L)' or similar 0.5L 2T entries
+      oilItem = stock.find(x =>
+        x.name.toLowerCase().includes('2t') && x.name.toLowerCase().includes('0.5')
+      );
+    } else {
+      // Match '2T Oil (1L)' or '2T ... 1l'
+      oilItem = stock.find(x =>
+        x.name.toLowerCase().includes('2t oil') ||
+        (x.name.toLowerCase().includes('2t') && x.name.toLowerCase().includes('1l'))
+      );
+    }
+    if(oilItem){
+      oilItem.qty = Math.round(Math.max(0, oilItem.qty - bottlesUsed) * 1000) / 1000;
     }
   }
 
@@ -3176,7 +3164,6 @@ function _doSaveShift(){
   calc();
   if(typeof logActivity==='function')logActivity('save_shift','shift',rec.id,rec.shift.toUpperCase()+' '+rec.date+' • bal: '+(rec.bal>=0?'+':'')+Math.round(rec.bal));
   showToast(rec.bal>=0?'✓ SURPLUS shift saved!':'✓ Shift saved (check shortage)');
-  if(typeof renderLiveStock==='function')renderLiveStock();
   if(typeof renderPackReg==='function')renderPackReg();
   renderHistory();
 }
@@ -4637,7 +4624,7 @@ function submitFuelLoad(){
   }
 
   fl_resetForm();
-  flShowTab('stock');
+  flShowTab('history');
   renderFuelLoads();
   showToast('✓ Fuel load saved!'+(updateRate?' Selling rate updated.':''));
 }
@@ -6549,7 +6536,6 @@ async function loadAllFromSupabase(silent) {
     renderOilReg();
     renderFuelLoads();
     if(typeof renderPackReg==='function')renderPackReg();
-    if(typeof renderLiveStock==='function')renderLiveStock();
     if(!silent) showToast('✓ Data synced!');
     _lastSyncTime = Date.now();
     updateSyncLabel();
@@ -6597,9 +6583,10 @@ function lockFuelLoad(id){
 }
 
 function flShowTab(tab){
-  var tabs=['stock','new','history'];
-  var panels={stock:'fl_panel_stock',new:'fl_panel_new',history:'fl_panel_history'};
-  var buttons={stock:'fl_tab_stock',new:'fl_tab_new',history:'fl_tab_history'};
+  if(tab==='stock') tab='new'; // live stock removed, redirect to new
+  var tabs=['new','history'];
+  var panels={new:'fl_panel_new',history:'fl_panel_history'};
+  var buttons={new:'fl_tab_new',history:'fl_tab_history'};
 
   // Hide all panels, deactivate all buttons
   tabs.forEach(function(t){
@@ -6616,7 +6603,6 @@ function flShowTab(tab){
   if(activeBtn){activeBtn.style.background='var(--petrol)';activeBtn.style.color='#000';}
 
   if(tab==='history')renderFuelLoads();
-  if(tab==='stock')renderLiveStock();
 }
 
 function renderLiveStock(){
@@ -6783,7 +6769,7 @@ document.addEventListener('visibilitychange', function(){
   if(document.visibilityState === 'visible' && _currentUser){
     // Only sync if it's been more than 30 seconds since last sync
     var now = Date.now();
-    if(!_lastSyncTime || (now - _lastSyncTime) > 30000){
+    if(!_lastSyncTime || (now - _lastSyncTime) > 10000){
       silentSync();
     }
   }
@@ -6796,7 +6782,7 @@ function startSyncPolling(){
     if(_currentUser && document.visibilityState === 'visible'){
       silentSync();
     }
-  }, 60000); // every 60 seconds
+  }, 30000); // every 30 seconds
 }
 
 function stopSyncPolling(){
@@ -6817,7 +6803,7 @@ function startRealtimeSync(){
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fuel_loads' },       function(){ silentSync(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_items' },      function(){ silentSync(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'oil_invoices' },     function(){ silentSync(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' },     function(){ silentSync(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' },         function(){ silentSync(); })
       .subscribe();
   } catch(e){
     console.log('Realtime not available:', e.message);
@@ -6836,18 +6822,29 @@ async function silentSync(){
   if(_syncInProgress || !_currentUser || !_supa) return;
   _syncInProgress = true;
 
-  // Show syncing indicator (yellow pulsing dot)
   var si = document.getElementById('sync-indicator');
   if(si){ si.style.background='var(--diesel)'; si.style.boxShadow='0 0 8px var(--diesel)'; }
 
   try {
-    await loadAllFromSupabase(true); // true = silent mode
+    await loadAllFromSupabase(true);
     _lastSyncTime = Date.now();
     updateSyncLabel();
-    // Green dot on success
+
+    // Re-render the currently active page after sync
+    var activePage = document.querySelector('.page.active');
+    if(activePage){
+      var pid = activePage.id ? activePage.id.replace('page-','') : '';
+      if(pid==='entry'   && typeof renderDashboard==='function')  renderDashboard();
+      if(pid==='history' && typeof renderHistory==='function')    renderHistory();
+      if(pid==='ledger'  && typeof renderLedger==='function')     renderLedger();
+      if(pid==='stock'   && typeof renderMasterStock==='function')renderMasterStock();
+      if(pid==='oilreg'  && typeof renderOilReg==='function')     renderOilReg();
+      if(pid==='fuelload'&& typeof renderFuelLoads==='function')  renderFuelLoads();
+      if(pid==='report'  && typeof renderReport==='function')     renderReport();
+    }
+
     if(si){ si.style.background='var(--green)'; si.style.boxShadow='0 0 6px var(--green)'; }
   } catch(e){
-    // Red dot on failure
     if(si){ si.style.background='var(--red)'; si.style.boxShadow='0 0 6px var(--red)'; }
     console.error('Silent sync failed:', e.message);
   } finally {
@@ -6863,8 +6860,14 @@ function updateSyncLabel(){
   var h = d.getHours().toString().padStart(2,'0');
   var m = d.getMinutes().toString().padStart(2,'0');
   var s = d.getSeconds().toString().padStart(2,'0');
-  el.textContent = 'Synced ' + h + ':' + m + ':' + s;
+  el.textContent = h + ':' + m + ':' + s;
+  el.title = 'Last synced at ' + h + ':' + m + ':' + s;
 }
+
+// Update the label every 10 seconds to keep time fresh
+setInterval(function(){
+  if(_lastSyncTime) updateSyncLabel();
+}, 10000);
 
 // ── Start all sync layers after login ──
 function initMultiDeviceSync(){
