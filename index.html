@@ -1946,7 +1946,8 @@ function getCustDiscount(name){return (customerProfiles[name]&&customerProfiles[
 // Each entry: {size: number_in_ml, enabled: bool, rate: number}
 // 40ml is always present and cannot be removed
 let packSizesConfig=JSON.parse(localStorage.getItem('packSizes')||'[{"size":20,"enabled":false,"rate":20},{"size":30,"enabled":false,"rate":30}]');
-function savePackSizesConfig(){localStorage.setItem('packSizes',JSON.stringify(packSizesConfig));}
+function savePackSizesConfig(){
+  if(typeof _currentUser!=='undefined'&&_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(function(){});localStorage.setItem('packSizes',JSON.stringify(packSizesConfig));}
 
 function showRateHistoryModal(){
   const o=document.getElementById('rateHistoryOverlay');
@@ -2150,6 +2151,29 @@ function saveRates(){
   localStorage.setItem('fuelRates',JSON.stringify(newRates));
   if(_currentUser)sbSaveSettings().catch(console.error);
 }
+// Settings that change how a shift is calculated. These were device-local, so
+// enabling a 20 ml pack on one phone left the others computing a different
+// pack value from identical readings.
+function _deviceConfig(){
+  var g=function(k){ try{ return JSON.parse(localStorage.getItem(k)||'null'); }catch(e){ return null; } };
+  return {
+    packSizes:   (typeof packSizesConfig!=='undefined') ? packSizesConfig : g('packSizesConfig'),
+    tankCfg:     g('tankCfg'),
+    looseOilCfg: g('looseOilCfg')
+  };
+}
+function _applyDeviceConfig(cfg){
+  if(!cfg) return;
+  if(cfg.packSizes && Array.isArray(cfg.packSizes)){
+    localStorage.setItem('packSizesConfig', JSON.stringify(cfg.packSizes));
+    if(typeof packSizesConfig!=='undefined') packSizesConfig=cfg.packSizes;
+    if(typeof renderExtraPackSizes==='function')renderExtraPackSizes();
+  }
+  if(cfg.tankCfg)     localStorage.setItem('tankCfg', JSON.stringify(cfg.tankCfg));
+  if(cfg.looseOilCfg) localStorage.setItem('looseOilCfg', JSON.stringify(cfg.looseOilCfg));
+  if(typeof renderLooseOilCfg==='function')renderLooseOilCfg();
+}
+
 function loadRates(){
   const saved=JSON.parse(localStorage.getItem('fuelRates')||'null');
   if(saved){
@@ -3220,6 +3244,7 @@ function saveLooseOilCfg(){
   localStorage.setItem('looseOilCfg',JSON.stringify({
     stockId:sel?sel.value:'', litresPerUnit:lpu>0?lpu:1
   }));
+  if(_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(function(){});
   calc();
 }
 
@@ -3272,18 +3297,40 @@ function renderMasterStock(){
   document.getElementById('stk_low').textContent=low;
   document.getElementById('stk_cats').textContent=cats.size;
 }
+var _stockPushTimer=null;
+function _pushStockItem(item){
+  if(!_currentUser||!item)return;
+  clearTimeout(_stockPushTimer);
+  // Debounced: these fire on every keystroke.
+  _stockPushTimer=setTimeout(function(){
+    _sbUpsert('stock_items',{id:item.id,user_id:_currentUser.id,name:item.name,
+      cat:item.cat,unit:item.unit,qty:item.qty,rate:item.rate});
+  },800);
+}
 function updStock(id,f,val){
   const item=stock.find(x=>x.id===id);if(!item)return;
   item[f]=(f==='qty'||f==='rate')?parseFloat(val)||0:val;
-  saveStockLS();renderMasterStock();renderStockSales();
+  saveStockLS();_pushStockItem(item);
+  renderMasterStock();renderStockSales();
 }
 function addStockItem(){
-  stock.push({id:Date.now(),name:'New Item',cat:'Oil',qty:0,rate:0,unit:'Bottle'});
-  saveStockLS();renderMasterStock();renderStockSales();
+  const item={id:_newId(),name:'New Item',cat:'Oil',qty:0,rate:0,unit:'Bottle'};
+  stock.push(item);
+  saveStockLS();
+  if(_currentUser)_sbUpsert('stock_items',{id:item.id,user_id:_currentUser.id,
+    name:item.name,cat:item.cat,unit:item.unit,qty:item.qty,rate:item.rate});
+  renderMasterStock();renderStockSales();
+  if(typeof renderLooseOilCfg==='function')renderLooseOilCfg();
 }
 function delStock(id){
-  if(!confirm('Remove item?'))return;
-  stock=stock.filter(x=>x.id!==id);saveStockLS();renderMasterStock();renderStockSales();
+  const item=stock.find(x=>x.id===id);
+  if(!confirm('Remove "'+((item&&item.name)||'item')+'" from stock?'))return;
+  stock=stock.filter(x=>x.id!==id);
+  saveStockLS();
+  if(_currentUser)_sbRemove('stock_items', id, 'id');   // or the next sync merges it back
+  if(typeof logActivity==='function')logActivity('del_stock','stock',id,'Removed '+((item&&item.name)||id));
+  renderMasterStock();renderStockSales();
+  if(typeof renderLooseOilCfg==='function')renderLooseOilCfg();
 }
 function saveStockLS(){localStorage.setItem('fuelStock',JSON.stringify(stock));if(_currentUser)sbSaveAllStock().catch(console.error);}
 
@@ -4722,7 +4769,12 @@ function saveEditLedger(id){
   e.fuel=document.getElementById('ed_fuel_'+id).value;
   e.amount=parseFloat(document.getElementById('ed_amt_'+id).value)||e.amount;
   e.paidBack=parseFloat(document.getElementById('ed_paid_'+id).value)||0;
-  saveLedger();openLedgerDetail(currentLedgerCustomer);showToast('Entry updated.');
+  saveLedger();
+  // Ledger rows carry no timestamp, so the merge resolves conflicts in the
+  // server's favour. Without this upload the edit is undone on the next sync.
+  if(_currentUser&&typeof sbSaveLedgerEntry==='function')sbSaveLedgerEntry(e).catch(console.error);
+  if(typeof logActivity==='function')logActivity('edit_ledger','ledger',id,e.customer+' → '+fmt(e.amount));
+  openLedgerDetail(currentLedgerCustomer);showToast('Entry updated.');
 }
 
 function closeLedgerDetail(){
@@ -5146,6 +5198,7 @@ function saveTankCfg(){
     capHSD:parseFloat(document.getElementById('cfg_cap_hsd').value)||20000,
     tol:parseFloat(document.getElementById('cfg_tol').value)||0
   }));
+  if(_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(function(){});
   if(typeof renderDip==='function')renderDip();
 }
 
@@ -5487,8 +5540,14 @@ function payFuelLoad(id){
 }
 
 function delFuelLoad(id){
+  const l=fuelLoads.find(x=>x.id===id);
+  if(l&&!confirm('Delete this '+(l.type||'')+' load of '+(l.vol||0)+' L?\n\n'+
+    'Weighted-average cost per litre is calculated from loads, so removing this '+
+    'changes COGS and every profit figure for the period.'))return;
   fuelLoads=fuelLoads.filter(x=>x.id!==id);
   localStorage.setItem('fuelLoads',JSON.stringify(fuelLoads));
+  if(_currentUser)_sbRemove('fuel_loads', id, 'id');
+  if(typeof logActivity==='function')logActivity('del_load','fuel_load',id,'Deleted load');
   renderFuelLoads();showToast('Load record deleted.');
 }
 
@@ -7277,7 +7336,8 @@ async function sbSaveSettings() {
     user_id: _currentUser.id,
     rates: rates,
     opening_msd: fuelOpeningMSD || 0,
-    opening_hsd: fuelOpeningHSD || 0
+    opening_hsd: fuelOpeningHSD || 0,
+    config: _deviceConfig()
   });
   } catch(e){ console.error('Save settings failed:',e.message); }
 }
@@ -7537,6 +7597,7 @@ async function loadAllFromSupabase(silent) {
       const s = setRes.data;
       if (s.rates) { localStorage.setItem('fuelRates', JSON.stringify(s.rates)); loadRates(); }
       if (s.opening_msd != null) { fuelOpeningMSD = s.opening_msd; localStorage.setItem('fuelOpeningMSD', s.opening_msd); const el=document.getElementById('msd_opening');if(el)el.value=s.opening_msd; }
+      if (s.config) _applyDeviceConfig(s.config);
       if (s.opening_hsd != null) { fuelOpeningHSD = s.opening_hsd; localStorage.setItem('fuelOpeningHSD', s.opening_hsd); const el=document.getElementById('hsd_opening');if(el)el.value=s.opening_hsd; }
     }
 
