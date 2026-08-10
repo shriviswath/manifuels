@@ -1,0 +1,53 @@
+name: Deploy to GitHub Pages
+
+# This file used to live in the repo root named `manifuels_complete_setup.sql`,
+# where GitHub never ran it. Workflows are only picked up from
+# .github/workflows/.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Sanity check — the app and its PWA files exist
+        run: |
+          set -e
+          for f in index.html sw.js manifest.json icon-192.png icon-512.png; do
+            test -f "$f" || { echo "::error::missing $f"; exit 1; }
+          done
+          python3 -c "import json;json.load(open('manifest.json'))"
+          echo "OK — $(wc -c < index.html) bytes of app"
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # db/ and docs/ ride along harmlessly; excluding them would need a
+          # staging step and they are a few KB.
+          path: '.'
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
