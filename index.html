@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Mani Fuels</title>
+<title>Mani Fuels — Shift Account Manager</title>
 <meta name="description" content="Mani Fuels shift account manager for fuel bunk operations">
 <meta name="theme-color" content="#00d4a0">
 <meta name="mobile-web-app-capable" content="yes">
@@ -4624,11 +4624,30 @@ function openLedgerDetail(name){
 }
 
 function deleteCustomer(name){
+  const rows=ledger.filter(e=>e.customer===name);
+  const outstanding=rows.reduce(function(s,e){
+    return s + (e.amount>0 ? Math.max(0,e.amount-(e.paidBack||0)) : 0);
+  },0);
+  const advance=rows.reduce(function(s,e){
+    return s + (e.amount<0 ? Math.abs(e.amount)-(e.paidBack||0) : 0);
+  },0);
+
+  var warn='Delete "'+name+'"?\n\n'+rows.length+' ledger entry(ies) will be removed permanently.';
+  if(outstanding>0.5) warn+='\n\n⚠ This customer still owes '+fmt(outstanding)+'. Deleting wipes that record — you will have no way to prove the debt.';
+  if(advance>0.5)     warn+='\n\n⚠ You are holding '+fmt(advance)+' of advance from this customer.';
+  if(!confirm(warn)) return;
+
+  // Remove from the server too, or the next sync merges every row back in.
+  rows.forEach(function(e){ _sbRemove('ledger_entries', Math.round(e.id), 'id'); });
+  if(customerProfiles[name]) _sbRemove('customer_profiles', name, 'customer_name');
+
   ledger=ledger.filter(e=>e.customer!==name);
   delete customerProfiles[name];
   saveCustProfiles();
   saveLedger();refreshCreditSelects();refreshCredBackSelects();renderLedger();
-  showToast('"'+name+'" removed from ledger.');
+  if(typeof logActivity==='function')
+    logActivity('del_customer','customer',name,'Removed '+rows.length+' entry(ies), outstanding '+fmt(outstanding));
+  showToast('"'+name+'" removed — '+rows.length+' entry(ies) deleted');
 }
 
 function editCustDiscount(){
@@ -7004,9 +7023,10 @@ function _outboxWrite(q){
   try{ localStorage.setItem(MF_OUTBOX_KEY, JSON.stringify(q.slice(-500))); }catch(e){}
   _outboxBadge();
 }
-function _outboxQueue(table, op, rows){
+function _outboxQueue(table, op, rows, key){
   const q=_outboxRead();
-  q.push({qid:_newId(), table:table, op:op, rows:rows, ts:new Date().toISOString(), tries:0});
+  q.push({qid:_newId(), table:table, op:op, rows:rows, key:key||null,
+          ts:new Date().toISOString(), tries:0});
   _outboxWrite(q);
 }
 function _outboxDepth(){ return _outboxRead().length; }
@@ -7028,7 +7048,8 @@ async function _outboxFlush(){
     try{
       let error=null;
       if(job.op==='delete'){
-        const r=await _supa.from(job.table).delete().eq('id', job.rows).eq('user_id', _currentUser.id);
+        const r=await _supa.from(job.table).delete()
+          .eq(job.key||'id', job.rows).eq('user_id', _currentUser.id);
         error=r.error;
       } else {
         const r=await _supa.from(job.table).upsert(job.rows,{onConflict:_conflictKey(job.table)});
@@ -7109,18 +7130,28 @@ function _mergeById(local, remote, tsField){
   return {merged:merged, localOnly:localOnly};
 }
 
-async function sbDelete(table, id) {
-  if (!_currentUser || !_supa) return;
+// Generic delete. keyCol defaults to 'id'; pass the real key for tables that
+// are not keyed on it (customer_profiles → customer_name, users → username).
+async function _sbRemove(table, id, keyCol){
+  if(!_currentUser) return;
+  const col = keyCol || 'id';
   if(!_supa || (typeof navigator!=='undefined' && navigator.onLine===false)){
-    _outboxQueue(table,'delete',id); return;
+    _outboxQueue(table,'delete',id,col); return;
   }
   try{
-    const { error } = await _supa.from(table).delete().eq('id', id).eq('user_id', _currentUser.id);
-    if (error) throw new Error(error.message);
+    const { error } = await _supa.from(table).delete()
+      .eq(col, id).eq('user_id', _currentUser.id);
+    if(error) throw new Error(error.message);
   }catch(e){
     console.warn('Delete queued for retry:',table,e.message);
-    _outboxQueue(table,'delete',id);
+    _outboxQueue(table,'delete',id,col);
   }
+}
+
+async function sbDelete(table, id) {
+  // `if (!_supa) return` used to swallow every delete made before the client
+  // was ready — the row stayed on the server and came back on the next sync.
+  return _sbRemove(table, id, 'id');
 }
 
 async function sbSaveDip(d){
