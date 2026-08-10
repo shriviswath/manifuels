@@ -1,0 +1,51 @@
+name: Nightly database backup
+
+# Two jobs in one:
+#   1. A pg_dump of the whole database, kept as a build artifact. The Supabase
+#      free plan has no automated backups, so this is the only copy.
+#   2. A daily hit on the project, which stops the free plan auto-pausing it
+#      after seven idle days.
+#
+# Setup (once):
+#   Repo → Settings → Secrets and variables → Actions → New repository secret
+#     SUPABASE_DB_URL = postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
+#   Copy it from Supabase → Project Settings → Database → Connection string → URI.
+#   Use the SESSION pooler (port 5432); the transaction pooler on 6543 cannot
+#   run pg_dump.
+
+on:
+  schedule:
+    - cron: '30 20 * * *'   # 02:00 IST — after the bunk's night shift closes
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install postgresql-client 17
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client-17
+
+      - name: Dump database
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$DB_URL" || { echo "::error::SUPABASE_DB_URL secret is not set"; exit 1; }
+          STAMP=$(date -u +%Y-%m-%d)
+          pg_dump "$DB_URL" --no-owner --no-privileges --schema=public \
+            | gzip -9 > "manifuels-$STAMP.sql.gz"
+          ls -lh "manifuels-$STAMP.sql.gz"
+          # Guard against a dump that "succeeded" but is empty
+          test "$(stat -c%s "manifuels-$STAMP.sql.gz")" -gt 1000 \
+            || { echo "::error::dump looks empty"; exit 1; }
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifuels-backup-${{ github.run_id }}
+          path: '*.sql.gz'
+          retention-days: 90

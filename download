@@ -1,0 +1,19 @@
+# Backups pulled down from the Actions artifacts
+*.sql.gz
+*.dump
+
+# Local scratch
+.DS_Store
+Thumbs.db
+node_modules/
+.vscode/
+.idea/
+*.log
+*.bak
+*.orig
+
+# Never commit these — the app ships an anon key by design, but a service
+# role key or DB URL in the repo is a full compromise.
+.env
+.env.*
+service-role*.txt
