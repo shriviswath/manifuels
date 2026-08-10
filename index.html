@@ -7031,13 +7031,18 @@ async function _outboxFlush(){
         const r=await _supa.from(job.table).delete().eq('id', job.rows).eq('user_id', _currentUser.id);
         error=r.error;
       } else {
-        const r=await _supa.from(job.table).upsert(job.rows,{onConflict:'id'});
+        const r=await _supa.from(job.table).upsert(job.rows,{onConflict:_conflictKey(job.table)});
         error=r.error;
       }
       if(error) throw new Error(error.message||'write rejected');
     }catch(e){
       job.tries=(job.tries||0)+1;
       job.lastError=String(e.message||e);
+      if(job.tries===1||job.tries===5){
+        console.error('Outbox rejected by server ['+job.table+']:', job.lastError);
+        if(typeof showToast==='function' && job.tries===1)
+          showToast('⚠ '+job.table+': '+job.lastError.slice(0,70));
+      }
       // 20 attempts ≈ several days of retries before we stop trying
       if(job.tries<20) kept.push(job);
       else console.error('Outbox gave up on',job.table,job.lastError);
@@ -7049,6 +7054,18 @@ async function _outboxFlush(){
 }
 
 // Every Supabase write funnels through these two.
+// Not every table is keyed on `id`. Upserting app_settings with
+// onConflict:'id' is a 400 — its primary key is user_id.
+var MF_CONFLICT_KEY = {
+  app_settings:      'user_id',
+  settings:          'user_id',
+  users:             'username',
+  customer_profiles: 'customer_name',
+  pack_sizes:        'size',
+  staff_attendance:  'staff_id,date,shift'
+};
+function _conflictKey(table){ return MF_CONFLICT_KEY[table] || 'id'; }
+
 async function _sbUpsert(table, rows){
   if(!_currentUser) return;
   const arr = Array.isArray(rows) ? rows : [rows];
@@ -7057,7 +7074,7 @@ async function _sbUpsert(table, rows){
     _outboxQueue(table,'upsert',arr); return;
   }
   try{
-    const { error } = await _supa.from(table).upsert(arr,{onConflict:'id'});
+    const { error } = await _supa.from(table).upsert(arr,{onConflict:_conflictKey(table)});
     if(error) throw new Error(error.message);
   }catch(e){
     console.warn('Queued for retry:',table,e.message);
