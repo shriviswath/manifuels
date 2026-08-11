@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Mani Fuels</title>
+<title>Mani Fuels — Fuel Station Manager</title>
 <meta name="description" content="Mani Fuels shift account manager for fuel bunk operations">
 <meta name="theme-color" content="#00d4a0">
 <meta name="mobile-web-app-capable" content="yes">
@@ -724,7 +724,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         </div>
         <div class="res"><span class="res-lbl">M1 Dispensed</span><span class="res-val p" id="msd1_disp">—</span></div>
         <div class="res"><span class="res-lbl">M2 Dispensed</span><span class="res-val p" id="msd2_disp">—</span></div>
-        <div class="frow" style="margin-top:8px"><span class="flabel">Rate (₹/L)</span><input type="number" id="msd_rate" step="0.01" oninput="saveRates();calc()"></div>
+        <div class="frow" style="margin-top:8px"><span class="flabel">Rate (₹/L)</span><input type="number" id="msd_rate" step="0.01" oninput="queueSaveRates();calc()" onchange="saveRatesNow()"></div>
         <!-- Price Change Toggle -->
         <div style="display:flex;align-items:center;gap:8px;margin:8px 0 4px">
           <button id="msd_price_change_btn" onclick="togglePriceChange('msd')"
@@ -768,7 +768,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         </div>
         <div class="res"><span class="res-lbl">M1 Dispensed</span><span class="res-val d" id="hsd1_disp">—</span></div>
         <div class="res"><span class="res-lbl">M2 Dispensed</span><span class="res-val d" id="hsd2_disp">—</span></div>
-        <div class="frow" style="margin-top:8px"><span class="flabel">Rate (₹/L)</span><input type="number" class="d" id="hsd_rate" step="0.01" oninput="saveRates();calc()"></div>
+        <div class="frow" style="margin-top:8px"><span class="flabel">Rate (₹/L)</span><input type="number" class="d" id="hsd_rate" step="0.01" oninput="queueSaveRates();calc()" onchange="saveRatesNow()"></div>
         <!-- Price Change Toggle -->
         <div style="display:flex;align-items:center;gap:8px;margin:8px 0 4px">
           <button id="hsd_price_change_btn" onclick="togglePriceChange('hsd')"
@@ -848,7 +848,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
             <div><label>OPENING (packs)</label><input type="number" id="pack_prev" placeholder="0" oninput="calc()"></div>
             <div><label>CLOSING (packs)</label><input type="number" id="pack_cur" placeholder="0" oninput="calc()"></div>
           </div>
-          <div class="frow"><span class="flabel">Rate (₹/pack)</span><input type="number" id="pack_rate" oninput="saveRates();calc()"></div>
+          <div class="frow"><span class="flabel">Rate (₹/pack)</span><input type="number" id="pack_rate" oninput="queueSaveRates();calc()" onchange="saveRatesNow()"></div>
           <div class="res"><span class="res-lbl">Packs Sold</span><span class="res-val b" id="pack_sold">—</span></div>
           <div class="res"><span class="res-lbl">40ml Value</span><span class="res-val b" id="pack_val">—</span></div>
         </div>
@@ -861,7 +861,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
           <div><label>OPENING (L)</label><input type="number" id="oil_prev" placeholder="0.00" step="0.01" oninput="calc()"></div>
           <div><label>CLOSING (L)</label><input type="number" id="oil_cur" placeholder="0.00" step="0.01" oninput="calc()"></div>
         </div>
-        <div class="frow"><span class="flabel">Rate (₹/L)</span><input type="number" id="oil_rate" oninput="saveRates();calc()"></div>
+        <div class="frow"><span class="flabel">Rate (₹/L)</span><input type="number" id="oil_rate" oninput="queueSaveRates();calc()" onchange="saveRatesNow()"></div>
         <div class="frow"><span class="flabel">Drawn from</span>
           <select id="oil_src_item" onchange="saveLooseOilCfg()" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-family:'JetBrains Mono',monospace;font-size:12px"></select></div>
         <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin:-2px 0 6px 0" id="oil_src_hint"></div>
@@ -1947,8 +1947,16 @@ function getCustDiscount(name){return (customerProfiles[name]&&customerProfiles[
 // Each entry: {size: number_in_ml, enabled: bool, rate: number}
 // 40ml is always present and cannot be removed
 let packSizesConfig=JSON.parse(localStorage.getItem('packSizes')||'[{"size":20,"enabled":false,"rate":20},{"size":30,"enabled":false,"rate":30}]');
+var _packCfgTimer=null;
 function savePackSizesConfig(){
-  if(typeof _currentUser!=='undefined'&&_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(function(){});localStorage.setItem('packSizes',JSON.stringify(packSizesConfig));}
+  localStorage.setItem('packSizes',JSON.stringify(packSizesConfig));
+  // Debounced for the same reason as the rates: the rate boxes fire on input.
+  clearTimeout(_packCfgTimer);
+  _packCfgTimer=setTimeout(function(){
+    if(typeof _currentUser!=='undefined'&&_currentUser&&typeof sbSaveSettings==='function')
+      sbSaveSettings().catch(function(){});
+  },1200);
+}
 
 function showRateHistoryModal(){
   const o=document.getElementById('rateHistoryOverlay');
@@ -2023,7 +2031,8 @@ function renderPackSizesManager(){
       <div style="display:flex;align-items:center;gap:4px">
         <span style="font-size:10px;color:var(--muted)">₹</span>
         <input type="number" value="${(JSON.parse(localStorage.getItem('fuelRates')||'{}').pack)||40}" id="ps_rate_40" step="0.5" min="0"
-          oninput="document.getElementById('pack_rate').value=this.value;saveRates();calc()"
+          oninput="document.getElementById('pack_rate').value=this.value;queueSaveRates();calc()"
+          onchange="saveRatesNow()"
           style="width:65px;padding:5px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px">
       </div>
     </div>`;
@@ -2113,7 +2122,17 @@ function renderExtraPackSizes(){
   `).join('');
 }
 
+var _rateSaveTimer=null;
+function queueSaveRates(){
+  clearTimeout(_rateSaveTimer);
+  // Long enough to type a full rate. calc() still runs immediately, so the
+  // on-screen totals stay live while typing.
+  _rateSaveTimer=setTimeout(saveRates,1200);
+}
+function saveRatesNow(){ clearTimeout(_rateSaveTimer); saveRates(); }
+
 function saveRates(){
+  clearTimeout(_rateSaveTimer);
   const newRates={
     msd:document.getElementById('msd_rate').value,
     hsd:document.getElementById('hsd_rate').value,
@@ -2123,7 +2142,13 @@ function saveRates(){
   // Detect change vs previous; if changed, log to history
   const prev=JSON.parse(localStorage.getItem('fuelRates')||'null');
   if(prev){
-    const changed=['msd','hsd','pack','oil'].filter(k=>prev[k]!==newRates[k]&&newRates[k]);
+    // Ignore blanks and obvious mid-typing values: a fuel rate below ₹5/L is
+    // someone still entering digits, not a real price change.
+    const _minRate={msd:5,hsd:5,pack:1,oil:1};
+    const changed=['msd','hsd','pack','oil'].filter(function(k){
+      const nv=parseFloat(newRates[k]);
+      return prev[k]!==newRates[k] && newRates[k]!=='' && isFinite(nv) && nv>=_minRate[k];
+    });
     if(changed.length){
       const hist=JSON.parse(localStorage.getItem('rateHistory')||'[]');
       changed.forEach(k=>{
@@ -2139,9 +2164,12 @@ function saveRates(){
       });
       // Keep last 500 entries locally
       localStorage.setItem('rateHistory',JSON.stringify(hist.slice(0,500)));
-      // Sync each change to DB
+      // One row per changed rate. This used to upload hist[0] once per change,
+      // so a simultaneous MSD+HSD edit logged the same row twice and lost one.
       if(_currentUser&&typeof sbSaveRateHistory==='function'){
-        changed.forEach(k=>sbSaveRateHistory(hist[0]).catch(console.error));
+        hist.slice(0,changed.length).forEach(function(h){
+          sbSaveRateHistory(h).catch(console.error);
+        });
       }
       if(typeof logActivity==='function'){
         const summary=changed.map(k=>k.toUpperCase()+': '+prev[k]+'→'+newRates[k]).join(', ');
