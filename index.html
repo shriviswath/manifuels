@@ -195,6 +195,13 @@ var USERS_DB=[
   {username:'kumutha',    password:'kumutha',    role:'owner',display:'Kumutha K'},
   {username:'nithin',     password:'nithin',     role:'owner',display:'Nithin K'}
 ];
+// Every table is filtered on user_id, and user_id used to be the username —
+// so each of the four owners had their OWN stock list, rates, opening volumes
+// and shifts. Four sets of books for one bunk. All rows now carry the station
+// id instead, so everyone sees the same data. Who did what is still recorded:
+// created_by / updated_by and the activity log keep the individual username.
+var MF_STATION='manifuels';
+
 var SUPABASE_URL='https://hiapuixdmhibimbinlri.supabase.co';
 var SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhpYXB1aXhkbWhpYmltYmlubHJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwNzk1NDIsImV4cCI6MjA4OTY1NTU0Mn0.4F7tWfrq2J4A426AesIHAEvVqthNja7mUhpTikWSuFc';
 
@@ -257,7 +264,7 @@ async function signIn(u,p){
   }
 
   if(loggedInUser){
-    _currentUser={id:loggedInUser.username,email:loggedInUser.username+'@manifuels.local',
+    _currentUser={id:MF_STATION,email:loggedInUser.username+'@manifuels.local',
                   username:loggedInUser.username,role:loggedInUser.role,display:loggedInUser.display};
     _isOwner=loggedInUser.role==='owner';
     sessionStorage.setItem('mf_user',JSON.stringify(_currentUser));
@@ -285,7 +292,11 @@ function signOut(){
 }
 function initAuth(){
   var s=sessionStorage.getItem('mf_user');
-  if(s){try{_currentUser=JSON.parse(s);_isOwner=_currentUser.role==='owner';}catch(e){sessionStorage.removeItem('mf_user');_currentUser=null;}}
+  if(s){try{
+    _currentUser=JSON.parse(s);
+    _currentUser.id=MF_STATION;   // sessions saved before this change still hold a username here
+    _isOwner=_currentUser.role==='owner';
+  }catch(e){sessionStorage.removeItem('mf_user');_currentUser=null;}}
 }
 initAuth();
 document.addEventListener('DOMContentLoaded',function(){
@@ -808,6 +819,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <div class="sec"><span class="dot dr"></span>EXPENSES & DEDUCTIONS</div>
       <div class="card">
         <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-bottom:6px">
+    
         </div>
         <div class="frow"><span class="flabel">Testing MSD (L)</span><input type="number" id="t_msd_l" placeholder="0.000" step="0.001" inputmode="decimal" oninput="calc()">
           <span class="res-val p" id="t_msd_v" style="min-width:78px;text-align:right">₹0</span></div>
