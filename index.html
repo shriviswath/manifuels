@@ -808,7 +808,6 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <div class="sec"><span class="dot dr"></span>EXPENSES & DEDUCTIONS</div>
       <div class="card">
         <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-bottom:6px">
-          Testing fuel is entered in LITRES — it leaves the tank, so it has to be counted as volume, not just cash.
         </div>
         <div class="frow"><span class="flabel">Testing MSD (L)</span><input type="number" id="t_msd_l" placeholder="0.000" step="0.001" inputmode="decimal" oninput="calc()">
           <span class="res-val p" id="t_msd_v" style="min-width:78px;text-align:right">₹0</span></div>
@@ -865,6 +864,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <div class="frow"><span class="flabel">Rate (₹/L)</span><input type="number" id="oil_rate" oninput="saveRates();calc()"></div>
         <div class="frow"><span class="flabel">Drawn from</span>
           <select id="oil_src_item" onchange="saveLooseOilCfg()" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-family:'JetBrains Mono',monospace;font-size:12px"></select></div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin:-2px 0 6px 0" id="oil_src_hint"></div>
         <div class="frow"><span class="flabel">Litres per unit</span><input type="number" id="oil_src_lpu" step="0.001" placeholder="1.000" oninput="saveLooseOilCfg()"></div>
         <div class="res"><span class="res-lbl">Sold (L)</span><span class="res-val b" id="oil_sold">—</span></div>
         <div class="res"><span class="res-lbl">Stock deducted</span><span class="res-val b" id="oil_units">—</span></div>
@@ -985,7 +985,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       </div>
       <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:10px;line-height:1.5">
         Measure the tank, enter what is physically there. The app already knows what
-        <em>should</em> be there from opening + loads − meter sales − testing. The gap is your loss.
+        <em>should</em> be there from opening + loads − meter sales + testing returned. The gap is your loss.
       </div>
       <div class="rg" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
         <div><label>DATE</label><input type="date" id="dip_date"></div>
@@ -1064,7 +1064,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
   </div>
   <div class="card">
     <table class="stock-tbl" style="width:100%">
-      <thead><tr><th>ITEM NAME</th><th>CATEGORY</th><th>QTY IN STOCK</th><th>RATE (₹)</th><th>UNIT</th><th>STATUS</th><th>VALUE</th><th></th></tr></thead>
+      <thead><tr><th>ITEM NAME</th><th>CATEGORY</th><th>QTY IN STOCK</th><th>RATE (₹)</th><th>UNIT</th><th title="Can be drawn as loose oil">LOOSE</th><th>STATUS</th><th>VALUE</th><th></th></tr></thead>
       <tbody id="master_stock"></tbody>
     </table>
   </div>
@@ -1859,7 +1859,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div class="res"><span class="res-lbl">Total Loaded</span><span class="res-val p" id="fl_msd_loaded">0 L</span></div>
         <div class="res"><span class="res-lbl">Sold (from shifts)</span><span class="res-val p" id="fl_msd_sold">0 L</span></div>
-        <div class="res"><span class="res-lbl">Opening Volume</span><span class="res-val p" id="fl_msd_opening">0 L</span></div>
+        <div class="res"><span class="res-lbl">Baseline <span id="fl_msd_since" style="font-size:9px;color:var(--muted)"></span></span><span class="res-val p" id="fl_msd_opening">0 L</span></div>
         <div class="res" style="border-top:1px solid var(--petrol);margin-top:4px"><span class="res-lbl" style="font-weight:700;color:var(--text)">Est. In Tank</span><span class="res-val p" style="font-size:16px" id="fl_msd_tank">0 L</span></div>
       </div>
     </div>
@@ -1868,7 +1868,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div class="res"><span class="res-lbl">Total Loaded</span><span class="res-val d" id="fl_hsd_loaded">0 L</span></div>
         <div class="res"><span class="res-lbl">Sold (from shifts)</span><span class="res-val d" id="fl_hsd_sold">0 L</span></div>
-        <div class="res"><span class="res-lbl">Opening Volume</span><span class="res-val d" id="fl_hsd_opening">0 L</span></div>
+        <div class="res"><span class="res-lbl">Baseline <span id="fl_hsd_since" style="font-size:9px;color:var(--muted)"></span></span><span class="res-val d" id="fl_hsd_opening">0 L</span></div>
         <div class="res" style="border-top:1px solid var(--diesel);margin-top:4px"><span class="res-lbl" style="font-weight:700;color:var(--text)">Est. In Tank</span><span class="res-val d" style="font-size:16px" id="fl_hsd_tank">0 L</span></div>
       </div>
     </div>
@@ -2469,11 +2469,34 @@ function _packUnitCost(){
 // UNITS (1 L bottle, 5 L can, 20 L drum). The old code subtracted litres
 // straight off the bottle count, which only happened to be right for 1 L packs.
 function _looseOilCfg(){
-  try{
-    const c=JSON.parse(localStorage.getItem('looseOilCfg')||'null');
-    if(c&&c.stockId)return {stockId:String(c.stockId),litresPerUnit:(parseFloat(c.litresPerUnit)||1)};
-  }catch(e){}
-  return {stockId:'',litresPerUnit:1};
+  var c=null;
+  try{ c=JSON.parse(localStorage.getItem('looseOilCfg')||'null'); }catch(e){}
+  if(!c||typeof c!=='object')c={};
+  return {
+    stockId: c.stockId?String(c.stockId):'',
+    litresPerUnit: (parseFloat(c.litresPerUnit)||1),
+    allowed: Array.isArray(c.allowed)?c.allowed.map(String):[]
+  };
+}
+// Which stock items may be drawn as loose oil. Distilled water and battery acid
+// are in the same register and were one mis-tap away from becoming the COGS
+// source. An empty list means nothing has been configured yet, so everything
+// stays selectable and no existing setup breaks on upgrade.
+function _looseAllowed(id){
+  var a=_looseOilCfg().allowed;
+  return a.length?a.indexOf(String(id))>=0:true;
+}
+function toggleLooseAllowed(id,on){
+  var cfg=_looseOilCfg(), s=String(id), a=cfg.allowed.slice();
+  if(on){ if(a.indexOf(s)<0)a.push(s); }
+  else  { a=a.filter(function(x){return x!==s;});
+          if(cfg.stockId===s)cfg.stockId='';   // it was the live source — unlink it
+        }
+  localStorage.setItem('looseOilCfg',JSON.stringify(
+    {stockId:cfg.stockId,litresPerUnit:cfg.litresPerUnit,allowed:a}));
+  if(_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(function(){});
+  if(typeof renderLooseOilCfg==='function')renderLooseOilCfg();
+  calc();
 }
 function _looseOilUnits(litres){
   const cfg=_looseOilCfg();
@@ -3235,18 +3258,28 @@ function renderLooseOilCfg(){
   const sel=document.getElementById('oil_src_item');
   if(!sel)return;
   const cfg=_looseOilCfg();
+  // The linked item stays visible even if it was later unticked, so the config
+  // can never end up pointing at a row that is not in the list.
+  const list=stock.filter(function(x){
+    return _looseAllowed(x.id)||String(x.id)===cfg.stockId;
+  });
   sel.innerHTML='<option value="">— not linked to stock —</option>'+
-    stock.map(function(x){return '<option value="'+x.id+'">'+x.name+' ('+(x.unit||'unit')+')</option>';}).join('');
+    list.map(function(x){return '<option value="'+x.id+'">'+_esc(x.name)+' ('+_esc(x.unit||'unit')+')</option>';}).join('');
   sel.value=cfg.stockId||'';
   const lpu=document.getElementById('oil_src_lpu');
   if(lpu&&!lpu.value)lpu.value=cfg.litresPerUnit||1;
+  const hint=document.getElementById('oil_src_hint');
+  if(hint)hint.textContent=cfg.allowed.length
+    ? list.length+' item(s) marked as loose-oil sources in Stock'
+    : 'Tick "LOOSE" in Oil Stock to limit this list';
 }
 function saveLooseOilCfg(){
   const sel=document.getElementById('oil_src_item');
   const lpuEl=document.getElementById('oil_src_lpu');
   const lpu=parseFloat(lpuEl&&lpuEl.value)||1;
+  const cur=_looseOilCfg();
   localStorage.setItem('looseOilCfg',JSON.stringify({
-    stockId:sel?sel.value:'', litresPerUnit:lpu>0?lpu:1
+    stockId:sel?sel.value:'', litresPerUnit:lpu>0?lpu:1, allowed:cur.allowed
   }));
   if(_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(function(){});
   calc();
@@ -3281,6 +3314,7 @@ function renderMasterStock(){
   if(typeof renderLooseOilCfg==='function')renderLooseOilCfg();
   const tb=document.getElementById('master_stock');tb.innerHTML='';
   let tv=0,low=0,cats=new Set();
+  const _la=_looseOilCfg().allowed;
   stock.forEach(item=>{
     const val=item.qty*item.rate;tv+=val;if(item.qty<=3)low++;cats.add(item.cat);
     const sc=item.qty<=0?'szero':item.qty<=3?'slow':'sok';
@@ -3291,6 +3325,7 @@ function renderMasterStock(){
       <td><input type="number" value="${item.qty}" onchange="updStock(${item.id},'qty',this.value)" style="width:65px"></td>
       <td><input type="number" value="${item.rate}" onchange="updStock(${item.id},'rate',this.value)" style="width:70px"></td>
       <td><input type="text" value="${item.unit}" onchange="updStock(${item.id},'unit',this.value)" style="width:60px"></td>
+      <td style="text-align:center"><input type="checkbox" ${_la.indexOf(String(item.id))>=0?'checked':''} onchange="toggleLooseAllowed(${item.id},this.checked)" style="width:16px;height:16px;accent-color:var(--petrol)"></td>
       <td><span class="spill ${sc}">${st}</span></td>
       <td style="color:var(--petrol)">${fmt(val)}</td>
       <td><button class="rm-btn" onclick="delStock(${item.id})">✕</button></td>`;
@@ -5267,7 +5302,7 @@ function bookStock(type,date,slot){
   var from=anchor?{date:anchor.date,rank:_slotRank(anchor.slot)}:null;
   var mv=_tankMovement(type,from,{date:date,rank:rank});
   return {open:base,loaded:mv.loaded,sold:mv.sold,tested:mv.tested,
-          book:base+mv.loaded-mv.sold-mv.tested,
+          book:base+mv.loaded-mv.sold+mv.tested,
           anchor:anchor,
           since:anchor?(anchor.date+' dip'):'opening stock'};
 }
@@ -5302,7 +5337,7 @@ function dipPreview(){
   if(fe){
     if(Math.abs(vr)<=tol){fe.className='field-warn-msg';fe.style.color='var(--green)';
       fe.textContent='Within tolerance (±'+tol+' L). From '+b.since+': '+b.open.toFixed(0)+
-        ' + loaded '+b.loaded.toFixed(0)+' − sold '+b.sold.toFixed(0)+' − tested '+b.tested.toFixed(1);}
+        ' + loaded '+b.loaded.toFixed(0)+' − metered '+b.sold.toFixed(0)+' + testing returned '+b.tested.toFixed(1);}
     else if(vr<0){fe.className='field-warn-msg error';fe.style.color='';
       fe.textContent='SHORT by '+Math.abs(vr).toFixed(3)+' L — check for leak, unrecorded sale, or theft';}
     else {fe.className='field-warn-msg';fe.style.color='var(--diesel)';
@@ -5707,16 +5742,17 @@ function renderFuelLoads(){
   const diffEl=document.getElementById('fl_cmp_diff');
   if(diffEl){diffEl.textContent=(diff>=0?'+':'−')+'₹'+Math.abs(diff).toLocaleString('en-IN',{minimumFractionDigits:2});diffEl.style.color=diff>=0?'var(--green)':'var(--red)';}
   se('fl_cmp_note','Shift balance: ₹'+Math.abs(shiftBal).toLocaleString('en-IN')+' | Load profit: ₹'+totalProfitAll.toLocaleString('en-IN'));
-  se('fl_msd_loaded',msdLoaded.toFixed(3)+' L');
-  se('fl_msd_sold',msdSold.toFixed(3)+' L');
+  // All four figures count from the same baseline as the level below,
+  // otherwise baseline + loaded − sold does not equal what the tank shows.
+  se('fl_msd_loaded',bM.loaded.toFixed(3)+' L');
+  se('fl_msd_sold',(bM.sold-bM.tested).toFixed(3)+' L');
   se('fl_msd_opening',msdOpen.toFixed(3)+' L');
-  se('fl_msd_sold',(bM.sold+bM.tested).toFixed(3)+' L');
+  se('fl_msd_since','('+bM.since+')'); se('fl_hsd_since','('+bH.since+')');
   const msdTankEl=document.getElementById('fl_msd_tank');
   if(msdTankEl){msdTankEl.textContent=msdInTank.toFixed(3)+' L';msdTankEl.style.color=msdInTank<1500?'var(--red)':'var(--petrol)';}
-  se('fl_hsd_loaded',hsdLoaded.toFixed(3)+' L');
-  se('fl_hsd_sold',hsdSold.toFixed(3)+' L');
+  se('fl_hsd_loaded',bH.loaded.toFixed(3)+' L');
+  se('fl_hsd_sold',(bH.sold-bH.tested).toFixed(3)+' L');
   se('fl_hsd_opening',hsdOpen.toFixed(3)+' L');
-  se('fl_hsd_sold',(bH.sold+bH.tested).toFixed(3)+' L');
   const hsdTankEl=document.getElementById('fl_hsd_tank');
   if(hsdTankEl){hsdTankEl.textContent=hsdInTank.toFixed(3)+' L';hsdTankEl.style.color=hsdInTank<2000?'var(--red)':'var(--diesel)';}
 
