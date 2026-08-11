@@ -8,26 +8,42 @@ name: Nightly database backup
 #
 # Setup (once):
 #   Repo → Settings → Secrets and variables → Actions → New repository secret
-#     SUPABASE_DB_URL = postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
-#   Copy it from Supabase → Project Settings → Database → Connection string → URI.
+#     SUPABASE_DB_URL = postgresql://postgres.<ref>:<password>@aws-1-<region>.pooler.supabase.com:5432/postgres
+#   Copy it from Supabase → Connect → Direct connection string → Session pooler.
 #   Use the SESSION pooler (port 5432); the transaction pooler on 6543 cannot
-#   run pg_dump.
+#   run pg_dump. Keep the password to letters and digits — one containing
+#   @ : / # ? % breaks the URI unless percent-encoded.
 
 on:
   schedule:
     - cron: '30 20 * * *'   # 02:00 IST — after the bunk's night shift closes
   workflow_dispatch:
 
+env:
+  # pg_dump refuses to dump a server NEWER than itself. This must be >= the
+  # Supabase Postgres major version. Bump it when Supabase upgrades.
+  PG_MAJOR: '17'
+
 jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - name: Install postgresql-client 17
+      - name: Install postgresql-client
         run: |
-          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update -qq
-          sudo apt-get install -y postgresql-client-17
+          sudo apt-get install -y "postgresql-client-${PG_MAJOR}"
+          # The pg_dump on PATH is a wrapper that can resolve to an older client
+          # already present on the runner. Use the versioned binary directly and
+          # fail loudly if the install did not actually land.
+          BIN="/usr/lib/postgresql/${PG_MAJOR}/bin/pg_dump"
+          test -x "$BIN" || { echo "::error::$BIN missing — client ${PG_MAJOR} did not install"; exit 1; }
+          "$BIN" --version
 
       - name: Dump database
         env:
@@ -35,8 +51,9 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$DB_URL" || { echo "::error::SUPABASE_DB_URL secret is not set"; exit 1; }
+          PG_DUMP="/usr/lib/postgresql/${PG_MAJOR}/bin/pg_dump"
           STAMP=$(date -u +%Y-%m-%d)
-          pg_dump "$DB_URL" --no-owner --no-privileges --schema=public \
+          "$PG_DUMP" "$DB_URL" --no-owner --no-privileges --schema=public \
             | gzip -9 > "manifuels-$STAMP.sql.gz"
           ls -lh "manifuels-$STAMP.sql.gz"
           # Guard against a dump that "succeeded" but is empty
