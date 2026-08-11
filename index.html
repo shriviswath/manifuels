@@ -1031,7 +1031,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <div style="overflow-x:auto">
         <table class="data-tbl" id="dip_tbl">
           <thead><tr><th>DATE</th><th>WHEN</th><th>TANK</th><th>DIP CM</th><th>OBSERVED L</th>
-            <th>BOOK L</th><th>VARIATION</th><th>CUMULATIVE</th><th>NOTES</th><th></th></tr></thead>
+            <th>BOOK L</th><th>SINCE LAST DIP</th><th>CUMULATIVE</th><th>NOTES</th><th></th></tr></thead>
           <tbody id="dip_body"></tbody>
         </table>
       </div>
@@ -1427,7 +1427,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
     <div style="margin-bottom:12px"><button class="btn btn-g" onclick="toggleStaffForm()">&#65291; ADD STAFF</button></div>
     <div id="staff_form" style="display:none;margin-bottom:14px">
       <div class="card" style="border-color:var(--blue);max-width:640px">
-        <div class="card-head" style="color:var(--blue)">NEW STAFF MEMBER</div>
+        <div class="card-head" style="color:var(--blue)" id="sf_form_title">NEW STAFF MEMBER</div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
           <div><div class="flabel" style="margin-bottom:4px">NAME</div>
             <input type="text" id="sf_name" placeholder="Full name"></div>
@@ -1445,8 +1445,9 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <div style="margin-bottom:10px">
           <div class="flabel" style="margin-bottom:4px">NOTES</div>
           <input type="text" id="sf_notes" placeholder="Optional"></div>
+        <div id="sf_salary_note" style="display:none;font-size:11px;color:var(--diesel);margin-bottom:10px;padding:8px 10px;background:rgba(255,176,32,.08);border-left:2px solid var(--diesel);border-radius:3px"></div>
         <div style="display:flex;gap:8px">
-          <button class="save-btn" onclick="submitStaff()">&#10003; SAVE</button>
+          <button class="save-btn" onclick="submitStaff()" id="sf_save_btn">&#10003; SAVE</button>
           <button class="btn btn-g" onclick="toggleStaffForm()">CANCEL</button>
         </div>
       </div>
@@ -2800,18 +2801,21 @@ function renderDashChart(){
 }
 
 function renderDashTanks(){
-  // Use last known opening volumes + today's dispensed as a rough live estimate
+  // Same calculation as the Dip page: last dip (or opening) + loads − sales
+  // − testing. The old version subtracted only TODAY's sales from the opening
+  // figure and ignored every tanker ever received.
   const today=_todayISO();
   const todayRecs = records.filter(r=>r.date===today);
   const dispMSD = todayRecs.reduce((s,r)=>s+(r.msdT||0),0);
   const dispHSD = todayRecs.reduce((s,r)=>s+(r.hsdT||0),0);
 
-  // Tank capacity: 15,000L MSD, 20,000L HSD
-  const CAP_MSD = 15000;
-  const CAP_HSD = 20000;
+  const cfg = (typeof tankCfg==='function') ? tankCfg() : {capMSD:15000,capHSD:20000};
+  const CAP_MSD = cfg.capMSD || 15000;
+  const CAP_HSD = cfg.capHSD || 20000;
 
-  const liveMSD = Math.max(0, (fuelOpeningMSD||0) - dispMSD);
-  const liveHSD = Math.max(0, (fuelOpeningHSD||0) - dispHSD);
+  const bMSD = tankLevel('MSD'), bHSD = tankLevel('HSD');
+  const liveMSD = Math.max(0, bMSD.book);
+  const liveHSD = Math.max(0, bHSD.book);
 
   const pctMSD = CAP_MSD ? Math.min(100,(liveMSD/CAP_MSD)*100) : 0;
   const pctHSD = CAP_HSD ? Math.min(100,(liveHSD/CAP_HSD)*100) : 0;
@@ -2823,7 +2827,7 @@ function renderDashTanks(){
         <span class="fuel-tank-vol" style="color:var(--petrol)">${liveMSD.toFixed(1)} L</span>
       </div>
       <div class="fuel-tank-bar"><div class="fuel-tank-fill msd" style="width:${pctMSD}%"></div></div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:4px">${pctMSD.toFixed(0)}% of ${CAP_MSD}L • Dispensed today: ${dispMSD.toFixed(1)}L</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:4px">${pctMSD.toFixed(0)}% of ${CAP_MSD}L • today ${dispMSD.toFixed(1)}L • since ${bMSD.since}</div>
     </div>
     <div class="fuel-tank">
       <div class="fuel-tank-top">
@@ -2831,7 +2835,7 @@ function renderDashTanks(){
         <span class="fuel-tank-vol" style="color:var(--diesel)">${liveHSD.toFixed(1)} L</span>
       </div>
       <div class="fuel-tank-bar"><div class="fuel-tank-fill hsd" style="width:${pctHSD}%"></div></div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:4px">${pctHSD.toFixed(0)}% of ${CAP_HSD}L • Dispensed today: ${dispHSD.toFixed(1)}L</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:4px">${pctHSD.toFixed(0)}% of ${CAP_HSD}L • today ${dispHSD.toFixed(1)}L • since ${bHSD.since}</div>
     </div>
   `;
 
@@ -5205,24 +5209,74 @@ function saveTankCfg(){
 // Book stock = opening + everything loaded − everything metered out − testing,
 // counted up to (and including) the given date. Sorting is by date + shift so a
 // morning dip is compared against morning-and-earlier movement only.
-function _shiftRank(sh){return sh==='night'?1:0;}
-function bookStock(type,date,slot){
-  var open = type==='MSD' ? (fuelOpeningMSD||0) : (fuelOpeningHSD||0);
-  var loaded=0;
+// Everything in the tank is ordered on one timeline: a date plus a position
+// within that day. 0 = before any shift, 1 = after the morning shift,
+// 2 = after the night shift.
+var _SLOT_RANK={open:0,mid:1,close:2};
+function _slotRank(slot){return _SLOT_RANK[slot]!=null?_SLOT_RANK[slot]:0;}
+function _shiftRank(sh){return sh==='night'?2:1;}
+function _posCmp(d1,r1,d2,r2){
+  var c=String(d1||'').localeCompare(String(d2||''));
+  return c!==0?c:(r1-r2);
+}
+
+// The most recent dip strictly before a point in time. A physical dip is a
+// measurement; everything before it is history, so the tank level is counted
+// forward from there rather than from an opening figure typed in months ago.
+function _anchorDip(type,date,rank){
+  var best=null;
+  (typeof dipReadings!=='undefined'?dipReadings:[]).forEach(function(d){
+    if(d.type!==type)return;
+    if(_posCmp(d.date,_slotRank(d.slot),date,rank)>=0)return;
+    if(!best||_posCmp(d.date,_slotRank(d.slot),best.date,_slotRank(best.slot))>0)best=d;
+  });
+  return best;
+}
+
+// Litres in and out strictly after `from` and up to and including `to`.
+function _tankMovement(type,from,to){
+  var loaded=0,sold=0,tested=0;
   (typeof fuelLoads!=='undefined'?fuelLoads:[]).forEach(function(l){
     if(l.type!==type)return;
-    if(String(l.date||'')<=date) loaded+=(parseFloat(l.vol)||0);
+    // A tanker has no clock time, so it counts from the first shift of its day.
+    var lr=1;
+    if(from&&_posCmp(l.date,lr,from.date,from.rank)<=0)return;
+    if(_posCmp(l.date,lr,to.date,to.rank)>0)return;
+    loaded+=(parseFloat(l.vol)||0);
   });
-  var sold=0, tested=0;
   records.forEach(function(r){
-    if(String(r.date||'')>date)return;
-    // a dip at day-open sees only shifts BEFORE that date
-    if(String(r.date)===date && slot==='open')return;
-    if(String(r.date)===date && slot==='mid' && _shiftRank(r.shift)===1)return;
+    var rr=_shiftRank(r.shift);
+    if(from&&_posCmp(r.date,rr,from.date,from.rank)<=0)return;
+    if(_posCmp(r.date,rr,to.date,to.rank)>0)return;
     if(type==='MSD'){sold+=(r.msdT||0); tested+=(r.testMSDL||0);}
     else            {sold+=(r.hsdT||0); tested+=(r.testHSDL||0);}
   });
-  return {open:open,loaded:loaded,sold:sold,tested:tested,book:open+loaded-sold-tested};
+  return {loaded:loaded,sold:sold,tested:tested};
+}
+
+// What the books say is in the tank at a given point.
+// Anchored on the last dip so each new dip measures the loss SINCE that dip.
+// Anchoring on the opening figure instead would make every variation
+// cumulative, and the running total in the table would then count the same
+// loss over and over.
+function bookStock(type,date,slot){
+  var rank=_slotRank(slot);
+  var anchor=_anchorDip(type,date,rank);
+  var base=anchor?(parseFloat(anchor.observed)||0)
+                 :(type==='MSD'?(fuelOpeningMSD||0):(fuelOpeningHSD||0));
+  var from=anchor?{date:anchor.date,rank:_slotRank(anchor.slot)}:null;
+  var mv=_tankMovement(type,from,{date:date,rank:rank});
+  return {open:base,loaded:mv.loaded,sold:mv.sold,tested:mv.tested,
+          book:base+mv.loaded-mv.sold-mv.tested,
+          anchor:anchor,
+          since:anchor?(anchor.date+' dip'):'opening stock'};
+}
+
+// Current tank level — the same calculation taken to the end of the record.
+// This is the single source of truth; the dashboard, the fuel-load page and
+// the live-stock panel all used to compute it differently and disagree.
+function tankLevel(type){
+  return bookStock(type,'9999-12-31','close');
 }
 
 function dipPreview(){
@@ -5247,7 +5301,7 @@ function dipPreview(){
     ve.style.color=Math.abs(vr)<=tol?'var(--green)':(vr<0?'var(--red)':'var(--diesel)');}
   if(fe){
     if(Math.abs(vr)<=tol){fe.className='field-warn-msg';fe.style.color='var(--green)';
-      fe.textContent='Within tolerance (±'+tol+' L). Opening '+b.open.toFixed(0)+
+      fe.textContent='Within tolerance (±'+tol+' L). From '+b.since+': '+b.open.toFixed(0)+
         ' + loaded '+b.loaded.toFixed(0)+' − sold '+b.sold.toFixed(0)+' − tested '+b.tested.toFixed(1);}
     else if(vr<0){fe.className='field-warn-msg error';fe.style.color='';
       fe.textContent='SHORT by '+Math.abs(vr).toFixed(3)+' L — check for leak, unrecorded sale, or theft';}
@@ -5637,10 +5691,9 @@ function renderFuelLoads(){
     totalProfitAll+=l.profit||0;
   });
   records.forEach(r=>{msdSold+=r.msdT||0;hsdSold+=r.hsdT||0;shiftBal+=r.bal||0;});
-  const msdOpen=fuelOpeningMSD||0;
-  const hsdOpen=fuelOpeningHSD||0;
-  const msdInTank=msdOpen+msdLoaded-msdSold;
-  const hsdInTank=hsdOpen+hsdLoaded-hsdSold;
+  const bM=tankLevel('MSD'), bH=tankLevel('HSD');
+  const msdOpen=bM.open, hsdOpen=bH.open;
+  const msdInTank=bM.book, hsdInTank=bH.book;
 
   const se=(id,val)=>{const e=document.getElementById(id);if(e)e.textContent=val;};
   se('fl_sum_msd',msdLoaded.toFixed(3)+' L');
@@ -5657,11 +5710,13 @@ function renderFuelLoads(){
   se('fl_msd_loaded',msdLoaded.toFixed(3)+' L');
   se('fl_msd_sold',msdSold.toFixed(3)+' L');
   se('fl_msd_opening',msdOpen.toFixed(3)+' L');
+  se('fl_msd_sold',(bM.sold+bM.tested).toFixed(3)+' L');
   const msdTankEl=document.getElementById('fl_msd_tank');
   if(msdTankEl){msdTankEl.textContent=msdInTank.toFixed(3)+' L';msdTankEl.style.color=msdInTank<1500?'var(--red)':'var(--petrol)';}
   se('fl_hsd_loaded',hsdLoaded.toFixed(3)+' L');
   se('fl_hsd_sold',hsdSold.toFixed(3)+' L');
   se('fl_hsd_opening',hsdOpen.toFixed(3)+' L');
+  se('fl_hsd_sold',(bH.sold+bH.tested).toFixed(3)+' L');
   const hsdTankEl=document.getElementById('fl_hsd_tank');
   if(hsdTankEl){hsdTankEl.textContent=hsdInTank.toFixed(3)+' L';hsdTankEl.style.color=hsdInTank<2000?'var(--red)':'var(--diesel)';}
 
@@ -6352,7 +6407,40 @@ function staffShowTab(tab){
   } else if(tab==='payments') renderPayments();
 }
 
+// Staff details change: phones get replaced, people get promoted, salaries go
+// up. Editing in place keeps one record per person instead of a new row every
+// time something changes, so attendance and payment history stay attached.
+var _editingStaffId=null;
+
+function editStaff(id){
+  const st=staffList.find(x=>x.id===id);
+  if(!st)return;
+  _editingStaffId=id;
+  const f=document.getElementById('staff_form');
+  f.style.display='block';
+  document.getElementById('sf_form_title').textContent='EDIT — '+st.name;
+  document.getElementById('sf_save_btn').innerHTML='&#10003; UPDATE';
+  const set=(id2,v)=>{const e=document.getElementById(id2);if(e)e.value=(v==null?'':v);};
+  set('sf_name',st.name); set('sf_role',st.role); set('sf_phone',st.phone);
+  set('sf_salary',st.monthlySalary); set('sf_joined',st.joinedDate); set('sf_notes',st.notes);
+  const note=document.getElementById('sf_salary_note');
+  if(note){
+    note.style.display='block';
+    note.textContent='Current salary ₹'+(st.monthlySalary||0).toLocaleString('en-IN')+
+      '/mo. Changing it is recorded with the date, so past payslips stay correct.';
+  }
+  f.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function _resetStaffForm(){
+  _editingStaffId=null;
+  const t=document.getElementById('sf_form_title'); if(t)t.textContent='NEW STAFF MEMBER';
+  const b=document.getElementById('sf_save_btn'); if(b)b.innerHTML='&#10003; SAVE';
+  const n=document.getElementById('sf_salary_note'); if(n)n.style.display='none';
+}
+
 function toggleStaffForm(){
+  _resetStaffForm();
   const f=document.getElementById('staff_form');
   f.style.display=f.style.display==='none'?'block':'none';
   if(f.style.display==='block'){
@@ -6365,20 +6453,56 @@ function toggleStaffForm(){
 function submitStaff(){
   const name=_clean(document.getElementById('sf_name').value.trim());
   if(!name){showToast('Enter staff name');return;}
+  const role=_clean(document.getElementById('sf_role').value.trim())||'Operator';
+  const phone=_clean(document.getElementById('sf_phone').value.trim());
+  const salary=parseFloat(document.getElementById('sf_salary').value)||0;
+  const joined=document.getElementById('sf_joined').value||_isoLocal();
+  const notes=_clean(document.getElementById('sf_notes').value.trim());
+
+  if(_editingStaffId!=null){
+    const st=staffList.find(x=>x.id===_editingStaffId);
+    if(!st){_resetStaffForm();return;}
+    const changes=[];
+    if(st.name!==name)   changes.push('name '+st.name+' → '+name);
+    if(st.role!==role)   changes.push('role '+(st.role||'—')+' → '+role);
+    if((st.phone||'')!==phone) changes.push('phone '+(st.phone||'—')+' → '+(phone||'—'));
+    if((st.notes||'')!==notes) changes.push('notes updated');
+
+    // A raise is a dated event, not just a new number. Recording it keeps old
+    // payslips explainable and shows who approved it.
+    const oldSal=parseFloat(st.monthlySalary)||0;
+    if(oldSal!==salary){
+      st.salaryHistory=st.salaryHistory||[];
+      st.salaryHistory.push({date:_isoLocal(),from:oldSal,to:salary,
+        by:_currentUser?_currentUser.username:''});
+      changes.push('salary ₹'+oldSal.toLocaleString('en-IN')+' → ₹'+salary.toLocaleString('en-IN'));
+    }
+    if(!changes.length){showToast('Nothing changed');_resetStaffForm();
+      document.getElementById('staff_form').style.display='none';return;}
+
+    st.name=name; st.role=role; st.phone=phone;
+    st.monthlySalary=salary; st.joinedDate=joined; st.notes=notes;
+    saveStaffLS();
+    if(_currentUser&&typeof sbSaveStaff==='function')sbSaveStaff(st).catch(console.error);
+    if(typeof logActivity==='function')logActivity('edit_staff','staff',st.id,name+': '+changes.join(' • '));
+    _resetStaffForm();
+    document.getElementById('staff_form').style.display='none';
+    renderStaff();
+    showToast(oldSal!==salary
+      ? 'Salary updated to ₹'+salary.toLocaleString('en-IN')+'/mo from '+_isoLocal()
+      : 'Updated: '+name);
+    return;
+  }
+
   const member={
-    id:Date.now(),
-    name,
-    role:_clean(document.getElementById('sf_role').value.trim())||'Operator',
-    phone:_clean(document.getElementById('sf_phone').value.trim()),
-    monthlySalary:parseFloat(document.getElementById('sf_salary').value)||0,
-    joinedDate:document.getElementById('sf_joined').value||_isoLocal(),
-    notes:_clean(document.getElementById('sf_notes').value.trim()),
-    active:true
+    id:_newId(), name, role, phone,
+    monthlySalary:salary, joinedDate:joined, notes,
+    active:true, salaryHistory:[]
   };
   staffList.push(member);
   saveStaffLS();
   if(_currentUser&&typeof sbSaveStaff==='function')sbSaveStaff(member).catch(console.error);
-  if(typeof logActivity==='function')logActivity('add_staff','staff',member.id,'Added: '+name);
+  if(typeof logActivity==='function')logActivity('add_staff','staff',member.id,'Added: '+name+' • ₹'+salary+'/mo');
   toggleStaffForm();
   renderStaff();
   showToast('Staff added: '+name);
@@ -6434,7 +6558,8 @@ function renderStaff(){
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div>
           <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px">${s.name}</div>
-          <div style="font-size:10px;color:var(--muted)">${s.role}${s.phone?' · '+s.phone:''}</div>
+          <div style="font-size:10px;color:var(--muted)">${_esc(s.role||'')}${s.phone?' · '+_esc(s.phone):' · no phone'}</div>
+          ${(s.salaryHistory&&s.salaryHistory.length)?`<div style="font-size:9px;color:var(--green);margin-top:2px">↑ last revised ${s.salaryHistory[s.salaryHistory.length-1].date}</div>`:''}
         </div>
         ${s.active?'<span class="badge bg_">ACTIVE</span>':'<span class="badge" style="background:rgba(180,180,180,.15);color:var(--muted)">INACTIVE</span>'}
       </div>
@@ -6460,6 +6585,7 @@ function renderStaff(){
       <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">
         <button class="btn btn-g" style="padding:4px 10px;font-size:10px" onclick="quickPay(${s.id},'advance')">+ ADV</button>
         <button class="btn btn-g" style="padding:4px 10px;font-size:10px" onclick="quickPay(${s.id},'salary')">+ SALARY</button>
+        <button class="btn btn-g" style="padding:4px 10px;font-size:10px" onclick="editStaff(${s.id})">&#9998; EDIT</button>
         <button class="btn btn-g" style="padding:4px 10px;font-size:10px" onclick="viewStaffHistory(${s.id})">📜</button>
         <button class="btn btn-g" style="padding:4px 10px;font-size:10px" onclick="toggleStaffActive(${s.id})">${s.active?'OFF':'ON'}</button>
         <button class="btn btn-d" style="padding:4px 10px;font-size:10px" onclick="deleteStaff(${s.id})">&#10005;</button>
@@ -6485,7 +6611,9 @@ function viewStaffHistory(staffId){
   const s=staffList.find(x=>x.id===staffId);
   if(!s)return;
   const payments=staffPayments.filter(p=>p.staffId===staffId).sort((a,b)=>b.date.localeCompare(a.date));
-  if(!payments.length){showToast('No transactions yet for '+s.name);return;}
+  if(!payments.length&&!(s.salaryHistory&&s.salaryHistory.length)){
+    showToast('No transactions or salary changes yet for '+s.name);return;
+  }
   let totalAdv=0,totalDed=0,totalSal=0,totalBon=0,totalChit=0;
   payments.forEach(p=>{
     if(p.type==='advance')totalAdv+=p.amount;
@@ -6523,7 +6651,25 @@ function viewStaffHistory(staffId){
       <td style="font-size:11px;color:var(--muted)">${p.notes||'—'}</td>
     </tr>`;
   });
+  if(!payments.length){
+    html+='<tr><td colspan="6" style="padding:18px;text-align:center;color:var(--muted);font-size:11px">No payments recorded yet.</td></tr>';
+  }
   html+='</tbody></table>';
+  if(s.salaryHistory&&s.salaryHistory.length){
+    html+=`<div style="margin-top:18px;font-family:'Syne',sans-serif;font-weight:800;font-size:11px;letter-spacing:2px;color:var(--muted)">SALARY REVISIONS</div>
+    <table class="data-tbl" style="width:100%;margin-top:6px">
+      <thead><tr><th>DATE</th><th>FROM</th><th>TO</th><th>CHANGE</th><th>BY</th></tr></thead><tbody>`;
+    s.salaryHistory.slice().reverse().forEach(function(h){
+      const d=(h.to||0)-(h.from||0);
+      html+='<tr><td>'+_esc(h.date)+'</td>'+
+        '<td style="font-family:\'JetBrains Mono\',monospace">₹'+(h.from||0).toLocaleString('en-IN')+'</td>'+
+        '<td style="font-family:\'JetBrains Mono\',monospace;font-weight:700">₹'+(h.to||0).toLocaleString('en-IN')+'</td>'+
+        '<td style="font-family:\'JetBrains Mono\',monospace;color:'+(d>=0?'var(--green)':'var(--red)')+'">'+
+          (d>=0?'+':'')+'₹'+Math.abs(d).toLocaleString('en-IN')+'</td>'+
+        '<td style="color:var(--muted);font-size:11px">'+_esc(h.by||'—')+'</td></tr>';
+    });
+    html+='</tbody></table>';
+  }
   // Render in a modal
   let overlay=document.getElementById('staffHistOverlay');
   if(!overlay){
@@ -6847,7 +6993,8 @@ async function sbSaveStaff(s){
     await _sbUpsert('staff', {
       id:Math.round(s.id),user_id:_currentUser.id,name:s.name,role:s.role,
       monthly_salary:s.monthlySalary,phone:s.phone,active:s.active,
-      joined_date:s.joinedDate,notes:s.notes
+      joined_date:s.joinedDate,notes:s.notes,
+      salary_history:s.salaryHistory||[]
     });
   }catch(e){console.error('Save staff failed:',e.message);}
 }
@@ -6889,7 +7036,8 @@ async function sbLoadStaffAll(){
       staffList=sR.data.map(r=>({
         id:Number(r.id),name:r.name,role:r.role,phone:r.phone,
         monthlySalary:r.monthly_salary,joinedDate:r.joined_date,
-        notes:r.notes,active:r.active
+        notes:r.notes,active:r.active,
+        salaryHistory:r.salary_history||[]
       }));
       saveStaffLS();
     }
@@ -7284,8 +7432,8 @@ async function sbSaveDip(d){
   if(!_currentUser) return;
   await _sbUpsert('dip_readings', {
     id:d.id, user_id:_currentUser.id, date:d.date, slot:d.slot, type:d.type,
-    dip_cm:d.dipCm||null, observed_l:d.observedL||0, book_l:d.bookL||0,
-    variation_l:d.variationL||0, notes:d.notes||'',
+    dip_cm:d.dipCm||null, observed_l:d.observed||0, book_l:d.book||0,
+    variation_l:d.variation||0, notes:d.notes||'',
     created_by:_currentUser.username, saved_at:d.savedAt||new Date().toISOString()
   });
 }
@@ -7650,7 +7798,7 @@ async function loadAllFromSupabase(silent) {
     if (dipRes.data) {
       const remoteDips = dipRes.data.map(d => ({
         id:d.id, date:d.date, slot:d.slot, type:d.type, dipCm:d.dip_cm,
-        observedL:d.observed_l, bookL:d.book_l, variationL:d.variation_l,
+        observed:d.observed_l, book:d.book_l, variation:d.variation_l,
         notes:d.notes||'', savedAt:d.saved_at
       }));
       const mrgD = _mergeById(typeof dipReadings!=='undefined'?dipReadings:[], remoteDips, 'savedAt');
@@ -7775,13 +7923,13 @@ function renderLiveStock(){
   });
   shiftDays = dateSet.size || 1;
 
-  var msdOpen=fuelOpeningMSD||0, hsdOpen=fuelOpeningHSD||0;
-  var msdTank = msdOpen + msdLoaded - msdSold;
-  var hsdTank = hsdOpen + hsdLoaded - hsdSold;
+  var bM=tankLevel('MSD'), bH=tankLevel('HSD');
+  var msdOpen=bM.open, hsdOpen=bH.open;
+  var msdTank = bM.book, hsdTank = bH.book;
 
-  // Tank capacities (Petrol=15KL, Diesel=20KL)
-  var MSD_CAP = 15000;  // 15 KL in litres
-  var HSD_CAP = 20000;  // 20 KL in litres
+  var _tc=(typeof tankCfg==='function')?tankCfg():{capMSD:15000,capHSD:20000};
+  var MSD_CAP = _tc.capMSD || 15000;
+  var HSD_CAP = _tc.capHSD || 20000;
   var msdPct = Math.min(100, Math.max(0, (msdTank/MSD_CAP)*100));
   var hsdPct = Math.min(100, Math.max(0, (hsdTank/HSD_CAP)*100));
 
