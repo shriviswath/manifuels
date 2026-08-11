@@ -5512,7 +5512,24 @@ function submitFuelLoad(){
     amountDue:totalCost, amountPaid:0, locked:false
   };
 
-  fuelLoads.unshift(load);
+  if(_flEditingId!=null){
+    var oldIdx=fuelLoads.findIndex(function(x){return x.id===_flEditingId;});
+    if(oldIdx>=0){
+      var prev=fuelLoads[oldIdx];
+      load.id        = prev.id;                 // keep the row, do not orphan it
+      load.amountPaid= prev.amountPaid||0;      // payments already made stand
+      load.amountDue = Math.max(0, load.totalCost - load.amountPaid);
+      load.locked    = prev.locked||false;
+      fuelLoads[oldIdx]=load;
+    } else {
+      fuelLoads.unshift(load);
+    }
+    if(typeof logActivity==='function')
+      logActivity('edit_load','fuel_load',load.id,load.type+' '+load.inv+' → '+fmt(load.totalCost));
+    _flEditingId=null;
+  } else {
+    fuelLoads.unshift(load);
+  }
   localStorage.setItem('fuelLoads',JSON.stringify(fuelLoads));
   if(_currentUser)sbSaveFuelLoad(load).catch(console.error);
 
@@ -5525,6 +5542,55 @@ function submitFuelLoad(){
   flShowTab('history');
   renderFuelLoads();
   showToast('✓ Fuel load saved!'+(updateRate?' Selling rate updated.':''));
+}
+
+function unlockFuelLoad(id){
+  var load=fuelLoads.find(function(x){return x.id===id;});
+  if(!load)return;
+  if(typeof _isOwner!=='undefined' && !_isOwner){
+    showToast('Only an owner can unlock a load record'); return;
+  }
+  if(!confirm('Unlock '+load.type+' — '+load.inv+'?\n\n'+
+    'It becomes editable and deletable again. This is recorded in the activity log.'))return;
+  load.locked=false;
+  localStorage.setItem('fuelLoads',JSON.stringify(fuelLoads));
+  if(_currentUser&&typeof sbSaveFuelLoad==='function')sbSaveFuelLoad(load).catch(console.error);
+  if(typeof logActivity==='function')logActivity('unlock_load','fuel_load',id,load.type+' '+load.inv+' unlocked for correction');
+  renderFuelLoads();
+  showToast('Unlocked — EDIT and DEL are available on the card.');
+}
+
+// Load an existing record back into the entry form. submitFuelLoad() replaces
+// the original in place rather than creating a second row.
+var _flEditingId = null;
+function editFuelLoad(id){
+  var l=fuelLoads.find(function(x){return x.id===id;});
+  if(!l)return;
+  if(l.locked){showToast('Unlock this load first');return;}
+  _flEditingId = id;
+  var set=function(f,v){var e=document.getElementById(f); if(e)e.value=(v===undefined||v===null)?'':v;};
+  set('fl_date', l.date);
+  set('fl_inv', l.inv);
+  set('fl_supplier', l.supplier);
+  set('fl_driver', l.driver);
+  set('fl_lorry', l.lorry);
+  set('fl_transport', l.transport);
+  set('fl_type', l.type);
+  set('fl_vol_kl', l.volKL || ((l.vol||0)/1000));
+  set('fl_basic_price', l.basicPrice);
+  set('fl_tn_vat', l.tnVat);
+  set('fl_lst_pct', l.lstPct!=null?l.lstPct:13);
+  set('fl_lorry_rent', l.lorryRent);
+  set('fl_sell', l.sell);
+  set('fl_update_rate','no');   // editing history should not move today's pump rate
+  var sb=document.getElementById('fl_stage_badge');
+  if(sb){sb.dataset.stage='1';sb.textContent='EDITING — '+l.inv;
+    sb.style.background='rgba(255,176,32,.2)';sb.style.color='var(--diesel)';}
+  var cb=document.getElementById('fl_confirm_box');if(cb)cb.style.display='none';
+  if(typeof flShowTab==='function')flShowTab('entry');
+  if(typeof fl_calc==='function')fl_calc();
+  showToast('Editing '+l.type+' '+l.inv+' — payments already recorded are kept');
+  window.scrollTo(0,0);
 }
 
 function payFuelLoad(id){
@@ -5611,11 +5677,15 @@ function renderFuelLoads(){
     const lockedBadge=l.locked
       ? '<span style="font-size:9px;background:rgba(255,77,106,.15);color:var(--red);padding:2px 8px;border-radius:3px;margin-left:6px">🔒 LOCKED</span>'
       : '<span style="font-size:9px;background:rgba(61,220,132,.1);color:var(--green);padding:2px 8px;border-radius:3px;margin-left:6px">✎ EDITABLE</span>';
-    const actionBtns=l.locked ? '' :
-      `<div style="display:flex;gap:6px">
-        <button class="btn btn-g" style="padding:3px 10px;font-size:10px" onclick="lockFuelLoad(${l.id})">🔒 LOCK</button>
-        <button class="btn btn-d" style="padding:3px 10px;font-size:10px" onclick="delFuelLoad(${l.id})">✕ DEL</button>
-       </div>`;
+    const actionBtns = l.locked
+      ? `<div style="display:flex;gap:6px">
+          <button class="btn btn-g" style="padding:3px 10px;font-size:10px" onclick="unlockFuelLoad(${l.id})">🔓 UNLOCK</button>
+         </div>`
+      : `<div style="display:flex;gap:6px">
+          <button class="btn btn-b" style="padding:3px 10px;font-size:10px" onclick="editFuelLoad(${l.id})">✎ EDIT</button>
+          <button class="btn btn-g" style="padding:3px 10px;font-size:10px" onclick="lockFuelLoad(${l.id})">🔒 LOCK</button>
+          <button class="btn btn-d" style="padding:3px 10px;font-size:10px" onclick="delFuelLoad(${l.id})">✕ DEL</button>
+         </div>`;
 
     const card=document.createElement('div');
     card.className='card';card.style.marginBottom='10px';
@@ -6784,19 +6854,16 @@ async function sbSaveStaff(s){
 async function sbSaveAttendance(a){
   if(!_currentUser||!_supa)return;
   try{
-    const row={user_id:_currentUser.id,staff_id:a.staffId,date:a.date,
-      shift:a.shift,status:a.status,notes:a.notes||''};
-    // Natural key, not id: the table is BIGSERIAL with UNIQUE(staff_id,date,shift),
-    // so conflicting on 'id' can never match and re-marking a day would fail.
-    const { error } = await _supa.from('staff_attendance')
-      .upsert(row, { onConflict: 'staff_id,date,shift' });
-    if(error) throw new Error(error.message);
+    // Conflict key is (staff_id,date,shift) — see MF_CONFLICT_KEY. Routed
+    // through _sbUpsert so a failure queues instead of vanishing.
+    await _sbUpsert('staff_attendance', {user_id:_currentUser.id,staff_id:a.staffId,
+      date:a.date, shift:a.shift, status:a.status, notes:a.notes||''});
   }catch(e){console.error('Save attendance failed:',e.message);}
 }
 async function sbSavePayment(p){
   if(!_currentUser||!_supa)return;
   try{
-    await _supa.from('staff_payments').insert({
+    await _sbUpsert('staff_payments', {
       id:Math.round(p.id),user_id:_currentUser.id,staff_id:p.staffId,
       date:p.date,type:p.type,amount:p.amount,notes:p.notes||'',
       advance_deducted:p.advanceDeducted||0,
@@ -6807,7 +6874,7 @@ async function sbSavePayment(p){
 async function sbSaveDrawing(d){
   if(!_currentUser||!_supa)return;
   try{
-    await _supa.from('owner_drawings').insert({
+    await _sbUpsert('owner_drawings', {
       id:Math.round(d.id),user_id:_currentUser.id,date:d.date,
       amount:d.amount,purpose:d.purpose||'',notes:d.notes||'',
       created_by:d.createdBy||_currentUser.username
@@ -7279,7 +7346,7 @@ async function sbSaveLedgerEntry(entry) {
 async function sbDeleteLedgerEntry(id) {
   if (!_currentUser || !_supa) return;
   try {
-    await _supa.from('ledger_entries').delete().eq('id', Math.round(id)).eq('user_id', _currentUser.id);
+    await _sbRemove('ledger_entries', Math.round(id), 'id');
   } catch(e){ console.error('Delete ledger entry failed:', e.message); }
 }
 
@@ -7392,7 +7459,7 @@ async function sbSavePackEntry(p) {
 async function sbDeletePackEntry(id) {
   if (!_currentUser || !_supa) return;
   try {
-    await _supa.from('pack_register').delete().eq('id', Math.round(id)).eq('user_id', _currentUser.id);
+    await _sbRemove('pack_register', Math.round(id), 'id');
   } catch(e){ console.error('Delete pack entry failed:', e.message); }
 }
 
@@ -7627,6 +7694,7 @@ async function loadAllFromSupabase(silent) {
 
 
 function fl_resetForm(){
+  _flEditingId=null;
   var d=document.getElementById('fl_date');if(d)d.value=_isoLocal();
   ['fl_inv','fl_supplier','fl_driver','fl_lorry','fl_transport',
    'fl_vol_kl','fl_basic_price','fl_tn_vat','fl_lorry_rent','fl_sell'
@@ -7653,12 +7721,14 @@ function fl_cancelConfirm(){
 function lockFuelLoad(id){
   var load=fuelLoads.find(function(x){return x.id===id;});
   if(!load)return;
-  if(!confirm('Lock this record permanently? Cannot be deleted after locking.'))return;
+  if(!confirm('Lock this load?\n\nIt cannot be edited or deleted while locked. '+
+    'An owner can unlock it again if a correction is needed.'))return;
   load.locked=true;
   localStorage.setItem('fuelLoads',JSON.stringify(fuelLoads));
   if(_currentUser&&typeof sbSaveFuelLoad==='function')sbSaveFuelLoad(load).catch(console.error);
+  if(typeof logActivity==='function')logActivity('lock_load','fuel_load',id,load.type+' '+load.inv);
   renderFuelLoads();
-  showToast('Locked permanently.');
+  showToast('Locked. Unlock from this card if you need to correct it.');
 }
 
 function flShowTab(tab){
