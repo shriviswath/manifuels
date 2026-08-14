@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Mani Fuels — Fuel Station Manager</title>
+<title>Mani Fuels — Fuel Manager</title>
 <meta name="description" content="Mani Fuels shift account manager for fuel bunk operations">
 <meta name="theme-color" content="#00d4a0">
 <meta name="mobile-web-app-capable" content="yes">
@@ -200,6 +200,18 @@ var USERS_DB=[
 // and shifts. Four sets of books for one bunk. All rows now carry the station
 // id instead, so everyone sees the same data. Who did what is still recorded:
 // created_by / updated_by and the activity log keep the individual username.
+// The value stamped on every row and used to filter every read.
+//
+// This is NOT a multi-station feature — it is the fix for a bug. user_id used
+// to be the USERNAME, so each of the four owners had their own stock list,
+// rates, opening volumes and shifts: four sets of books for one bunk. A single
+// shared value collapses them into one. Who did what is still recorded, via
+// created_by / updated_by and the activity log.
+//
+// It is a constant on purpose. A second branch is a real feature — a stations
+// table, a picker, a consolidated view — not a text box someone can mistype
+// into, which would silently point the app at an empty third station. When
+// branch two is real, this constant is where that work starts.
 var MF_STATION='manifuels';
 
 var SUPABASE_URL='https://hiapuixdmhibimbinlri.supabase.co';
@@ -370,6 +382,7 @@ document.addEventListener('DOMContentLoaded',function(){
     <div class="sidebar-section">FUEL</div>
     <button class="nav-tab" onclick="showPage('fuelload');closeMenu()"><span class="tab-icon">⛽</span>Fuel Loads</button>
     <button class="nav-tab" onclick="showPage('dip');closeMenu()"><span class="tab-icon">📏</span>Dip &amp; Variation</button>
+    <button class="nav-tab" onclick="showPage('order');closeMenu()"><span class="tab-icon">🛒</span>Order Advisor</button>
     <div class="sidebar-section">ACCOUNTS</div>
     <button class="nav-tab" onclick="showPage('ledger');closeMenu()"><span class="tab-icon">📒</span>Credit Ledger</button>
     <button class="nav-tab" onclick="showPage('staff');closeMenu()"><span class="tab-icon">👥</span>Staff Register</button>
@@ -819,7 +832,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <div class="sec"><span class="dot dr"></span>EXPENSES & DEDUCTIONS</div>
       <div class="card">
         <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-bottom:6px">
-    
+          Testing fuel is entered in LITRES. The meter counts it but no cash comes in, so the value is deducted as an expense. The fuel goes back into the tank, so it is added back to book stock.
         </div>
         <div class="frow"><span class="flabel">Testing MSD (L)</span><input type="number" id="t_msd_l" placeholder="0.000" step="0.001" inputmode="decimal" oninput="calc()">
           <span class="res-val p" id="t_msd_v" style="min-width:78px;text-align:right">₹0</span></div>
@@ -1063,6 +1076,56 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">
         Tolerance is the swing you accept as normal measurement error and evaporation.
         Anything past it is flagged. Typical starting point: 0.3% of a full tanker, so 20–30 L.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ════ ORDER ADVISOR ════ -->
+<div class="page" id="page-order" style="padding:16px">
+  <div style="max-width:1100px;margin:0 auto">
+
+    <div class="dash-card" id="adv_headline_card" style="margin-bottom:12px">
+      <div class="dash-card-head">
+        <div class="dash-card-title">🛒 WHAT TO ORDER NEXT</div>
+        <span class="chip" id="adv_conf">—</span>
+      </div>
+      <div id="adv_headline" style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--text);margin-bottom:6px">—</div>
+      <div id="adv_detail" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);line-height:1.6"></div>
+      <div id="adv_sizes" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:12px"></div>
+      <div id="adv_notes" style="display:flex;flex-direction:column;gap:6px;margin-top:12px"></div>
+    </div>
+
+    <div class="kpi-grid" id="adv_kpis"></div>
+
+    <div class="dash-card" style="margin-bottom:12px">
+      <div class="dash-card-head">
+        <div class="dash-card-title">📉 PROJECTED TANK LEVELS — NEXT 21 DAYS</div>
+        <span class="dash-card-link" onclick="showPage('dip')">RECORD A DIP →</span>
+      </div>
+      <div style="height:240px;position:relative"><canvas id="advChart"></canvas></div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">
+        Dashed line is the reserve you never want to go below. Where a tank line
+        crosses it is the runout date. This is arithmetic on your own shift
+        register, not a prediction — it assumes trade continues as it has been.
+      </div>
+    </div>
+
+    <div class="dash-card">
+      <div class="dash-card-head"><div class="dash-card-title">⚙ ORDERING RULES</div></div>
+      <div class="rg" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+        <div><label>SUPPLIER LEAD TIME (DAYS)</label><input type="number" id="cfg_lead_days" step="0.5" oninput="saveOrderCfg()"></div>
+        <div><label>SAFETY BUFFER (DAYS)</label><input type="number" id="cfg_safety_days" step="0.5" oninput="saveOrderCfg()"></div>
+        <div><label>NORMAL ORDER (KL)</label><input type="number" id="cfg_normal_kl" step="0.5" oninput="saveOrderCfg()"></div>
+        <div><label>SUPPLIER MINIMUM (KL)</label><input type="number" id="cfg_min_kl" step="0.5" oninput="saveOrderCfg()"></div>
+        <div><label>DEAD STOCK / RESERVE (L)</label><input type="number" id="cfg_reserve_l" step="10" oninput="saveOrderCfg()"></div>
+      </div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:8px;line-height:1.6">
+        <b>Reserve</b> is the volume you never sell — dead stock below the suction
+        pipe plus whatever margin you want. Runout is measured to this, not to zero.<br>
+        <b>Supplier minimum</b> is the load size they insist on when they will not
+        send a normal one. It only matters if it still fits in the tank.
       </div>
     </div>
 
@@ -2200,6 +2263,7 @@ function _deviceConfig(){
   return {
     packSizes:   (typeof packSizesConfig!=='undefined') ? packSizesConfig : g('packSizesConfig'),
     tankCfg:     g('tankCfg'),
+    orderCfg:    g('orderCfg'),
     looseOilCfg: g('looseOilCfg')
   };
 }
@@ -2211,6 +2275,7 @@ function _applyDeviceConfig(cfg){
     if(typeof renderExtraPackSizes==='function')renderExtraPackSizes();
   }
   if(cfg.tankCfg)     localStorage.setItem('tankCfg', JSON.stringify(cfg.tankCfg));
+  if(cfg.orderCfg)    localStorage.setItem('orderCfg', JSON.stringify(cfg.orderCfg));
   if(cfg.looseOilCfg) localStorage.setItem('looseOilCfg', JSON.stringify(cfg.looseOilCfg));
   if(typeof renderLooseOilCfg==='function')renderLooseOilCfg();
 }
@@ -2263,6 +2328,7 @@ const PAGE_LABELS={
   entry:'📋 SHIFT ENTRY',tally:'⚖ TALLY',stock:'📦 OIL STOCK',
   history:'🗂 HISTORY',report:'📈 REPORTS',ledger:'📒 CREDIT LEDGER',
   oilreg:'🧾 OIL REGISTER',fuelload:'⛽ FUEL LOADS',dip:'📏 DIP & VARIATION',
+  order:'🛒 ORDER ADVISOR',
   activity:'📜 ACTIVITY LOG',
   staff:'👥 STAFF REGISTER',drawings:'💼 OWNER DRAWINGS'
 };
@@ -2295,6 +2361,7 @@ function showPage(p){
   if(p==='oilreg'){renderOilReg();if(typeof renderPackReg==='function')renderPackReg();}
   if(p==='fuelload'){if(typeof flShowTab==='function')flShowTab('new');}
   if(p==='dip'&&typeof renderDip==='function')renderDip();
+  if(p==='order'&&typeof renderAdvisor==='function')renderAdvisor();
   if(p==='activity'&&typeof renderActivityLog==='function')renderActivityLog();
   if(p==='staff'&&typeof renderStaff==='function'){staffShowTab(_currentStaffTab||'list');}
   if(p==='drawings'&&typeof renderDrawings==='function')renderDrawings();
@@ -5516,6 +5583,443 @@ function dipExportCsv(){
   a.download='manifuels-stock-variation-'+_isoLocal()+'.csv';
   a.click();
   setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ORDER ADVISOR
+//
+// Deliberately arithmetic, not a model. With two products and one station
+// there is nothing for a learning algorithm to learn that a weighted mean does
+// not already capture, and a model would dress up noise as insight. Every
+// number below can be checked by hand against the shift register — which is
+// the point, because it is telling you when to spend seven lakh rupees.
+// ══════════════════════════════════════════════════════════════════
+
+function orderCfg(){
+  var d={leadDays:2, normalKL:4, minKL:10, safetyDays:1, reserveL:500};
+  try{
+    var c=JSON.parse(localStorage.getItem('orderCfg')||'null');
+    if(c)return {
+      leadDays:  c.leadDays  !=null?parseFloat(c.leadDays):d.leadDays,
+      normalKL:  c.normalKL  !=null?parseFloat(c.normalKL):d.normalKL,
+      minKL:     c.minKL     !=null?parseFloat(c.minKL):d.minKL,
+      safetyDays:c.safetyDays!=null?parseFloat(c.safetyDays):d.safetyDays,
+      reserveL:  c.reserveL  !=null?parseFloat(c.reserveL):d.reserveL
+    };
+  }catch(e){}
+  return d;
+}
+function saveOrderCfg(){
+  var g=function(id,dflt){var e=document.getElementById(id);
+    var v=e?parseFloat(e.value):NaN; return isFinite(v)?v:dflt;};
+  var d=orderCfg();
+  localStorage.setItem('orderCfg',JSON.stringify({
+    leadDays:g('cfg_lead_days',d.leadDays), normalKL:g('cfg_normal_kl',d.normalKL),
+    minKL:g('cfg_min_kl',d.minKL), safetyDays:g('cfg_safety_days',d.safetyDays),
+    reserveL:g('cfg_reserve_l',d.reserveL)}));
+  if(_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(function(){});
+  if(typeof renderAdvisor==='function')renderAdvisor();
+}
+
+// Litres sold per calendar day, most recent first — INCOMPLETE DAYS EXCLUDED.
+//
+// Two things would otherwise poison the average, both silently and both in the
+// dangerous direction (they understate the burn rate, so the advisor tells you
+// to order later than you should):
+//   * a day where only the morning shift was saved counts as a full day at
+//     half the volume;
+//   * today is incomplete by definition until the night shift is entered, so
+//     every single look at this page would drag the rate down.
+// A day counts only when every shift of that day is recorded. If the station
+// has never run two shifts in a day, one shift is treated as a full day.
+function _shiftsPerDay(){
+  var byDate={};
+  records.forEach(function(r){ if(!r.date)return;
+    (byDate[r.date]=byDate[r.date]||{})[r.shift||'morning']=1; });
+  var max=0;
+  Object.keys(byDate).forEach(function(d){
+    var n=Object.keys(byDate[d]).length; if(n>max)max=n; });
+  return {byDate:byDate, expected:max||1};
+}
+function _dailySales(type,maxDays,includePartial){
+  var sp=_shiftsPerDay(), byDate={};
+  records.forEach(function(r){
+    if(!r.date)return;
+    var v=(type==='MSD'?(r.msdT||0):(r.hsdT||0));
+    byDate[r.date]=(byDate[r.date]||0)+v;
+  });
+  return Object.keys(byDate).sort().reverse()
+    .filter(function(d){
+      if(includePartial)return true;
+      return Object.keys(sp.byDate[d]||{}).length>=sp.expected;
+    })
+    .slice(0,maxDays||60)
+    .map(function(d){return {date:d,litres:byDate[d],
+      dow:new Date(d+'T00:00:00').getDay()};});
+}
+
+// Exponentially weighted mean, ~10-day half-life. A flat average over six weeks
+// misses a station whose trade is climbing, and under-forecasting is the costly
+// direction: it tells you to order late and you run dry. Step weights (2/1.5/1)
+// were too weak to track a trend — on sales rising 500→1500 they produced 1004
+// against a recent-week reality of ~1300.
+var MF_HALFLIFE_DAYS=10;
+function _burnRate(type){
+  var days=_dailySales(type,42);
+  if(!days.length)return {perDay:0,n:0,confidence:'none'};
+  var wsum=0,vsum=0;
+  days.forEach(function(d,i){
+    var w=Math.pow(0.5, i/MF_HALFLIFE_DAYS);
+    wsum+=w; vsum+=d.litres*w;
+  });
+  var perDay=wsum>0?vsum/wsum:0;
+  // Spread of the last two weeks, used to say how firm the estimate is.
+  var recent=days.slice(0,14).map(function(d){return d.litres;});
+  var mean=recent.reduce(function(a,b){return a+b;},0)/(recent.length||1);
+  var sd=recent.length>1
+    ? Math.sqrt(recent.reduce(function(a,b){return a+(b-mean)*(b-mean);},0)/(recent.length-1))
+    : 0;
+  var cv=mean>0?sd/mean:0;
+  var conf = days.length<4 ? 'none'
+           : days.length<10 ? 'low'
+           : (cv>0.6 ? 'low' : (cv>0.35 ? 'medium' : 'high'));
+  // Last week against the week before it. Reported rather than folded into the
+  // rate: a number secretly biased "for safety" is a number you cannot check.
+  var w1=days.slice(0,7), w2=days.slice(7,14), trend=null;
+  if(w1.length>=4&&w2.length>=4){
+    var m1=w1.reduce(function(a,b){return a+b.litres;},0)/w1.length;
+    var m2=w2.reduce(function(a,b){return a+b.litres;},0)/w2.length;
+    if(m2>0)trend={pct:((m1-m2)/m2)*100, recent:m1, prior:m2};
+  }
+  return {perDay:perDay,n:days.length,sd:sd,cv:cv,confidence:conf,days:days,trend:trend};
+}
+
+// Same weekday as the target, averaged. Sundays do not behave like Tuesdays and
+// a flat mean hides that. Needs three samples of the weekday before it is used.
+function _dowRate(type,dow){
+  var d=_dailySales(type,56).filter(function(x){return x.dow===dow;});
+  // same completeness rule as the burn rate — _dailySales already applies it
+  if(d.length<3)return null;
+  return d.reduce(function(a,b){return a+b.litres;},0)/d.length;
+}
+
+// Walk forward day by day, draining the tank at the rate for each weekday.
+// Returns the date the tank hits the reserve, plus the litres of headroom now.
+function fuelForecast(type){
+  var cfg=orderCfg();
+  var lvl=tankLevel(type);
+  var cap=type==='MSD'?tankCfg().capMSD:tankCfg().capHSD;
+  var br=_burnRate(type);
+  var out={type:type, level:lvl.book, cap:cap, since:lvl.since,
+           perDay:br.perDay, n:br.n, confidence:br.confidence, cv:br.cv, trend:br.trend,
+           ullage:Math.max(0,cap-lvl.book), pct:cap>0?(lvl.book/cap)*100:0,
+           usableL:Math.max(0,lvl.book-cfg.reserveL)};
+  if(br.perDay<=0){out.daysLeft=null;out.runoutDate=null;out.orderBy=null;return out;}
+
+  // tankLevel() already subtracts whatever was sold today. What it cannot know
+  // is the rest of today: if only the morning shift is in, the tank will still
+  // lose the night shift's litres before tomorrow starts. Drain that remainder
+  // first, or the forecast is optimistic by up to a full day on every check.
+  var today=_isoLocal();
+  var sp=_shiftsPerDay();
+  var todayShifts=Object.keys(sp.byDate[today]||{}).length;
+  var todayRate=_dowRate(type,new Date().getDay());
+  if(todayRate==null)todayRate=br.perDay;
+  var todaySold=_dailySales(type,400,true).filter(function(x){return x.date===today;})
+                  .reduce(function(a,b){return a+b.litres;},0);
+  var todayRemaining = todayShifts>=sp.expected ? 0
+      : Math.max(0, todayRate - todaySold);
+  out.todayRemaining=todayRemaining;
+  out.todayComplete=todayShifts>=sp.expected;
+
+  var left=out.usableL-todayRemaining, days=0, d=new Date();
+  if(left<=0){out.daysLeft=0;out.runoutDate=today;out.orderBy=today;out.orderInDays=0;return out;}
+  while(left>0 && days<400){
+    d.setDate(d.getDate()+1); days++;
+    var rate=_dowRate(type,d.getDay());
+    left-=(rate!=null?rate:br.perDay);
+  }
+  out.daysLeft=days;
+  out.runoutDate=_isoLocal(d);
+  out.usesDow=_dowRate(type,new Date().getDay())!=null;
+
+  var ob=new Date(); ob.setDate(ob.getDate()+Math.max(0,days-cfg.leadDays-cfg.safetyDays));
+  out.orderBy=_isoLocal(ob);
+  out.orderInDays=Math.max(0,days-cfg.leadDays-cfg.safetyDays);
+  return out;
+}
+
+// A tanker only helps if it fits. This is the constraint the pump forgets:
+// with a 15 KL tank holding 12 KL, a forced 10 KL minimum order overflows and
+// the load cannot be taken however urgently it is needed.
+function _fitCheck(f,kl){
+  var need=kl*1000;
+  if(f.ullage>=need)return {fits:true,waitDays:0};
+  if(!f.perDay||f.perDay<=0)return {fits:false,waitDays:null};
+  return {fits:false,waitDays:Math.ceil((need-f.ullage)/f.perDay)};
+}
+
+// Cash position, so a recommendation to spend seven lakh is not made blind.
+function _cashPosition(){
+  var loads=(typeof fuelLoads!=='undefined')?fuelLoads:[];
+  var supplierDue=loads.reduce(function(s,l){
+    return s+Math.max(0,(l.totalCost!=null?l.totalCost:(l.amountDue||0))-(l.amountPaid||0));},0);
+  var oil=(typeof oilReg!=='undefined')?oilReg:[];
+  supplierDue+=oil.reduce(function(s,i){return s+Math.max(0,(i.amountDue||0));},0);
+  var creditOut=(typeof ledger!=='undefined'?ledger:[]).reduce(function(s,e){
+    return s+((e.amount||0)>0?Math.max(0,e.amount-(e.paidBack||0)):0);},0);
+  return {supplierDue:supplierDue, creditOut:creditOut};
+}
+
+// Landed cost of a load of this size, from the most recent load of that type.
+function _loadCost(type,kl){
+  var loads=((typeof fuelLoads!=='undefined')?fuelLoads:[])
+    .filter(function(l){return l.type===type&&(parseFloat(l.vol)||0)>0;})
+    .sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''));});
+  if(!loads.length)return null;
+  var l=loads[0];
+  var perL=(parseFloat(l.totalCost)||0)/(parseFloat(l.vol)||1);
+  return perL>0?perL*kl*1000:null;
+}
+
+// The recommendation. Single-product tankers, so this is an either/or: whichever
+// tank reaches its order-by date first wins, and ties break on the tank that is
+// proportionally emptier.
+function orderAdvice(){
+  var cfg=orderCfg();
+  var fM=fuelForecast('MSD'), fH=fuelForecast('HSD');
+  var out={msd:fM, hsd:fH, cfg:cfg, cash:_cashPosition(), notes:[], pick:null};
+
+  var ranked=[fM,fH].filter(function(f){return f.daysLeft!=null;})
+    .sort(function(a,b){
+      if(a.orderInDays!==b.orderInDays)return a.orderInDays-b.orderInDays;
+      return a.pct-b.pct;
+    });
+
+  if(!ranked.length){
+    out.headline='Not enough sales history yet';
+    out.detail='Save a few shifts and this will start forecasting. It needs at '+
+               'least 4 days with recorded sales per fuel.';
+    return out;
+  }
+
+  var f=ranked[0]; out.pick=f.type;
+  var other=ranked[1]||null;
+
+  // Which size to order: normal, unless the supplier is enforcing a minimum.
+  var fitN=_fitCheck(f,cfg.normalKL), fitM=_fitCheck(f,cfg.minKL);
+  out.fitNormal=fitN; out.fitMin=fitM;
+  out.costNormal=_loadCost(f.type,cfg.normalKL);
+  out.costMin=_loadCost(f.type,cfg.minKL);
+
+  if(f.orderInDays<=0){
+    out.urgency='now';
+    out.headline='Order '+f.type+' today';
+  } else if(f.orderInDays<=2){
+    out.urgency='soon';
+    out.headline='Order '+f.type+' within '+f.orderInDays+' day'+(f.orderInDays!==1?'s':'');
+  } else {
+    out.urgency='ok';
+    out.headline=f.type+' first — order by '+f.orderBy;
+  }
+  out.detail=f.type+' runs down to the '+cfg.reserveL+' L reserve around '+f.runoutDate+
+    ' at '+Math.round(f.perDay)+' L/day. Ordering '+cfg.leadDays+' day'+
+    (cfg.leadDays!==1?'s':'')+' ahead plus '+cfg.safetyDays+' day buffer puts the cut-off at '+
+    f.orderBy+'.';
+
+  if(other){
+    out.notes.push({level:'info',
+      text:other.type+' is fine until '+(other.runoutDate||'—')+
+        ' ('+(other.daysLeft!=null?other.daysLeft+' days':'unknown')+') — no need to split the decision.'});
+  }
+
+  // Capacity — the constraint that overrides everything else.
+  if(!fitN.fits){
+    out.notes.push({level:'warn',
+      text:'Only '+Math.round(f.ullage)+' L of headroom in the '+f.type+' tank — a '+
+        cfg.normalKL+' KL load will not fit yet'+
+        (fitN.waitDays!=null?'. Room in about '+fitN.waitDays+' day'+(fitN.waitDays!==1?'s':''):'')+'.'});
+  }
+  if(!fitM.fits && cfg.minKL>cfg.normalKL){
+    out.notes.push({level:'warn',
+      text:'If the supplier enforces the '+cfg.minKL+' KL minimum, that needs '+
+        (cfg.minKL*1000)+' L of headroom and you have '+Math.round(f.ullage)+' L'+
+        (fitM.waitDays!=null?' — about '+fitM.waitDays+' more day'+(fitM.waitDays!==1?'s':'')+' of selling':'')+
+        '. Ordering the minimum too early means turning the tanker away.'});
+  }
+  if(fitM.fits && cfg.minKL>cfg.normalKL && f.orderInDays<=cfg.leadDays){
+    out.notes.push({level:'info',
+      text:'The '+cfg.minKL+' KL minimum would fit right now ('+Math.round(f.ullage)+
+        ' L headroom), so a forced-minimum order is possible if it comes to that.'});
+  }
+
+  // Money — a recommendation to spend lakhs should say what is already owed.
+  var c=out.cash;
+  if(c.supplierDue>0){
+    out.notes.push({level:c.supplierDue>200000?'warn':'info',
+      text:'Already owing suppliers '+fmt(c.supplierDue)+
+        (out.costNormal?'. A '+cfg.normalKL+' KL '+f.type+' load is about '+fmt(out.costNormal):'')+'.'});
+  } else if(out.costNormal){
+    out.notes.push({level:'info',
+      text:'A '+cfg.normalKL+' KL '+f.type+' load costs about '+fmt(out.costNormal)+
+        ' at the last landed price. No supplier dues outstanding.'});
+  }
+  if(c.creditOut>50000){
+    out.notes.push({level:'warn',
+      text:fmt(c.creditOut)+' is tied up in customer credit. Collecting some of that '+
+        'before the tanker is easier than finding it after.'});
+  }
+
+  // A moving trend changes the answer, so say it rather than hide it inside
+  // the average. Rising trade is the dangerous direction — you run dry early.
+  if(f.trend&&Math.abs(f.trend.pct)>=15){
+    var rising=f.trend.pct>0;
+    out.notes.push({level:rising?'warn':'info',
+      text:f.type+' sales are '+(rising?'up':'down')+' '+Math.abs(f.trend.pct).toFixed(0)+
+        '% this week ('+Math.round(f.trend.recent)+' vs '+Math.round(f.trend.prior)+
+        ' L/day). The forecast uses a '+MF_HALFLIFE_DAYS+'-day weighted average, so it sits '+
+        (rising?'below':'above')+' the latest week — '+
+        (rising?'order a little earlier than the date above, or raise the safety buffer.'
+              :'you may have slightly longer than shown.')});
+  }
+
+  // Say plainly when the forecast is thin.
+  if(f.confidence==='none'||f.confidence==='low'){
+    out.notes.push({level:'warn',
+      text:'Only '+f.n+' day'+(f.n!==1?'s':'')+' of '+f.type+' sales recorded'+
+        (f.cv>0.6?' and daily volumes swing widely':'')+
+        ' — treat this as a rough estimate, not a forecast.'});
+  }
+  if(f.since && f.since==='opening stock'){
+    out.notes.push({level:'info',
+      text:'Tank level is counted from the opening figure, not a dip. Record a dip '+
+        'to anchor it on a real measurement.'});
+  }
+  return out;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ORDER ADVISOR — rendering
+// ══════════════════════════════════════════════════════════════════
+var _advChart=null;
+
+function renderAdvisor(){
+  var cfg=orderCfg();
+  var se=function(id,v){var e=document.getElementById(id);if(e&&!e.value)e.value=v;};
+  se('cfg_lead_days',cfg.leadDays); se('cfg_safety_days',cfg.safetyDays);
+  se('cfg_normal_kl',cfg.normalKL); se('cfg_min_kl',cfg.minKL);
+  se('cfg_reserve_l',cfg.reserveL);
+
+  var a=orderAdvice();
+  var card=document.getElementById('adv_headline_card');
+  var urg={now:'var(--red)',soon:'var(--diesel)',ok:'var(--green)'}[a.urgency]||'var(--border)';
+  if(card)card.style.borderLeft='3px solid '+urg;
+  document.getElementById('adv_headline').textContent=a.headline;
+  document.getElementById('adv_headline').style.color=urg;
+  document.getElementById('adv_detail').textContent=a.detail||'';
+
+  var f=a.pick==='MSD'?a.msd:(a.pick==='HSD'?a.hsd:null);
+  var confEl=document.getElementById('adv_conf');
+  if(confEl){
+    var cmap={high:['var(--green)','good history'],medium:['var(--diesel)','moderate history'],
+              low:['var(--red)','thin history'],none:['var(--muted)','no history']};
+    var cv=cmap[f?f.confidence:'none'];
+    confEl.textContent=cv[1]+(f&&f.n?' • '+f.n+' days':'');
+    confEl.style.color=cv[0]; confEl.style.borderColor=cv[0];
+  }
+
+  // Order size options, each with whether it physically fits
+  var sz=document.getElementById('adv_sizes');
+  if(sz){
+    if(!f){sz.innerHTML='';}
+    else{
+      var opts=[{kl:cfg.normalKL,fit:a.fitNormal,cost:a.costNormal,lbl:'NORMAL ORDER'}];
+      if(cfg.minKL>cfg.normalKL)
+        opts.push({kl:cfg.minKL,fit:a.fitMin,cost:a.costMin,lbl:'SUPPLIER MINIMUM'});
+      sz.innerHTML=opts.map(function(o){
+        var col=o.fit.fits?'var(--green)':'var(--red)';
+        var msg=o.fit.fits?'✓ fits — '+Math.round(f.ullage)+' L headroom'
+          :(o.fit.waitDays!=null?'✕ needs '+(o.kl*1000-f.ullage>0?Math.round(o.kl*1000-f.ullage):0)+
+              ' L more room (~'+o.fit.waitDays+'d)':'✕ will not fit');
+        return '<div style="background:var(--s3);border:1px solid '+col+';border-radius:6px;padding:12px">'+
+          '<div style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:4px">'+o.lbl+'</div>'+
+          '<div style="font-family:\'JetBrains Mono\',monospace;font-size:18px;font-weight:700;color:var(--text)">'+o.kl+' KL '+_esc(f.type)+'</div>'+
+          (o.cost?'<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--muted);margin-top:2px">≈ '+fmt(o.cost)+'</div>':'')+
+          '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:'+col+';margin-top:6px">'+msg+'</div>'+
+          '</div>';
+      }).join('');
+    }
+  }
+
+  var nt=document.getElementById('adv_notes');
+  if(nt)nt.innerHTML=(a.notes||[]).map(function(n){
+    var c=n.level==='warn'?'var(--diesel)':'var(--blue)';
+    return '<div style="display:flex;gap:8px;align-items:flex-start;background:var(--s3);'+
+      'border-left:3px solid '+c+';border-radius:4px;padding:8px 10px">'+
+      '<span style="font-size:13px">'+(n.level==='warn'?'⚠':'ℹ')+'</span>'+
+      '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--text);line-height:1.5">'+
+      _esc(n.text)+'</span></div>';
+  }).join('');
+
+  // KPI strip
+  var kp=[a.msd,a.hsd].map(function(x){
+    var cls=x.daysLeft==null?'blue':(x.daysLeft<=cfg.leadDays+cfg.safetyDays?'red'
+             :(x.daysLeft<=7?'diesel':'green'));
+    return '<div class="kpi '+cls+'"><div class="kpi-top">'+
+      '<div class="kpi-label">'+x.type+' — DAYS OF STOCK</div>'+
+      '<div class="kpi-icon">'+(x.type==='MSD'?'⛽':'🛢')+'</div></div>'+
+      '<div class="kpi-value">'+(x.daysLeft!=null?x.daysLeft+' days':'—')+'</div>'+
+      '<div class="kpi-sub">'+Math.round(x.level)+' L in tank ('+x.pct.toFixed(0)+'%) • '+
+      (x.perDay>0?Math.round(x.perDay)+' L/day':'no sales recorded')+
+      (x.trend&&Math.abs(x.trend.pct)>=15?' '+(x.trend.pct>0?'▲':'▼')+Math.abs(x.trend.pct).toFixed(0)+'%':'')+
+      (x.runoutDate?' • empty '+x.runoutDate:'')+
+      (x.todayComplete===false?' • today not fully entered':'')+'</div></div>';
+  });
+  document.getElementById('adv_kpis').innerHTML=kp.join('');
+
+  renderAdvChart(a);
+}
+
+function renderAdvChart(a){
+  var canvas=document.getElementById('advChart');
+  if(!canvas||typeof Chart==='undefined')return;
+  var cfg=a.cfg, labels=[], mseries=[], hseries=[], res=[];
+  var lvl={MSD:a.msd.level,HSD:a.hsd.level};
+  var d=new Date();
+  for(var i=0;i<=21;i++){
+    labels.push(i===0?'today':d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'}));
+    mseries.push(Math.max(0,Math.round(lvl.MSD)));
+    hseries.push(Math.max(0,Math.round(lvl.HSD)));
+    res.push(cfg.reserveL);
+    d.setDate(d.getDate()+1);
+    var rm=_dowRate('MSD',d.getDay()); var rh=_dowRate('HSD',d.getDay());
+    lvl.MSD-=(rm!=null?rm:a.msd.perDay);
+    lvl.HSD-=(rh!=null?rh:a.hsd.perDay);
+  }
+  if(_advChart){try{_advChart.destroy();}catch(e){}}
+  _advChart=new Chart(canvas.getContext('2d'),{
+    type:'line',
+    data:{labels:labels,datasets:[
+      {label:'MSD',data:mseries,borderColor:'#00d4a0',backgroundColor:'rgba(0,212,160,.10)',
+       borderWidth:2.5,tension:.15,fill:true,pointRadius:0,pointHoverRadius:5},
+      {label:'HSD',data:hseries,borderColor:'#ffb020',backgroundColor:'rgba(255,176,32,.10)',
+       borderWidth:2.5,tension:.15,fill:true,pointRadius:0,pointHoverRadius:5},
+      {label:'Reserve',data:res,borderColor:'#ff4d6a',borderWidth:1.5,borderDash:[6,4],
+       pointRadius:0,fill:false}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{legend:{labels:{color:'#6b7e96',font:{family:'Syne',size:11,weight:'700'},
+        usePointStyle:true,padding:12,boxWidth:8}},
+        tooltip:{backgroundColor:'#18202c',borderColor:'#2a3444',borderWidth:1,
+          titleColor:'#dce8f5',bodyColor:'#dce8f5',padding:10,
+          callbacks:{label:function(c){return ' '+c.dataset.label+': '+c.raw.toLocaleString('en-IN')+' L';}}}},
+      scales:{x:{grid:{color:'rgba(42,52,68,.3)'},ticks:{color:'#6b7e96',
+          font:{family:'JetBrains Mono',size:9},maxTicksLimit:11}},
+        y:{beginAtZero:true,grid:{color:'rgba(42,52,68,.3)'},
+          ticks:{color:'#6b7e96',font:{family:'JetBrains Mono',size:9},
+            callback:function(v){return (v>=1000?(v/1000).toFixed(0)+'k':v)+' L';}}}}}
+  });
 }
 
 function calcOpeningStock(){
