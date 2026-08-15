@@ -832,7 +832,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <div class="sec"><span class="dot dr"></span>EXPENSES & DEDUCTIONS</div>
       <div class="card">
         <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-bottom:6px">
-          Testing fuel is entered in LITRES. The meter counts it but no cash comes in, so the value is deducted as an expense. The fuel goes back into the tank, so it is added back to book stock.
+  
         </div>
         <div class="frow"><span class="flabel">Testing MSD (L)</span><input type="number" id="t_msd_l" placeholder="0.000" step="0.001" inputmode="decimal" oninput="calc()">
           <span class="res-val p" id="t_msd_v" style="min-width:78px;text-align:right">₹0</span></div>
@@ -3450,7 +3450,8 @@ function _pushStockItem(item){
   // Debounced: these fire on every keystroke.
   _stockPushTimer=setTimeout(function(){
     _sbUpsert('stock_items',{id:item.id,user_id:_currentUser.id,name:item.name,
-      cat:item.cat,unit:item.unit,qty:item.qty,rate:item.rate});
+      cat:item.cat,unit:item.unit,qty:item.qty,rate:item.rate,
+      updated_at:_touch(item).updatedAt});
   },800);
 }
 function updStock(id,f,val){
@@ -7963,6 +7964,10 @@ async function _sbUpsert(table, rows){
 // this device and not yet uploaded was destroyed. Rows are now merged by id,
 // newest wins where a timestamp exists, and local-only rows are pushed up.
 // ══════════════════════════════════════════════════════════════════
+// Stamp a row as changed now. Merges resolve on this, so anything edited
+// locally beats an older copy on the server instead of being overwritten by it.
+function _touch(o){ if(o&&typeof o==='object')o.updatedAt=new Date().toISOString(); return o; }
+
 function _mergeById(local, remote, tsField){
   const out={}, localOnly=[];
   (local||[]).forEach(function(x){ if(x&&x.id!=null) out[String(x.id)]={row:x,fromLocal:true}; });
@@ -7972,7 +7977,12 @@ function _mergeById(local, remote, tsField){
     if(!cur){ out[k]={row:r,fromLocal:false}; return; }
     if(tsField){
       const a=String(cur.row[tsField]||''), b=String(r[tsField]||'');
-      out[k]= (b>=a) ? {row:r,fromLocal:false} : {row:cur.row,fromLocal:true};
+      // An unstamped row is older by definition — rows written before this
+      // column existed must not win against one that was actually edited.
+      if(!a&&!b){ out[k]={row:r,fromLocal:false}; }
+      else if(!a){ out[k]={row:r,fromLocal:false}; }
+      else if(!b){ out[k]={row:cur.row,fromLocal:true}; }
+      else out[k]= (b>=a) ? {row:r,fromLocal:false} : {row:cur.row,fromLocal:true};
     } else {
       out[k]={row:r,fromLocal:false};   // no timestamp to compare: server wins
     }
@@ -8030,6 +8040,14 @@ async function sbSaveRecord(rec) {
     notes: rec.notes, saved_at: rec.savedAt,
     tag: rec.tag || '',
     extra_pack_sold: rec.extraPackSold || {},
+    // These four exist in the schema but were never being sent. Testing litres
+    // feed the dip book stock, meters feed the shift-continuity check and
+    // loose_oil_units feeds the delete reversal — so on any device that did not
+    // create the shift, all three features were silently working from zeros.
+    test_msd_l: rec.testMSDL || 0,
+    test_hsd_l: rec.testHSDL || 0,
+    meters: rec.meters || {},
+    loose_oil_units: rec.looseOilUnits || 0,
     created_by: _currentUser.username, updated_by: _currentUser.username
   };
   // stock_sold is a newer column. Until the migration below is applied the
@@ -8051,7 +8069,8 @@ async function sbSaveAllStock() {
   try {
   const rows = stock.map(s => ({
     id: s.id, user_id: _currentUser.id,
-    name: s.name, cat: s.cat, unit: s.unit, qty: s.qty, rate: s.rate
+    name: s.name, cat: s.cat, unit: s.unit, qty: s.qty, rate: s.rate,
+    updated_at: _touch(s).updatedAt
   }));
   if (rows.length) await _sbUpsert('stock_items', rows);
   } catch(e){ console.error('Save stock failed:',e.message); }
@@ -8066,6 +8085,8 @@ async function sbSaveLedgerEntry(entry) {
       date: entry.date, customer: entry.customer, shift: entry.shift,
       fuel: entry.fuel, amount: entry.amount, paid_back: entry.paidBack||0,
       kind: entry.kind || (entry.amount<0?'advance':'credit'),
+      notes: entry.notes || '', shift_id: entry.shiftId || null,
+      updated_at: _touch(entry).updatedAt,
       created_by: _currentUser.username, updated_by: _currentUser.username
     });
   } catch(e){ console.error('Save ledger entry failed:', e.message); }
@@ -8097,7 +8118,8 @@ async function sbSaveOilInvoice(inv) {
     id: inv.id, user_id: _currentUser.id,
     date: inv.date, inv: inv.inv, company: inv.company,
     items: inv.items, total_cost: inv.totalCost, total_sell: inv.totalSell,
-    profit: inv.profit, amount_due: inv.amountDue, amount_paid: inv.amountPaid
+    profit: inv.profit, amount_due: inv.amountDue, amount_paid: inv.amountPaid,
+    updated_at: _touch(inv).updatedAt
   });
   } catch(e){ console.error('Save oil invoice failed:',e.message); }
 }
@@ -8118,7 +8140,8 @@ async function sbSaveFuelLoad(load) {
     gst_pct: load.gstPct||0, gst_amt: load.gstAmt||0,
     total_cost: load.totalCost, revenue: load.revenue, profit: load.profit,
     amount_due: load.amountDue, amount_paid: load.amountPaid,
-    locked: load.locked||false
+    locked: load.locked||false,
+    updated_at: _touch(load).updatedAt
   });
   } catch(e){ console.error('Save fuel load failed:',e.message); }
 }
@@ -8280,38 +8303,28 @@ async function loadAllFromSupabase(silent) {
         notes: r.notes, savedAt: r.saved_at,
         tag: r.tag || '',
         extraPackSold: r.extra_pack_sold || {},
-        stockSold: r.stock_sold || []
+        stockSold: r.stock_sold || [],
+        testMSDL: r.test_msd_l || 0,
+        testHSDL: r.test_hsd_l || 0,
+        meters: r.meters || {},
+        looseOilUnits: r.loose_oil_units || 0
       }));
       const mrg = _mergeById(records, remoteRecs, 'savedAt');
       records = mrg.merged.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
       localStorage.setItem('fuelRecords', JSON.stringify(records));
-      if (mrg.localOnly.length) {
-        const rows = mrg.localOnly.map(r => ({
-          id: r.id, user_id: uid, date: r.date, shift: r.shift,
-          msd_t: r.msdT||0, hsd_t: r.hsdT||0, msd_v: r.msdV||0, hsd_v: r.hsdV||0,
-          pv: r.pv||0, ov: r.ov||0, st_rev: r.stRev||0,
-          right_total: r.rightTotal||0, left_total: r.leftTotal||0,
-          gpay: r.gpay||0, paytm: r.paytm||0, cash: r.cash||0,
-          exp: r.exp||0, credit: r.credit||0, cred_back: r.credBack||0, bal: r.bal||0,
-          notes: r.notes||'', saved_at: r.savedAt||new Date().toISOString(),
-          extra_pack_sold: r.extraPackSold||{},
-          stock_sold: r.stockSold||[]
-        }));
-        await _sbUpsert('shift_records', rows);
-      }
+      // Reuse the normal writer so the column list can never drift again.
+      for (const r of mrg.localOnly) { await sbSaveRecord(r); }
     }
 
     if (stockRes.data) {
       const remoteStock = stockRes.data.map(s => ({
-        id: s.id, name: s.name, cat: s.cat, unit: s.unit, qty: s.qty, rate: s.rate
+        id: s.id, name: s.name, cat: s.cat, unit: s.unit, qty: s.qty, rate: s.rate,
+        updatedAt: s.updated_at
       }));
-      const mrg = _mergeById(stock, remoteStock, null);
+      const mrg = _mergeById(stock, remoteStock, 'updatedAt');
       stock = mrg.merged;
       localStorage.setItem('fuelStock', JSON.stringify(stock));
-      if (mrg.localOnly.length) {
-        await _sbUpsert('stock_items', mrg.localOnly.map(s => ({
-          id: s.id, user_id: uid, name: s.name, cat: s.cat, unit: s.unit, qty: s.qty, rate: s.rate })));
-      }
+      if (mrg.localOnly.length) await sbSaveAllStock();
     }
 
     if (ledRes.data) {
@@ -8319,33 +8332,26 @@ async function loadAllFromSupabase(silent) {
         id: Number(e.id), date: e.date, customer: e.customer,
         shift: e.shift, fuel: e.fuel, amount: e.amount, paidBack: e.paid_back||0,
         kind: e.kind || (e.amount<0?'advance':'credit'),
-        shiftId: e.shift_id || null
+        notes: e.notes || '',
+        shiftId: e.shift_id || null, updatedAt: e.updated_at
       }));
-      const mrgL = _mergeById(ledger, remoteLed, null);
+      const mrgL = _mergeById(ledger, remoteLed, 'updatedAt');
       ledger = mrgL.merged;
       localStorage.setItem('fuelLedger', JSON.stringify(ledger));
-      if (mrgL.localOnly.length) {
-        await _sbUpsert('ledger_entries', mrgL.localOnly.map(e => ({
-          id: e.id, user_id: uid, date: e.date, customer: e.customer, shift: e.shift,
-          fuel: e.fuel, amount: e.amount, paid_back: e.paidBack||0, kind: e.kind||'credit' })));
-      }
+      for (const e of mrgL.localOnly) { await sbSaveLedgerEntry(e); }
     }
 
     if (oilRes.data) {
       const remoteOil = oilRes.data.map(inv => ({
         id: inv.id, date: inv.date, inv: inv.inv, company: inv.company,
         items: inv.items, totalCost: inv.total_cost, totalSell: inv.total_sell,
-        profit: inv.profit, amountDue: inv.amount_due, amountPaid: inv.amount_paid
+        profit: inv.profit, amountDue: inv.amount_due, amountPaid: inv.amount_paid,
+        updatedAt: inv.updated_at
       }));
-      const mrgO = _mergeById(oilReg, remoteOil, null);
+      const mrgO = _mergeById(oilReg, remoteOil, 'updatedAt');
       oilReg = mrgO.merged;
       localStorage.setItem('oilReg', JSON.stringify(oilReg));
-      if (mrgO.localOnly.length) {
-        await _sbUpsert('oil_invoices', mrgO.localOnly.map(i => ({
-          id: i.id, user_id: uid, date: i.date, inv: i.inv, company: i.company,
-          items: i.items, total_cost: i.totalCost, total_sell: i.totalSell,
-          profit: i.profit, amount_due: i.amountDue, amount_paid: i.amountPaid })));
-      }
+      for (const i of mrgO.localOnly) { await sbSaveOilInvoice(i); }
     }
 
     if (flRes.data) {
@@ -8361,18 +8367,12 @@ async function loadAllFromSupabase(silent) {
         gstPct: l.gst_pct||0, gstAmt: l.gst_amt||0,
         totalCost: l.total_cost, revenue: l.revenue, profit: l.profit,
         amountDue: l.amount_due, amountPaid: l.amount_paid,
-        locked: l.locked||false
+        locked: l.locked||false, updatedAt: l.updated_at
       }));
-      const mrgF = _mergeById(fuelLoads, remoteLoads, null);
+      const mrgF = _mergeById(fuelLoads, remoteLoads, 'updatedAt');
       fuelLoads = mrgF.merged;
       localStorage.setItem('fuelLoads', JSON.stringify(fuelLoads));
-      if (mrgF.localOnly.length) {
-        await _sbUpsert('fuel_loads', mrgF.localOnly.map(l => ({
-          id: l.id, user_id: uid, date: l.date, inv: l.inv, supplier: l.supplier,
-          type: l.type, vol: l.vol, vol_kl: l.volKL||0, buy: l.buy, sell: l.sell,
-          total_cost: l.totalCost, revenue: l.revenue, profit: l.profit,
-          amount_due: l.amountDue, amount_paid: l.amountPaid })));
-      }
+      for (const l of mrgF.localOnly) { await sbSaveFuelLoad(l); }
     }
 
     if (dipRes.data) {
