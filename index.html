@@ -1494,6 +1494,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <button class="btn btn-g" onclick="staffShowTab('list')" id="staff_tab_list">STAFF LIST</button>
       <button class="btn btn-g" onclick="staffShowTab('attendance')" id="staff_tab_att">ATTENDANCE</button>
       <button class="btn btn-g" onclick="staffShowTab('payments')" id="staff_tab_pay">PAYMENTS</button>
+      <button class="btn btn-g" onclick="staffShowTab('report')" id="staff_tab_report">&#128197; MONTHLY REPORT</button>
     </div>
   </div>
 
@@ -1547,6 +1548,84 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <tbody id="att_body"></tbody>
       </table>
     </div>
+  </div>
+
+  <!-- ── TAB: MONTHLY REPORT ── -->
+  <div id="staff_view_report" style="display:none">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <div class="flabel">MONTH</div>
+      <input type="month" id="pay_month" class="date-inp" onchange="renderStaffReport()">
+      <button class="btn btn-g" onclick="payrollShiftMonth(-1)">&#8592; PREV</button>
+      <button class="btn btn-g" onclick="payrollShiftMonth(1)">NEXT &#8594;</button>
+      <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-g" onclick="payrollExportCsv()">&#11015; CSV</button>
+        <button class="btn btn-g" onclick="payrollPayslips()">&#128424; PAYSLIPS</button>
+        <button class="btn btn-g" onclick="togglePayrollCfg()">&#9881; RULES</button>
+      </div>
+    </div>
+
+    <!-- Payroll rules -->
+    <div id="payroll_cfg" style="display:none;margin-bottom:14px">
+      <div class="card" style="border-color:var(--blue)">
+        <div class="card-head" style="color:var(--blue)">HOW SALARY IS CALCULATED FROM ATTENDANCE</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-bottom:10px">
+          <div>
+            <div class="flabel" style="margin-bottom:4px">DAY BASIS</div>
+            <select id="pc_basis" onchange="savePayrollCfg()" style="width:100%;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;height:34px">
+              <option value="fixed30">Salary &divide; 30 &times; days worked</option>
+              <option value="calendar">Salary &divide; days in month &times; days worked</option>
+              <option value="deduct">Full salary, minus absent days</option>
+            </select>
+          </div>
+          <div>
+            <div class="flabel" style="margin-bottom:4px">DOUBLE SHIFT IN ONE DAY</div>
+            <select id="pc_both" onchange="savePayrollCfg()" style="width:100%;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;height:34px">
+              <option value="cap">Counts as one day</option>
+              <option value="sum">Counts as two days</option>
+            </select>
+          </div>
+          <div>
+            <div class="flabel" style="margin-bottom:4px">DAYS NOBODY MARKED</div>
+            <select id="pc_unmarked" onchange="savePayrollCfg()" style="width:100%;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;height:34px">
+              <option value="ignore">Ignore &mdash; report them separately</option>
+              <option value="absent">Treat as absent</option>
+              <option value="present">Treat as present</option>
+            </select>
+          </div>
+          <div>
+            <div class="flabel" style="margin-bottom:4px">HALF DAY IS WORTH</div>
+            <input type="number" id="pc_half" step="0.05" min="0" max="1" oninput="savePayrollCfg()" style="width:100%;height:34px">
+          </div>
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);line-height:1.6">
+          These rules are shared across every device, so all four owners compute the
+          same wage from the same register. Changing them changes the figures for
+          <b>every</b> month, including ones already paid &mdash; payments already recorded
+          are unaffected, only what this page says is owed.
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-grid" id="payroll_kpis"></div>
+
+    <div class="card" style="overflow-x:auto">
+      <table class="data-tbl" style="width:100%;min-width:900px">
+        <thead><tr>
+          <th>STAFF</th><th title="Days in the month this person was employed">ELIGIBLE</th>
+          <th>PRESENT</th><th>HALF</th><th>ABSENT</th>
+          <th title="Eligible days with no attendance mark at all">UNMARKED</th>
+          <th title="Present + half-day value, after the double-shift rule">DAYS PAID</th>
+          <th>PER DAY</th><th>EARNED</th><th>ADVANCE DUE</th><th>PAID THIS MONTH</th>
+          <th>NET PAYABLE</th><th></th>
+        </tr></thead>
+        <tbody id="payroll_body"></tbody>
+      </table>
+      <div id="payroll_empty" style="text-align:center;padding:26px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;display:none">
+        No active staff. Add staff on the STAFF LIST tab first.
+      </div>
+    </div>
+
+    <div id="payroll_notes" style="display:flex;flex-direction:column;gap:6px;margin-top:12px"></div>
   </div>
 
   <!-- ── TAB: PAYMENTS ── -->
@@ -2279,7 +2358,8 @@ function _deviceConfig(){
     packSizes:   (typeof packSizesConfig!=='undefined') ? packSizesConfig : g('packSizes'),
     tankCfg:     g('tankCfg'),
     orderCfg:    g('orderCfg'),
-    looseOilCfg: g('looseOilCfg')
+    looseOilCfg: g('looseOilCfg'),
+    payrollCfg:  g('payrollCfg')
   };
 }
 function _applyDeviceConfig(cfg){
@@ -2296,7 +2376,11 @@ function _applyDeviceConfig(cfg){
   if(cfg.tankCfg)     localStorage.setItem('tankCfg', JSON.stringify(cfg.tankCfg));
   if(cfg.orderCfg)    localStorage.setItem('orderCfg', JSON.stringify(cfg.orderCfg));
   if(cfg.looseOilCfg) localStorage.setItem('looseOilCfg', JSON.stringify(cfg.looseOilCfg));
+  // Payroll rules must be identical everywhere or two owners compute two
+  // different wages from the same register.
+  if(cfg.payrollCfg)  localStorage.setItem('payrollCfg', JSON.stringify(cfg.payrollCfg));
   if(typeof renderLooseOilCfg==='function')renderLooseOilCfg();
+  if(typeof renderStaffReport==='function' && _currentStaffTab==='report')renderStaffReport();
 }
 
 function loadRates(){
@@ -7001,10 +7085,11 @@ function savePayLS(){localStorage.setItem('staffPayments',JSON.stringify(staffPa
 
 function staffShowTab(tab){
   _currentStaffTab=tab;
-  ['list','attendance','payments'].forEach(t=>{
+  const btnId={attendance:'att',payments:'pay',report:'report',list:'list'};
+  ['list','attendance','payments','report'].forEach(t=>{
     const v=document.getElementById('staff_view_'+t);
     if(v)v.style.display=t===tab?'block':'none';
-    const b=document.getElementById('staff_tab_'+(t==='attendance'?'att':t==='payments'?'pay':'list'));
+    const b=document.getElementById('staff_tab_'+btnId[t]);
     if(b){
       if(t===tab){b.style.background='var(--blue)';b.style.color='#000';}
       else {b.style.background='';b.style.color='';}
@@ -7015,6 +7100,7 @@ function staffShowTab(tab){
     const d=document.getElementById('att_date');if(d&&!d.value)d.value=_isoLocal();
     renderAttendance();
   } else if(tab==='payments') renderPayments();
+  else if(tab==='report') renderStaffReport();
 }
 
 // Staff details change: phones get replaced, people get promoted, salaries go
@@ -7137,6 +7223,377 @@ function toggleStaffActive(id){
   renderStaff();
 }
 
+// ══════════════════════════════════════════════════════════════════
+// MONTHLY ATTENDANCE REPORT → SALARY
+//
+// The register is the source of truth and the wage is derived from it, so a
+// figure can always be traced back to the days it came from. Deliberately no
+// automatic payment: this page says what is owed, a person still decides to
+// pay it. Recording the payment stays where it was, on the PAYMENTS tab.
+//
+// The three rules that actually change the number are configurable rather than
+// baked in, because every bunk settles wages differently and a hardcoded
+// convention here would quietly pay somebody the wrong amount.
+// ══════════════════════════════════════════════════════════════════
+
+function payrollCfg(){
+  var d={basis:'fixed30', both:'cap', unmarked:'ignore', half:0.5};
+  try{
+    var c=JSON.parse(localStorage.getItem('payrollCfg')||'null');
+    if(c)return {
+      basis:    c.basis    || d.basis,
+      both:     c.both     || d.both,
+      unmarked: c.unmarked || d.unmarked,
+      half:     (c.half!=null && isFinite(parseFloat(c.half))) ? parseFloat(c.half) : d.half
+    };
+  }catch(e){}
+  return d;
+}
+function savePayrollCfg(){
+  var g=function(id){var e=document.getElementById(id);return e?e.value:null;};
+  var h=parseFloat(g('pc_half'));
+  localStorage.setItem('payrollCfg',JSON.stringify({
+    basis:    g('pc_basis')||'fixed30',
+    both:     g('pc_both')||'cap',
+    unmarked: g('pc_unmarked')||'ignore',
+    half:     (isFinite(h)&&h>=0&&h<=1)?h:0.5
+  }));
+  queueSettingsSave();
+  renderStaffReport();
+}
+function togglePayrollCfg(){
+  var p=document.getElementById('payroll_cfg');
+  if(p)p.style.display=p.style.display==='none'?'block':'none';
+}
+
+// 'YYYY-MM' → first and last date of that month, as ISO strings.
+function _monthRange(ym){
+  var parts=String(ym||'').split('-');
+  var y=parseInt(parts[0],10), m=parseInt(parts[1],10);
+  if(!y||!m){var n=new Date(); y=n.getFullYear(); m=n.getMonth()+1;}
+  var first=new Date(y,m-1,1), last=new Date(y,m,0);
+  return {y:y,m:m,first:_isoLocal(first),last:_isoLocal(last),days:last.getDate(),
+          label:first.toLocaleDateString('en-IN',{month:'long',year:'numeric'})};
+}
+
+// Salary in force on a date. A raise is a dated event; without this an old
+// month would be recalculated at today's rate and the payslip would not match
+// what was actually paid.
+function _salaryOn(staff,dateISO){
+  var hist=(staff.salaryHistory||[]).slice()
+    .sort(function(a,b){return String(a.date).localeCompare(String(b.date));});
+  var cur=parseFloat(staff.monthlySalary)||0;
+  // Walk backwards: the last revision on or before the date gives `to`,
+  // anything after it means the rate then was that revision's `from`.
+  for(var i=hist.length-1;i>=0;i--){
+    if(String(hist[i].date)<=String(dateISO)) return parseFloat(hist[i].to)||0;
+    cur=parseFloat(hist[i].from)||0;
+  }
+  return cur;
+}
+
+// One person, one month. Everything the report shows, and nothing hidden.
+function payrollFor(staff,ym){
+  var cfg=payrollCfg(), R=_monthRange(ym);
+  var joined=staff.joinedDate||'';
+  var today=_isoLocal();
+
+  // Eligible window: employed, and not in the future. A month still running
+  // must not bill for days that have not happened.
+  var from = (joined && joined>R.first) ? joined : R.first;
+  var to   = (R.last>today) ? today : R.last;
+  var eligible = 0;
+  if(to>=from){
+    eligible = Math.round((new Date(to+'T00:00:00') - new Date(from+'T00:00:00'))/86400000)+1;
+  }
+
+  var rows=staffAttendance.filter(function(a){
+    return a.staffId===staff.id && a.date>=from && a.date<=to;
+  });
+
+  // Group by date so a double shift cannot silently earn two days.
+  var byDate={};
+  rows.forEach(function(a){
+    if(!byDate[a.date])byDate[a.date]=[];
+    byDate[a.date].push(a.status);
+  });
+
+  var present=0, half=0, absent=0, worked=0;
+  Object.keys(byDate).forEach(function(d){
+    var st=byDate[d];
+    var vals=st.map(function(x){return x==='present'?1:(x==='half'?cfg.half:0);});
+    present += st.filter(function(x){return x==='present';}).length;
+    half    += st.filter(function(x){return x==='half';}).length;
+    absent  += st.filter(function(x){return x==='absent';}).length;
+    if(cfg.both==='sum'){
+      worked += vals.reduce(function(a,b){return a+b;},0);
+    } else {
+      worked += Math.min(1, Math.max.apply(null,vals.concat([0])));
+    }
+  });
+
+  var markedDates=Object.keys(byDate).length;
+  var unmarked=Math.max(0, eligible-markedDates);
+  if(cfg.unmarked==='present') worked += unmarked;
+  var absentDays = (cfg.unmarked==='absent')
+    ? Math.max(0, eligible-worked)
+    : Math.max(0, markedDates-worked);
+
+  var salary=_salaryOn(staff,R.last);
+  var perDay = cfg.basis==='calendar' ? (salary/R.days) : (salary/30);
+  var earned;
+  if(cfg.basis==='deduct'){
+    // Full salary less the absent days. Prorated for a mid-month joiner.
+    var full = (eligible>=R.days) ? salary : (salary/R.days)*eligible;
+    earned = full - (salary/R.days)*absentDays;
+  } else {
+    earned = perDay*worked;
+  }
+  earned=Math.max(0,_r2(earned));
+
+  var paid=staffPayments.filter(function(p){
+    return p.staffId===staff.id && p.type==='salary' && p.date>=R.first && p.date<=R.last;
+  }).reduce(function(a,p){return a+(p.amount||0);},0);
+
+  var advance=getStaffAdvanceBalance(staff.id);
+  var net=_r2(Math.max(0, earned-paid-Math.min(advance, Math.max(0,earned-paid))));
+  var advApplied=_r2(Math.min(advance, Math.max(0, earned-paid)));
+
+  // A raise inside the month means the whole month is billed at the new rate.
+  // Say so rather than let someone find it in a payslip.
+  var revised=(staff.salaryHistory||[]).filter(function(h){
+    return h.date>=R.first && h.date<=R.last;
+  });
+
+  return {staff:staff, month:R, salary:salary, perDay:_r2(perDay),
+          eligible:eligible, present:present, half:half, absent:absentDays,
+          unmarked:unmarked, worked:Math.round(worked*100)/100,
+          earned:earned, paid:_r2(paid), advance:_r2(advance),
+          advApplied:advApplied, net:net, revised:revised,
+          basis:cfg.basis, from:from, to:to};
+}
+
+function payrollShiftMonth(delta){
+  var el=document.getElementById('pay_month');
+  if(!el)return;
+  var R=_monthRange(el.value);
+  var d=new Date(R.y, R.m-1+delta, 1);
+  el.value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  renderStaffReport();
+}
+
+function _payrollRows(){
+  var el=document.getElementById('pay_month');
+  var ym=el&&el.value?el.value:'';
+  return staffList.filter(function(s){return s.active;})
+    .sort(function(a,b){return a.name.localeCompare(b.name);})
+    .map(function(s){return payrollFor(s,ym);});
+}
+
+function renderStaffReport(){
+  var mEl=document.getElementById('pay_month');
+  if(mEl&&!mEl.value){
+    var n=new Date();
+    mEl.value=n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0');
+  }
+  var cfg=payrollCfg();
+  var setv=function(id,v){var e=document.getElementById(id);if(e)e.value=v;};
+  setv('pc_basis',cfg.basis); setv('pc_both',cfg.both);
+  setv('pc_unmarked',cfg.unmarked); setv('pc_half',cfg.half);
+
+  var tb=document.getElementById('payroll_body');
+  var empty=document.getElementById('payroll_empty');
+  if(!tb)return;
+  tb.innerHTML='';
+  var rows=_payrollRows();
+  if(!rows.length){ if(empty)empty.style.display='block';
+    document.getElementById('payroll_kpis').innerHTML='';
+    document.getElementById('payroll_notes').innerHTML=''; return; }
+  if(empty)empty.style.display='none';
+
+  var tEarned=0,tPaid=0,tNet=0,tAdv=0,tUnmarked=0;
+  rows.forEach(function(r){
+    tEarned+=r.earned; tPaid+=r.paid; tNet+=r.net; tAdv+=r.advance; tUnmarked+=r.unmarked;
+    var unmarkedCol=r.unmarked>0?'var(--diesel)':'var(--muted)';
+    var tr=document.createElement('tr');
+    tr.innerHTML=
+      '<td><b>'+_esc(r.staff.name)+'</b><br><span style="font-size:10px;color:var(--muted)">'+
+        _esc(r.staff.role||'')+' &middot; &#8377;'+r.salary.toLocaleString('en-IN')+'/mo</span>'+
+        (r.revised.length?'<br><span style="font-size:9px;color:var(--diesel)">&#9888; salary revised '+_esc(r.revised[0].date)+'</span>':'')+
+      '</td>'+
+      '<td>'+r.eligible+'</td>'+
+      '<td style="color:var(--green)">'+r.present+'</td>'+
+      '<td style="color:var(--blue)">'+r.half+'</td>'+
+      '<td style="color:var(--red)">'+r.absent+'</td>'+
+      '<td style="color:'+unmarkedCol+'">'+r.unmarked+'</td>'+
+      '<td style="font-weight:700">'+r.worked+'</td>'+
+      '<td>&#8377;'+r.perDay.toFixed(2)+'</td>'+
+      '<td style="color:var(--text);font-weight:700">&#8377;'+r.earned.toLocaleString('en-IN')+'</td>'+
+      '<td style="color:'+(r.advance>0?'var(--diesel)':'var(--muted)')+'">&#8377;'+r.advance.toLocaleString('en-IN')+'</td>'+
+      '<td style="color:var(--blue)">&#8377;'+r.paid.toLocaleString('en-IN')+'</td>'+
+      '<td style="color:'+(r.net>0?'var(--green)':'var(--muted)')+';font-weight:700;font-size:13px">&#8377;'+r.net.toLocaleString('en-IN')+'</td>'+
+      '<td>'+(r.net>0
+        ? '<button class="btn btn-g" style="padding:4px 10px;font-size:10px" onclick="payrollPay('+r.staff.id+')">PAY</button>'
+        : '<span class="badge bg_">&#10003; SETTLED</span>')+'</td>';
+    tb.appendChild(tr);
+  });
+
+  var R=_monthRange(mEl?mEl.value:'');
+  var basisLbl={fixed30:'salary \u00f7 30',calendar:'salary \u00f7 '+R.days,deduct:'full salary less absences'}[cfg.basis];
+  document.getElementById('payroll_kpis').innerHTML=
+    [{cls:'blue',  icon:'\uD83D\uDCC5', lbl:'MONTH', val:R.label,
+      sub:rows.length+' active staff \u00b7 '+basisLbl},
+     {cls:'petrol',icon:'\uD83D\uDCB0', lbl:'TOTAL EARNED', val:fmt(tEarned),
+      sub:'from the attendance register'},
+     {cls:'diesel',icon:'\u21A9', lbl:'ADVANCE OUTSTANDING', val:fmt(tAdv),
+      sub:tAdv>0?'recovered against this month where possible':'nothing pending'},
+     {cls: tNet>0?'green':'purple', icon:'\u2192', lbl:'STILL PAYABLE', val:fmt(tNet),
+      sub:fmt(tPaid)+' already paid this month'}
+    ].map(function(k){
+      return '<div class="kpi '+k.cls+'"><div class="kpi-top"><div class="kpi-label">'+k.lbl+
+        '</div><div class="kpi-icon">'+k.icon+'</div></div><div class="kpi-value">'+k.val+
+        '</div><div class="kpi-sub">'+k.sub+'</div></div>';
+    }).join('');
+
+  // Anything that would make a figure wrong gets said out loud.
+  var notes=[];
+  if(tUnmarked>0){
+    notes.push({level:'warn', text:tUnmarked+' eligible day'+(tUnmarked!==1?'s have':' has')+
+      ' no attendance mark at all'+
+      (cfg.unmarked==='ignore' ? ' and '+(tUnmarked!==1?'are':'is')+' being ignored, so the wage is understated. Fill them in on the ATTENDANCE tab.'
+       : cfg.unmarked==='absent' ? ' and '+(tUnmarked!==1?'are':'is')+' counted as absent. Somebody who worked is being docked.'
+       : ' and '+(tUnmarked!==1?'are':'is')+' counted as present. Somebody who did not turn up is being paid.')});
+  }
+  var rev=rows.filter(function(r){return r.revised.length;});
+  if(rev.length){
+    notes.push({level:'warn', text:rev.map(function(r){return r.staff.name;}).join(', ')+
+      ' had a salary revision inside this month. The whole month is calculated at the '+
+      'new rate \u2014 split the payment by hand if the raise was meant to start mid-month.'});
+  }
+  if(R.last>_isoLocal()){
+    notes.push({level:'info', text:'This month is still running. Only days up to today are counted, '+
+      'so the figures will grow. Settle at month end.'});
+  }
+  if(cfg.basis==='deduct'){
+    notes.push({level:'info', text:'Full salary less absences: a person marked absent for the whole '+
+      'month still earns nothing, and one never marked at all earns the full salary. '+
+      'Keep the register complete.'});
+  }
+  document.getElementById('payroll_notes').innerHTML=notes.map(function(n){
+    var c=n.level==='warn'?'var(--diesel)':'var(--blue)';
+    return '<div style="display:flex;gap:8px;align-items:flex-start;background:var(--s3);'+
+      'border-left:3px solid '+c+';border-radius:4px;padding:8px 10px">'+
+      '<span style="font-size:13px">'+(n.level==='warn'?'\u26A0':'\u2139')+'</span>'+
+      '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--text);line-height:1.5">'+
+      _esc(n.text)+'</span></div>';
+  }).join('');
+}
+
+// Hand off to the existing payment form, pre-filled. The payment itself is
+// still recorded by a person pressing SAVE \u2014 nothing here writes a payment.
+function payrollPay(staffId){
+  var el=document.getElementById('pay_month');
+  var s=staffList.find(function(x){return x.id===staffId;});
+  if(!s)return;
+  var r=payrollFor(s, el?el.value:'');
+  staffShowTab('payments');
+  togglePaymentForm();
+  var set=function(id,v){var e=document.getElementById(id);if(e)e.value=v;};
+  set('pf_staff',staffId); set('pf_type','salary');
+  set('pf_date', r.month.last>_isoLocal()?_isoLocal():r.month.last);
+  set('pf_amt', _r2(r.earned-r.paid));
+  set('pf_notes', r.month.label+' \u2014 '+r.worked+' day(s) of '+r.eligible+' eligible');
+  onPayTypeChange();
+  if(r.advApplied>0){
+    var chk=document.getElementById('pf_deduct_check');
+    if(chk){chk.checked=true; onDeductToggle();}
+    set('pf_deduct_amt', r.advApplied);
+  }
+  updatePayPreview();
+  showToast('Pre-filled from '+r.month.label+' attendance \u2014 check it, then SAVE');
+}
+
+function payrollExportCsv(){
+  var rows=_payrollRows();
+  if(!rows.length){showToast('Nothing to export');return;}
+  var R=rows[0].month;
+  var head=['month','staff','role','monthly_salary','per_day','eligible_days','present',
+            'half','absent','unmarked','days_paid','earned','advance_outstanding',
+            'advance_applied','paid_this_month','net_payable'];
+  var lines=[head.join(',')];
+  rows.forEach(function(r){
+    lines.push(['"'+R.label+'"','"'+String(r.staff.name).replace(/"/g,'""')+'"',
+      '"'+String(r.staff.role||'').replace(/"/g,'""')+'"',
+      r.salary,r.perDay,r.eligible,r.present,r.half,r.absent,r.unmarked,r.worked,
+      r.earned,r.advance,r.advApplied,r.paid,r.net].join(','));
+  });
+  var blob=new Blob([lines.join('\n')],{type:'text/csv'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='manifuels-payroll-'+(document.getElementById('pay_month').value||'')+'.csv';
+  a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
+  if(typeof logActivity==='function')logActivity('payroll_export','staff',null,R.label+' \u2014 '+rows.length+' staff');
+}
+
+function payrollPayslips(){
+  var rows=_payrollRows();
+  if(!rows.length){showToast('Nothing to print');return;}
+  var R=rows[0].month;
+  var money=function(n){return '\u20B9'+(parseFloat(n)||0).toLocaleString('en-IN',{minimumFractionDigits:2});};
+  var out='';
+  rows.forEach(function(r,i){
+    out+='<div style="'+(i?'page-break-before:always;':'')+'padding:24px;font-family:Arial,sans-serif">'+
+      '<div style="background:#0a0e13;color:#fff;padding:20px 24px;border-radius:6px;display:flex;justify-content:space-between;align-items:center">'+
+        '<div><div style="font-size:22px;font-weight:900;letter-spacing:5px">MANI<span style="color:#00d4a0">FUELS</span></div>'+
+        '<div style="font-size:9px;color:#8a97a8;letter-spacing:3px;margin-top:3px">SALARY STATEMENT</div></div>'+
+        '<div style="text-align:right"><div style="font-size:9px;color:#8a97a8;letter-spacing:2px">PERIOD</div>'+
+        '<div style="font-size:13px;font-weight:700">'+R.label+'</div></div>'+
+      '</div>'+
+      '<div style="display:flex;justify-content:space-between;background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;padding:14px 18px;margin-top:16px">'+
+        '<div><div style="font-size:9px;color:#666;letter-spacing:1.5px">EMPLOYEE</div>'+
+        '<div style="font-size:17px;font-weight:800">'+_esc(r.staff.name)+'</div>'+
+        '<div style="font-size:11px;color:#666;margin-top:3px">'+_esc(r.staff.role||'')+
+        (r.staff.joinedDate?' \u00b7 joined '+_esc(r.staff.joinedDate):'')+'</div></div>'+
+        '<div style="text-align:right"><div style="font-size:9px;color:#666;letter-spacing:1.5px">NET PAYABLE</div>'+
+        '<div style="font-size:20px;font-weight:900;color:'+(r.net>0?'#0d7c3f':'#333')+'">'+money(r.net)+'</div></div>'+
+      '</div>'+
+      '<table style="width:100%;border-collapse:collapse;margin-top:16px;font-size:11px">'+
+        '<thead><tr>'+
+        ['ATTENDANCE','DAYS'].map(function(h){return '<th style="background:#1a1a2e;color:#00d4a0;padding:7px 10px;text-align:left;font-size:9px;letter-spacing:1px;border:1px solid #333">'+h+'</th>';}).join('')+
+        '</tr></thead><tbody>'+
+        [['Days employed in period',r.eligible],['Present',r.present],['Half days',r.half],
+         ['Absent',r.absent],['Not marked',r.unmarked],['<b>Days paid</b>','<b>'+r.worked+'</b>']]
+         .map(function(x){return '<tr><td style="padding:6px 10px;border:1px solid #ddd">'+x[0]+'</td>'+
+           '<td style="padding:6px 10px;border:1px solid #ddd;text-align:right">'+x[1]+'</td></tr>';}).join('')+
+        '</tbody></table>'+
+      '<table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:11px">'+
+        '<thead><tr>'+
+        ['CALCULATION','AMOUNT'].map(function(h){return '<th style="background:#1a1a2e;color:#00d4a0;padding:7px 10px;text-align:left;font-size:9px;letter-spacing:1px;border:1px solid #333">'+h+'</th>';}).join('')+
+        '</tr></thead><tbody>'+
+        [['Monthly salary',money(r.salary)],['Per day',money(r.perDay)],
+         ['Earned ('+r.worked+' days)',money(r.earned)],
+         ['Less: advance recovered','\u2212 '+money(r.advApplied)],
+         ['Less: already paid this month','\u2212 '+money(r.paid)]]
+         .map(function(x){return '<tr><td style="padding:6px 10px;border:1px solid #ddd">'+x[0]+'</td>'+
+           '<td style="padding:6px 10px;border:1px solid #ddd;text-align:right">'+x[1]+'</td></tr>';}).join('')+
+        '<tr style="background:#e8f5e9;font-weight:900"><td style="padding:9px 10px;border:1px solid #ddd">NET PAYABLE</td>'+
+        '<td style="padding:9px 10px;border:1px solid #ddd;text-align:right;font-size:14px">'+money(r.net)+'</td></tr>'+
+        '</tbody></table>'+
+      (r.advance>r.advApplied?'<div style="margin-top:10px;padding:8px 12px;background:#fff8e1;border:1px solid #ffe082;border-radius:4px;font-size:10px">Advance still outstanding after this month: <b>'+money(r.advance-r.advApplied)+'</b></div>':'')+
+      '<div style="margin-top:26px;display:flex;justify-content:space-between;font-size:10px;color:#666">'+
+        '<div>Received by: ______________________</div><div>For Mani Fuels: ______________________</div>'+
+      '</div>'+
+      '<div style="margin-top:18px;padding-top:10px;border-top:1px solid #ccc;font-size:9px;color:#888;text-align:center">'+
+        'Computed from the attendance register. Generated '+new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})+
+      '</div>'+
+    '</div>';
+  });
+  document.getElementById('pdf-print-area').innerHTML=out;
+  if(typeof logActivity==='function')logActivity('payroll_payslip','staff',null,R.label+' \u2014 '+rows.length+' payslips');
+  setTimeout(function(){window.print();},400);
+}
+
 function renderStaff(){
   const cards=document.getElementById('staff_cards');
   const empty=document.getElementById('staff_empty');
@@ -7152,9 +7609,12 @@ function renderStaff(){
   sorted.forEach(s=>{
     const monthStart=new Date();monthStart.setDate(1);
     const ms=_isoLocal(monthStart);
-    const attMonth=staffAttendance.filter(a=>a.staffId===s.id&&a.date>=ms&&a.status==='present').length;
-    const halfMonth=staffAttendance.filter(a=>a.staffId===s.id&&a.date>=ms&&a.status==='half').length;
-    const effectiveDays=attMonth+halfMonth*0.5;
+    // Was counting attendance ROWS, so somebody marked present in both the
+    // morning and the night shift earned two days for one calendar day.
+    // payrollFor() applies the same double-shift rule the report uses.
+    const _pr=payrollFor(s, monthStart.getFullYear()+'-'+String(monthStart.getMonth()+1).padStart(2,'0'));
+    const effectiveDays=_pr.worked;
+    const halfMonth=_pr.half;
     // Advance balance: total advances - amount deducted from advances
     const totalAdv=staffPayments.filter(p=>p.staffId===s.id&&p.type==='advance').reduce((sum,p)=>sum+(p.amount||0),0);
     const totalDeducted=staffPayments.filter(p=>p.staffId===s.id).reduce((sum,p)=>sum+(p.advanceDeducted||0),0);
@@ -7330,11 +7790,15 @@ function renderAttendance(){
 function setAttendance(staffId,date,shift,status){
   const idx=staffAttendance.findIndex(a=>a.staffId===staffId&&a.date===date&&a.shift===shift);
   if(!status){
-    // Remove
+    // Clearing a mark used to happen locally only, so the row stayed on the
+    // server and the next sync merged it straight back — the mark appeared to
+    // un-clear itself, and payroll kept counting the day.
     if(idx>=0)staffAttendance.splice(idx,1);
+    if(_currentUser&&typeof sbDeleteAttendance==='function')
+      sbDeleteAttendance(staffId,date,shift).catch(console.error);
   } else {
     if(idx>=0){staffAttendance[idx].status=status;}
-    else {staffAttendance.push({id:Date.now()+Math.random(),staffId,date,shift,status,notes:''});}
+    else {staffAttendance.push({id:_newId(),staffId,date,shift,status,notes:''});}
   }
   saveAttLS();
   if(_currentUser&&typeof sbSaveAttendance==='function'){
@@ -7617,6 +8081,24 @@ async function sbSaveAttendance(a){
       date:a.date, shift:a.shift, status:a.status, notes:a.notes||''});
   }catch(e){console.error('Save attendance failed:',e.message);}
 }
+// staff_attendance is keyed on (staff_id, date, shift), not on id, so the
+// generic single-column delete cannot express it.
+async function sbDeleteAttendance(staffId,date,shift){
+  if(!_currentUser)return;
+  const where={user_id:_currentUser.id, staff_id:staffId, date:date, shift:shift};
+  if(!_supa||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+    _outboxQueue('staff_attendance','deleteWhere',where); return;
+  }
+  try{
+    const {error}=await _supa.from('staff_attendance').delete()
+      .eq('user_id',_currentUser.id).eq('staff_id',staffId).eq('date',date).eq('shift',shift);
+    if(error)throw new Error(error.message);
+  }catch(e){
+    console.warn('Attendance delete queued for retry:',e.message);
+    _outboxQueue('staff_attendance','deleteWhere',where);
+  }
+}
+
 async function sbSavePayment(p){
   if(!_currentUser)return;   // no _supa: _sbUpsert queues it
   try{
@@ -7931,7 +8413,14 @@ async function _outboxFlush(){
   for(const job of q){
     try{
       let error=null;
-      if(job.op==='delete'){
+      if(job.op==='deleteWhere'){
+        // Compound key (staff_attendance is one). `rows` holds the whole
+        // where-clause rather than a single value.
+        let q=_supa.from(job.table).delete();
+        Object.keys(job.rows||{}).forEach(function(k){ q=q.eq(k, job.rows[k]); });
+        const r=await q;
+        error=r.error;
+      } else if(job.op==='delete'){
         const r=await _supa.from(job.table).delete()
           .eq(job.key||'id', job.rows).eq('user_id', _currentUser.id);
         error=r.error;
