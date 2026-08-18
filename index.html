@@ -1882,17 +1882,17 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:end">
       <div>
         <div class="flabel" style="margin-bottom:4px;color:var(--petrol)">MSD OPENING VOLUME (L)</div>
-        <input type="number" id="msd_opening" placeholder="e.g. 12500.000" step="0.001" oninput="calcOpeningStock()" style="width:100%">
+        <input type="number" id="msd_opening" placeholder="e.g. 12500.000" step="0.001" inputmode="decimal" oninput="calcOpeningStock()" onchange="saveOpeningNow()" style="width:100%">
         <div style="font-size:10px;color:var(--muted);margin-top:3px">Current volume of petrol in tank right now</div>
       </div>
       <div>
         <div class="flabel" style="margin-bottom:4px;color:var(--diesel)">HSD OPENING VOLUME (L)</div>
-        <input type="number" id="hsd_opening" placeholder="e.g. 8000.000" step="0.001" oninput="calcOpeningStock()" style="width:100%">
+        <input type="number" id="hsd_opening" placeholder="e.g. 8000.000" step="0.001" inputmode="decimal" oninput="calcOpeningStock()" onchange="saveOpeningNow()" style="width:100%">
         <div style="font-size:10px;color:var(--muted);margin-top:3px">Current volume of diesel in tank right now</div>
       </div>
       <div style="text-align:center;padding:8px">
         <div class="chip" id="opening_chip" style="font-size:11px;display:inline-block">Not set</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:6px">Saved automatically on input</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px">Synced to all devices</div>
       </div>
     </div>
   </div>
@@ -2079,6 +2079,9 @@ async function renderRateHistory(){
 }
 
 async function sbSaveRateHistory(h){
+  // Append-only audit log, best effort. The outbox only replays upserts and
+  // deletes, so there is nothing to queue an insert into — a rate change made
+  // offline is not logged. The rate itself still syncs via app_settings.
   if(!_currentUser||!_supa)return;
   try{
     await _supa.from('rate_history').insert({
@@ -2255,13 +2258,25 @@ function saveRates(){
   localStorage.setItem('fuelRates',JSON.stringify(newRates));
   if(_currentUser)sbSaveSettings().catch(console.error);
 }
+// Every settings write funnels through here. The tank, order and opening
+// fields are all wired to oninput, so an undebounced save meant one network
+// write per keystroke — the same failure mode that produced the rate-history
+// row explosion.
+var _settingsSaveTimer=null;
+function queueSettingsSave(){
+  clearTimeout(_settingsSaveTimer);
+  _settingsSaveTimer=setTimeout(function(){
+    if(_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(console.error);
+  },1200);
+}
+
 // Settings that change how a shift is calculated. These were device-local, so
 // enabling a 20 ml pack on one phone left the others computing a different
 // pack value from identical readings.
 function _deviceConfig(){
   var g=function(k){ try{ return JSON.parse(localStorage.getItem(k)||'null'); }catch(e){ return null; } };
   return {
-    packSizes:   (typeof packSizesConfig!=='undefined') ? packSizesConfig : g('packSizesConfig'),
+    packSizes:   (typeof packSizesConfig!=='undefined') ? packSizesConfig : g('packSizes'),
     tankCfg:     g('tankCfg'),
     orderCfg:    g('orderCfg'),
     looseOilCfg: g('looseOilCfg')
@@ -2270,9 +2285,13 @@ function _deviceConfig(){
 function _applyDeviceConfig(cfg){
   if(!cfg) return;
   if(cfg.packSizes && Array.isArray(cfg.packSizes)){
-    localStorage.setItem('packSizesConfig', JSON.stringify(cfg.packSizes));
+    // Key is 'packSizes' — the one savePackSizesConfig() writes and the one
+    // read at boot. Writing 'packSizesConfig' here meant pack sizes pulled
+    // from the server were stored somewhere nothing ever loads.
+    localStorage.setItem('packSizes', JSON.stringify(cfg.packSizes));
     if(typeof packSizesConfig!=='undefined') packSizesConfig=cfg.packSizes;
     if(typeof renderExtraPackSizes==='function')renderExtraPackSizes();
+    if(typeof populatePackSizeDropdown==='function')populatePackSizeDropdown();
   }
   if(cfg.tankCfg)     localStorage.setItem('tankCfg', JSON.stringify(cfg.tankCfg));
   if(cfg.orderCfg)    localStorage.setItem('orderCfg', JSON.stringify(cfg.orderCfg));
@@ -5345,7 +5364,7 @@ function saveTankCfg(){
     capHSD:parseFloat(document.getElementById('cfg_cap_hsd').value)||20000,
     tol:parseFloat(document.getElementById('cfg_tol').value)||0
   }));
-  if(_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(function(){});
+  queueSettingsSave();
   if(typeof renderDip==='function')renderDip();
 }
 
@@ -5618,7 +5637,7 @@ function saveOrderCfg(){
     leadDays:g('cfg_lead_days',d.leadDays), normalKL:g('cfg_normal_kl',d.normalKL),
     minKL:g('cfg_min_kl',d.minKL), safetyDays:g('cfg_safety_days',d.safetyDays),
     reserveL:g('cfg_reserve_l',d.reserveL)}));
-  if(_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(function(){});
+  queueSettingsSave();
   if(typeof renderAdvisor==='function')renderAdvisor();
 }
 
@@ -6023,16 +6042,26 @@ function renderAdvChart(a){
   });
 }
 
+// Opening volumes are the baseline every tank figure is counted from, and
+// they used to be written to localStorage and nowhere else — so a change made
+// on one phone was invisible everywhere and was reverted by the next sync,
+// which pulls app_settings.opening_msd back into the box.
+// The `if(msd||hsd)` guard also meant setting a tank to 0 did nothing at all.
 function calcOpeningStock(){
   const msd=parseFloat(document.getElementById('msd_opening')?.value)||0;
   const hsd=parseFloat(document.getElementById('hsd_opening')?.value)||0;
-  if(msd||hsd){
-    fuelOpeningMSD=msd;fuelOpeningHSD=hsd;
-    localStorage.setItem('fuelOpeningMSD',msd);
-    localStorage.setItem('fuelOpeningHSD',hsd);
-    document.getElementById('opening_chip').textContent=
-      `MSD opening: ${msd.toFixed(3)}L | HSD opening: ${hsd.toFixed(3)}L`;
-  }
+  fuelOpeningMSD=msd;fuelOpeningHSD=hsd;
+  localStorage.setItem('fuelOpeningMSD',msd);
+  localStorage.setItem('fuelOpeningHSD',hsd);
+  const chip=document.getElementById('opening_chip');
+  if(chip)chip.textContent=(msd||hsd)
+    ? `MSD opening: ${msd.toFixed(3)}L | HSD opening: ${hsd.toFixed(3)}L`
+    : 'Not set';
+  queueSettingsSave();   // oninput fires per keystroke — debounced like rates
+}
+function saveOpeningNow(){
+  clearTimeout(_settingsSaveTimer);
+  if(_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(console.error);
 }
 
 function toggleFuelLoadForm(){
@@ -7569,7 +7598,7 @@ function renderDrawings(){
 // SUPABASE SYNC FOR STAFF & DRAWINGS
 // ═══════════════════════════════════════════════════
 async function sbSaveStaff(s){
-  if(!_currentUser||!_supa)return;
+  if(!_currentUser)return;   // no _supa: _sbUpsert queues it
   try{
     await _sbUpsert('staff', {
       id:Math.round(s.id),user_id:_currentUser.id,name:s.name,role:s.role,
@@ -7580,7 +7609,7 @@ async function sbSaveStaff(s){
   }catch(e){console.error('Save staff failed:',e.message);}
 }
 async function sbSaveAttendance(a){
-  if(!_currentUser||!_supa)return;
+  if(!_currentUser)return;   // no _supa: _sbUpsert queues it
   try{
     // Conflict key is (staff_id,date,shift) — see MF_CONFLICT_KEY. Routed
     // through _sbUpsert so a failure queues instead of vanishing.
@@ -7589,7 +7618,7 @@ async function sbSaveAttendance(a){
   }catch(e){console.error('Save attendance failed:',e.message);}
 }
 async function sbSavePayment(p){
-  if(!_currentUser||!_supa)return;
+  if(!_currentUser)return;   // no _supa: _sbUpsert queues it
   try{
     await _sbUpsert('staff_payments', {
       id:Math.round(p.id),user_id:_currentUser.id,staff_id:p.staffId,
@@ -7600,7 +7629,7 @@ async function sbSavePayment(p){
   }catch(e){console.error('Save payment failed:',e.message);}
 }
 async function sbSaveDrawing(d){
-  if(!_currentUser||!_supa)return;
+  if(!_currentUser)return;   // no _supa: _sbUpsert queues it
   try{
     await _sbUpsert('owner_drawings', {
       id:Math.round(d.id),user_id:_currentUser.id,date:d.date,
@@ -8029,7 +8058,7 @@ async function sbSaveDip(d){
 }
 
 async function sbSaveRecord(rec) {
-  if (!_currentUser || !_supa) return;
+  if (!_currentUser) return;
   const base = {
     id: rec.id, user_id: _currentUser.id, date: rec.date, shift: rec.shift,
     msd_t: rec.msdT, hsd_t: rec.hsdT, msd_v: rec.msdV, hsd_v: rec.hsdV,
@@ -8054,18 +8083,27 @@ async function sbSaveRecord(rec) {
   // insert would be rejected and the whole shift would fail to sync, so retry
   // without it rather than lose the record:
   //   alter table shift_records add column if not exists stock_sold jsonb default '[]'::jsonb;
+  const full = Object.assign({stock_sold: rec.stockSold || []}, base);
+  // Offline or client not built yet: queue the FULL row. Only a real server
+  // rejection is treated as "this column does not exist", and only then is
+  // stock_sold dropped — otherwise every offline shift silently lost its
+  // per-item COGS detail.
+  if (!_supa || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+    await _sbUpsert('shift_records', full);
+    return;
+  }
   try {
-    const { error } = await _supa.from('shift_records')
-      .upsert(Object.assign({stock_sold: rec.stockSold || []}, base), { onConflict: 'id' });
+    const { error } = await _supa.from('shift_records').upsert(full, { onConflict: 'id' });
     if (error) throw error;
   } catch(e){
+    console.warn('shift_records rejected full row, retrying without stock_sold:', e.message);
     try { await _sbUpsert('shift_records', base); }
     catch(e2){ console.error('Save shift record failed:',e2.message); }
   }
 }
 
 async function sbSaveAllStock() {
-  if (!_currentUser || !_supa) return;
+  if (!_currentUser) return;   // no _supa: _sbUpsert queues it
   try {
   const rows = stock.map(s => ({
     id: s.id, user_id: _currentUser.id,
@@ -8077,7 +8115,7 @@ async function sbSaveAllStock() {
 }
 
 async function sbSaveLedgerEntry(entry) {
-  if (!_currentUser || !_supa) return;
+  if (!_currentUser) return;   // no _supa: _sbUpsert queues it
   try {
     const id = Math.round(entry.id);
     await _sbUpsert('ledger_entries', {
@@ -8093,26 +8131,32 @@ async function sbSaveLedgerEntry(entry) {
 }
 
 async function sbDeleteLedgerEntry(id) {
-  if (!_currentUser || !_supa) return;
+  if (!_currentUser) return;   // no _supa: _sbUpsert queues it
   try {
     await _sbRemove('ledger_entries', Math.round(id), 'id');
   } catch(e){ console.error('Delete ledger entry failed:', e.message); }
 }
 
 async function sbSaveAllLedger() {
-  if (!_currentUser || !_supa) return;
+  if (!_currentUser) return;   // no _supa: _sbUpsert queues it
   try {
   const rows = ledger.map(e => ({
     id: e.id, user_id: _currentUser.id,
     date: e.date, customer: e.customer, shift: e.shift,
-    fuel: e.fuel, amount: e.amount, paid_back: e.paidBack
+    fuel: e.fuel, amount: e.amount, paid_back: e.paidBack || 0,
+    kind: e.kind || (e.amount < 0 ? 'advance' : 'credit'),
+    notes: e.notes || '', shift_id: e.shiftId || null,
+    // Without a timestamp the merge resolves in the server's favour, so a
+    // bulk save used to be quietly undone by the next pull.
+    updated_at: _touch(e).updatedAt,
+    created_by: _currentUser.username, updated_by: _currentUser.username
   }));
   if (rows.length) await _sbUpsert('ledger_entries', rows);
   } catch(e){ console.error('Save ledger failed:',e.message); }
 }
 
 async function sbSaveOilInvoice(inv) {
-  if (!_currentUser || !_supa) return;
+  if (!_currentUser) return;   // no _supa: _sbUpsert queues it
   try {
   await _sbUpsert('oil_invoices', {
     id: inv.id, user_id: _currentUser.id,
@@ -8125,7 +8169,7 @@ async function sbSaveOilInvoice(inv) {
 }
 
 async function sbSaveFuelLoad(load) {
-  if (!_currentUser || !_supa) return;
+  if (!_currentUser) return;   // no _supa: _sbUpsert queues it
   try {
   await _sbUpsert('fuel_loads', {
     id: load.id, user_id: _currentUser.id,
@@ -8147,7 +8191,7 @@ async function sbSaveFuelLoad(load) {
 }
 
 async function sbSaveSettings() {
-  if (!_currentUser || !_supa) return;
+  if (!_currentUser) return;   // no _supa: _sbUpsert queues it
   try {
   const rates = JSON.parse(localStorage.getItem('fuelRates') || 'null');
   await _sbUpsert('app_settings', {
@@ -8162,7 +8206,7 @@ async function sbSaveSettings() {
 
 // ── CUSTOMER PROFILES (per-customer fixed discount rate) ──
 async function sbSaveCustProfile(name) {
-  if (!_currentUser || !_supa) return;
+  if (!_currentUser) return;   // no _supa: _sbUpsert queues it
   try {
     const p = customerProfiles[name] || {};
     await _sbUpsert('customer_profiles', {
@@ -8195,7 +8239,7 @@ async function sbLoadCustProfiles() {
 
 // ── PACK REGISTER (40ml pack purchases) ──
 async function sbSavePackEntry(p) {
-  if (!_currentUser || !_supa) return;
+  if (!_currentUser) return;   // no _supa: _sbUpsert queues it
   try {
     await _sbUpsert('pack_register', {
       id: Math.round(p.id), user_id: _currentUser.id,
@@ -8208,7 +8252,7 @@ async function sbSavePackEntry(p) {
 }
 
 async function sbDeletePackEntry(id) {
-  if (!_currentUser || !_supa) return;
+  if (!_currentUser) return;   // no _supa: _sbUpsert queues it
   try {
     await _sbRemove('pack_register', Math.round(id), 'id');
   } catch(e){ console.error('Delete pack entry failed:', e.message); }
@@ -8291,6 +8335,29 @@ async function loadAllFromSupabase(silent) {
     let dipRes = {data:null};
     try{ dipRes = await _supa.from('dip_readings').select('*').eq('user_id', uid).order('date',{ascending:false}); }
     catch(e){ console.warn('Dip readings table not present yet'); }
+
+    // supabase-js does not throw on a rejected query; it resolves with
+    // {error}. Nothing here checked that, so a permissions failure was
+    // indistinguishable from an empty table and the app just went quiet.
+    const _readErrs = [
+      ['shift_records',  recRes],  ['stock_items',   stockRes],
+      ['ledger_entries', ledRes],  ['oil_invoices',  oilRes],
+      ['fuel_loads',     flRes],   ['app_settings',  setRes],
+      ['dip_readings',   dipRes]
+    ].filter(function(p){ return p[1] && p[1].error; })
+     .map(function(p){ return p[0]+': '+(p[1].error.message||'read rejected'); });
+    if(_readErrs.length){
+      console.error('SYNC READ FAILED —', _readErrs.join(' | '));
+      showToast('⚠ Cannot read '+_readErrs.length+' table(s): '+_readErrs[0].slice(0,70));
+    }
+    // Nothing came back from any table at all. Either the station has no data
+    // yet, or every row is still keyed to the old per-username user_id and
+    // db/008_one_station.sql has not been applied.
+    if(!_readErrs.length && !(recRes.data||[]).length && !(stockRes.data||[]).length
+       && !(ledRes.data||[]).length && !setRes.data){
+      console.warn('Server returned nothing for user_id="'+uid+'". If this station '+
+        'has data, apply db/008_one_station.sql — rows are still keyed to usernames.');
+    }
 
     if (recRes.data) {
       const remoteRecs = recRes.data.map(r => ({
@@ -8394,6 +8461,11 @@ async function loadAllFromSupabase(silent) {
       if (s.opening_msd != null) { fuelOpeningMSD = s.opening_msd; localStorage.setItem('fuelOpeningMSD', s.opening_msd); const el=document.getElementById('msd_opening');if(el)el.value=s.opening_msd; }
       if (s.config) _applyDeviceConfig(s.config);
       if (s.opening_hsd != null) { fuelOpeningHSD = s.opening_hsd; localStorage.setItem('fuelOpeningHSD', s.opening_hsd); const el=document.getElementById('hsd_opening');if(el)el.value=s.opening_hsd; }
+    } else if (!setRes.error) {
+      // No settings row on the server yet. Seed it from this device rather
+      // than waiting for someone to touch a rate, or opening volumes and tank
+      // config stay device-local forever.
+      await sbSaveSettings();
     }
 
     // Load customer profiles & pack register (new tables, may not exist on old schemas)
@@ -8681,7 +8753,7 @@ function startSyncPolling(){
     // If the realtime channel is live it already tells us about changes, so a
     // poll would just burn egress. Poll only as a fallback, or to drain the
     // outbox when there is something waiting.
-    if(_realtimeChannel && !_outboxDepth()) return;
+    if(_realtimeLive && !_outboxDepth()) return;
     silentSync();
   }, 300000); // every 5 minutes — see note above on free-tier egress
 }
@@ -8694,6 +8766,7 @@ function stopSyncPolling(){
 }
 
 // ── Layer 3: Supabase Realtime subscription ──
+var _realtimeLive = false;
 function startRealtimeSync(){
   if(!_supa || !_currentUser || _realtimeChannel) return;
   try {
@@ -8705,13 +8778,22 @@ function startRealtimeSync(){
       .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_items' },      function(){ silentSync(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'oil_invoices' },     function(){ silentSync(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' },     function(){ silentSync(); })
-      .subscribe();
+      .subscribe(function(status){
+        _realtimeLive = (status === 'SUBSCRIBED');
+        if(!_realtimeLive){
+          // Most often this means the tables are not in the supabase_realtime
+          // publication — db/003_realtime.sql, or Database → Replication.
+          console.warn('Realtime not delivering ('+status+') — polling every 5 min instead.');
+        }
+      });
   } catch(e){
-    console.log('Realtime not available:', e.message);
+    _realtimeLive = false;
+    console.warn('Realtime not available:', e.message);
   }
 }
 
 function stopRealtimeSync(){
+  _realtimeLive = false;
   if(_realtimeChannel && _supa){
     try { _supa.removeChannel(_realtimeChannel); } catch(e){}
     _realtimeChannel = null;
