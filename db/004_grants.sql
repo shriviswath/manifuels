@@ -5,7 +5,7 @@
 -- that table alone. This re-asserts the access model the whole schema uses.
 --
 -- This is a stopgap, not the answer. The answer is RLS with real auth, staged
--- as 005_rls_and_auth.sql.pending. Until then the anon key can read and write
+-- as 099_rls_and_auth.sql.pending. Until then the anon key can read and write
 -- everything, which is exactly the exposure that migration closes.
 
 do $$
