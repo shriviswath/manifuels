@@ -42,15 +42,18 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-:root{--bg:#0a0e13;--s1:#111820;--s2:#18202c;--s3:#1e2836;--border:#2a3444;--border2:#344156;
+:root{
+/* Charcoal layers — primary canvas, raised surfaces, dividers.               */
+--bg:#121212;--s1:#181818;--s2:#1F1F1F;--s3:#262626;--border:#2F2F2F;--border2:#3D3D3D;
+/* Accents carry meaning (MSD / HSD / shortage / surplus) — unchanged.        */
 --petrol:#00d4a0;--diesel:#ffb020;--blue:#4da6ff;--red:#ff4d6a;--green:#3ddc84;--purple:#b57bff;
---text:#dce8f5;--muted:#6b7e96;--dim:#3a4a5c}
+--text:#FFFFFF;--muted:#AAAAAA;--dim:#6E6E6E}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-size:13px;min-height:100vh;overflow-x:hidden}
 ::-webkit-scrollbar{width:5px;height:5px}
 input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 input[type=number]{-moz-appearance:textfield}::-webkit-scrollbar-track{background:var(--s1)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
-header{background:linear-gradient(90deg,#0d1520,#111e2e);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:52px;position:sticky;top:0;z-index:200}
+header{background:var(--s1);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:52px;position:sticky;top:0;z-index:200}
 .logo{font-size:20px;font-weight:800;letter-spacing:3px}.logo span{color:var(--petrol)}
 .hdr-right{display:flex;align-items:center;gap:10px}
 .shift-pill{display:flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden}
@@ -238,6 +241,7 @@ function showApp(){
   var u=document.getElementById('user-chip');
   if(u&&_currentUser)u.textContent=(_currentUser.display||_currentUser.username||'USER').toUpperCase();
   document.querySelectorAll('.owner-only').forEach(function(e){e.classList.toggle('show',_isOwner);});
+  if(typeof updateHeaderContext==='function')updateHeaderContext('dashboard');
   if(SUPABASE_URL.startsWith('https://')&&typeof supabase!=='undefined'){
     if(!_supa)_supa=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
   }
@@ -319,7 +323,7 @@ document.addEventListener('DOMContentLoaded',function(){
 </script>
 </head>
 <body>
-<div id="login-overlay" style="display:flex;position:fixed;inset:0;background:linear-gradient(135deg,#060c14,#0d1a2b);z-index:9999;align-items:center;justify-content:center;font-family:'Syne',sans-serif">
+<div id="login-overlay" style="display:flex;position:fixed;inset:0;background:var(--bg);z-index:9999;align-items:center;justify-content:center;font-family:'Syne',sans-serif">
   <div style="width:100%;max-width:400px;padding:24px;background:var(--s2);border:1px solid var(--border2);border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.7)">
     <div style="text-align:center;font-size:28px;font-weight:800;letter-spacing:5px;margin-bottom:28px">MANI<span style="color:var(--petrol)">FUELS</span></div>
     <div style="margin-bottom:14px">
@@ -341,11 +345,11 @@ document.addEventListener('DOMContentLoaded',function(){
   <div class="logo">MANI<span>FUELS</span></div>
   <div class="hdr-right">
     <span class="chip" id="dtChip">—</span>
-    <div class="shift-pill">
+    <div class="shift-pill" id="shiftPill">
       <button class="shift-btn morning active" onclick="setShift('morning')">☀ MORNING</button>
       <button class="shift-btn night" onclick="setShift('night')">🌙 NIGHT</button>
     </div>
-    <button class="owner-only" onclick="showPage('report')" title="Jump to Profit & Loss" style="font-family:'Syne',sans-serif;font-weight:800;font-size:11px;letter-spacing:1px;padding:6px 14px;border-radius:6px;border:1px solid rgba(0,212,160,.35);background:rgba(0,212,160,.1);color:var(--petrol);cursor:pointer;align-items:center;gap:6px">📈 P&amp;L</button>
+    <button class="owner-only" id="plQuickBtn" onclick="showPage('report')" title="Jump to Profit & Loss" style="font-family:'Syne',sans-serif;font-weight:800;font-size:11px;letter-spacing:1px;padding:6px 14px;border-radius:6px;border:1px solid rgba(0,212,160,.35);background:rgba(0,212,160,.1);color:var(--petrol);cursor:pointer;align-items:center;gap:6px">📈 P&amp;L</button>
   </div>
 <div style="display:flex;align-items:center;gap:8px;margin-left:8px">
       <div id="globalAlertBell" style="position:relative;cursor:pointer" onclick="toggleGlobalAlerts()" title="Alerts">
@@ -407,7 +411,7 @@ document.addEventListener('DOMContentLoaded',function(){
 <!-- ════ DASHBOARD ════ -->
 <style>
 .dash-wrap{padding:14px;max-width:1400px;margin:0 auto}
-.dash-hero{background:linear-gradient(135deg,#0d1520 0%,#162333 100%);border:1px solid var(--border2);border-radius:10px;padding:18px;margin-bottom:14px;position:relative;overflow:hidden}
+.dash-hero{background:var(--s2);border:1px solid var(--border2);border-radius:10px;padding:18px;margin-bottom:14px;position:relative;overflow:hidden}
 .dash-hero::before{content:'';position:absolute;top:-50%;right:-10%;width:300px;height:300px;background:radial-gradient(circle,rgba(0,212,160,.08),transparent 70%);pointer-events:none}
 .dash-hero-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;position:relative}
 .dash-greeting{font-family:'Syne',sans-serif;font-weight:800;font-size:20px;letter-spacing:1px;color:var(--text)}
@@ -1242,13 +1246,48 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
   <div id="led_list_view">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px">
       <div class="sec" style="margin:0;border:none"><span class="dot dd"></span>CREDIT CUSTOMER LEDGER</div>
-      <button class="btn btn-g" onclick="addLedgerEntry()">&#65291; ADD ENTRY</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-g" onclick="toggleBizPanel()">&#127970; BUSINESS &amp; INVOICE DETAILS</button>
+        <button class="btn btn-g" onclick="addLedgerEntry()">&#65291; ADD ENTRY</button>
+      </div>
+    </div>
+    <!-- Bill-from block. Printed at the top of every invoice, shared across devices. -->
+    <div id="biz_panel" style="display:none;margin-bottom:12px">
+      <div class="card" style="border-color:var(--petrol)">
+        <div class="card-head" style="color:var(--petrol)">BUSINESS DETAILS &mdash; PRINTED ON EVERY INVOICE</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:10px">
+          <div><div class="flabel" style="margin-bottom:4px">BUSINESS NAME</div><input type="text" id="bz_name" placeholder="Mani Fuels"></div>
+          <div><div class="flabel" style="margin-bottom:4px">GSTIN</div><input type="text" id="bz_gstin" placeholder="33XXXXXXXXXXXZX"></div>
+          <div><div class="flabel" style="margin-bottom:4px">PHONE</div><input type="text" id="bz_phone" placeholder="+91 ..."></div>
+          <div><div class="flabel" style="margin-bottom:4px">EMAIL</div><input type="text" id="bz_email" placeholder="office@..."></div>
+        </div>
+        <div style="margin-bottom:10px"><div class="flabel" style="margin-bottom:4px">ADDRESS</div>
+          <textarea id="bz_address" rows="2" placeholder="Street, town, district, PIN" style="width:100%;resize:vertical"></textarea></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:10px">
+          <div><div class="flabel" style="margin-bottom:4px">INVOICE PREFIX</div><input type="text" id="bz_prefix" placeholder="MF"></div>
+          <div><div class="flabel" style="margin-bottom:4px">NEXT INVOICE NO.</div><input type="number" id="bz_seq" min="1"></div>
+          <div><div class="flabel" style="margin-bottom:4px">TAX ON INVOICE (%)</div><input type="number" id="bz_tax" step="0.01" min="0"></div>
+          <div><div class="flabel" style="margin-bottom:4px">PAYMENT DUE (DAYS)</div><input type="number" id="bz_due" min="0"></div>
+        </div>
+        <div style="margin-bottom:10px"><div class="flabel" style="margin-bottom:4px">PAYMENT INSTRUCTIONS</div>
+          <textarea id="bz_terms" rows="2" style="width:100%;resize:vertical"></textarea></div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:10px;line-height:1.6">
+          Pump sales are already taxed at source, so leave tax at 0 unless your auditor says otherwise.
+          The invoice number increases by one each time an invoice is printed &mdash; reprinting a bill issues a new number.
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="save-btn" onclick="saveBizDetails()">&#10003; SAVE</button>
+          <button class="btn btn-g" onclick="document.getElementById('biz_panel').style.display='none'">CANCEL</button>
+        </div>
+      </div>
     </div>
     <!-- Inline add form -->
     <div id="ledger_form" style="display:none;margin-bottom:12px">
       <div class="card" style="border-color:var(--diesel)">
         <div class="card-head" style="color:var(--diesel)">NEW LEDGER ENTRY</div>
-        <div style="display:grid;grid-template-columns:130px 1fr 1fr 1fr auto;gap:8px;align-items:end;flex-wrap:wrap">
+        <div style="display:grid;grid-template-columns:130px 140px 1fr 1fr 1fr auto;gap:8px;align-items:end;flex-wrap:wrap">
+          <div><div class="flabel" style="margin-bottom:4px">DATE</div>
+            <input type="date" id="lf_date" class="date-inp" style="width:100%;height:32px"></div>
           <div><div class="flabel" style="margin-bottom:4px">TYPE</div>
             <select id="lf_type" onchange="onLfTypeChange()" style="width:100%;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;height:32px">
               <option value="credit">Credit Given</option>
@@ -1292,7 +1331,9 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <span id="cust_disc_display" style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--diesel)">₹0/L</span>
         <button onclick="editCustDiscount()" style="font-family:'Syne',sans-serif;font-size:10px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:2px 8px;border-radius:3px;cursor:pointer;font-weight:700">EDIT</button>
       </div>
-      <button class="btn btn-g" onclick="generateCustomerStatement(currentLedgerCustomer)" style="margin-left:auto;padding:6px 14px">📄 STATEMENT PDF</button>
+      <button class="btn btn-g" onclick="editCustBilling()" style="margin-left:auto;padding:6px 14px">🏢 BILLING DETAILS</button>
+      <button class="btn btn-g" onclick="generateCustomerInvoice(currentLedgerCustomer)" style="padding:6px 14px">🧾 INVOICE PDF</button>
+      <button class="btn btn-g" onclick="generateCustomerStatement(currentLedgerCustomer)" style="padding:6px 14px">📄 STATEMENT PDF</button>
       <button class="btn btn-g" onclick="addLedgerEntryFor()" style="padding:6px 14px">&#65291; ADD TRANSACTION</button>
     </div>
     <!-- Discount edit panel (hidden by default) -->
@@ -1309,11 +1350,31 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <div id="disc_preview" style="margin-top:8px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)"></div>
       </div>
     </div>
+    <!-- Bill-to block for this customer. Used by the invoice, nothing else. -->
+    <div id="cust_bill_panel" style="display:none;margin-bottom:12px">
+      <div class="card" style="border-color:var(--blue);max-width:720px">
+        <div class="card-head" style="color:var(--blue)">BILLING DETAILS &mdash; <span id="bill_panel_name"></span></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:10px">
+          <div><div class="flabel" style="margin-bottom:4px">COMPANY / BILL-TO NAME</div><input type="text" id="cb_company" placeholder="Registered name"></div>
+          <div><div class="flabel" style="margin-bottom:4px">GSTIN</div><input type="text" id="cb_gstin" placeholder="Optional"></div>
+          <div><div class="flabel" style="margin-bottom:4px">PHONE</div><input type="text" id="cb_phone"></div>
+          <div><div class="flabel" style="margin-bottom:4px">EMAIL</div><input type="text" id="cb_email"></div>
+        </div>
+        <div style="margin-bottom:10px"><div class="flabel" style="margin-bottom:4px">ADDRESS</div>
+          <textarea id="cb_address" rows="2" placeholder="Street, town, district, PIN" style="width:100%;resize:vertical"></textarea></div>
+        <div style="display:flex;gap:8px">
+          <button class="save-btn" onclick="saveCustBilling()">&#10003; SAVE</button>
+          <button class="btn btn-g" onclick="document.getElementById('cust_bill_panel').style.display='none'">CANCEL</button>
+        </div>
+      </div>
+    </div>
     <!-- Inline add form for detail view -->
     <div id="ledger_form2" style="display:none;margin-bottom:12px">
       <div class="card" style="border-color:var(--diesel)">
         <div class="card-head" style="color:var(--diesel)">NEW TRANSACTION FOR <span id="form2_custname"></span></div>
-        <div style="display:grid;grid-template-columns:130px 1fr 1fr auto;gap:8px;align-items:end">
+        <div style="display:grid;grid-template-columns:130px 140px 1fr 1fr auto;gap:8px;align-items:end">
+          <div><div class="flabel" style="margin-bottom:4px">DATE</div>
+            <input type="date" id="lf_date2" class="date-inp" style="width:100%;height:32px"></div>
           <div><div class="flabel" style="margin-bottom:4px">TYPE</div>
             <select id="lf_type2" onchange="onLfTypeChange2()" style="width:100%;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;height:32px">
               <option value="credit">Credit Given</option>
@@ -2097,6 +2158,205 @@ let customerProfiles=JSON.parse(localStorage.getItem('custProfiles')||'{}');
 function saveCustProfiles(){localStorage.setItem('custProfiles',JSON.stringify(customerProfiles));}
 function getCustDiscount(name){return (customerProfiles[name]&&customerProfiles[name].discountPerL)||0;}
 
+// ══════════════════════════════════════════════════════════════════
+// BILLING PROFILES & INVOICING
+// A statement shows an account's history; an invoice demands a specific
+// amount by a specific date. Different documents, so the invoice gets its
+// own numbering, its own bill-from block and its own layout.
+// ══════════════════════════════════════════════════════════════════
+var BIZ_DEFAULT={name:'Mani Fuels',gstin:'',address:'',phone:'',email:'',
+  invPrefix:'MF',invSeq:1,taxPct:0,dueDays:7,
+  terms:'Payment can be made in cash, GPay or Paytm at the bunk office.'};
+var bizProfile=Object.assign({},BIZ_DEFAULT,(function(){
+  try{return JSON.parse(localStorage.getItem('bizProfile')||'{}');}catch(e){return {};}
+})());
+
+function saveBizProfileLS(){
+  localStorage.setItem('bizProfile',JSON.stringify(bizProfile));
+  // Rides on app_settings.config, so every device prints the same header.
+  if(typeof queueSettingsSave==='function')queueSettingsSave();
+}
+function toggleBizPanel(){
+  var p=document.getElementById('biz_panel');
+  if(!p)return;
+  var open=p.style.display==='none';
+  p.style.display=open?'block':'none';
+  if(open)renderBizPanel();
+}
+function renderBizPanel(){
+  var set=function(id,v){var e=document.getElementById(id);if(e)e.value=(v==null?'':v);};
+  set('bz_name',bizProfile.name);      set('bz_gstin',bizProfile.gstin);
+  set('bz_address',bizProfile.address);set('bz_phone',bizProfile.phone);
+  set('bz_email',bizProfile.email);    set('bz_prefix',bizProfile.invPrefix);
+  set('bz_seq',bizProfile.invSeq);     set('bz_tax',bizProfile.taxPct);
+  set('bz_due',bizProfile.dueDays);    set('bz_terms',bizProfile.terms);
+}
+function saveBizDetails(){
+  var g=function(id){var e=document.getElementById(id);return e?e.value:'';};
+  bizProfile.name=_clean(g('bz_name'))||'Mani Fuels';
+  bizProfile.gstin=_clean(g('bz_gstin'));
+  bizProfile.address=_clean(g('bz_address'));
+  bizProfile.phone=_clean(g('bz_phone'));
+  bizProfile.email=_clean(g('bz_email'));
+  bizProfile.invPrefix=_clean(g('bz_prefix'))||'MF';
+  bizProfile.invSeq=Math.max(1,parseInt(g('bz_seq'),10)||1);
+  bizProfile.taxPct=Math.max(0,parseFloat(g('bz_tax'))||0);
+  bizProfile.dueDays=Math.max(0,parseInt(g('bz_due'),10)||0);
+  bizProfile.terms=_clean(g('bz_terms'));
+  saveBizProfileLS();
+  var p=document.getElementById('biz_panel');if(p)p.style.display='none';
+  if(typeof logActivity==='function')logActivity('set_biz','settings','biz','Business / invoice details updated');
+  showToast('Saved — this header now prints on every invoice');
+}
+
+// Per-customer bill-to block. Falls back to the ledger name so an invoice can
+// always be printed, even before anybody fills the details in.
+function getCustBilling(name){
+  var b=(customerProfiles[name]||{}).billing||{};
+  return {company:b.company||name,gstin:b.gstin||'',address:b.address||'',
+          phone:b.phone||'',email:b.email||''};
+}
+function editCustBilling(){
+  var name=currentLedgerCustomer;if(!name)return;
+  var p=document.getElementById('cust_bill_panel');if(!p)return;
+  var b=getCustBilling(name);
+  var nm=document.getElementById('bill_panel_name');if(nm)nm.textContent=name;
+  var set=function(id,v){var e=document.getElementById(id);if(e)e.value=v||'';};
+  set('cb_company',b.company);set('cb_gstin',b.gstin);set('cb_address',b.address);
+  set('cb_phone',b.phone);set('cb_email',b.email);
+  p.style.display=p.style.display==='none'?'block':'none';
+}
+function saveCustBilling(){
+  var name=currentLedgerCustomer;if(!name)return;
+  var g=function(id){var e=document.getElementById(id);return e?_clean(e.value):'';};
+  if(!customerProfiles[name])customerProfiles[name]={};
+  customerProfiles[name].billing={company:g('cb_company')||name,gstin:g('cb_gstin'),
+    address:g('cb_address'),phone:g('cb_phone'),email:g('cb_email')};
+  saveCustProfiles();
+  if(_currentUser&&typeof sbSaveCustProfile==='function')sbSaveCustProfile(name).catch(console.error);
+  if(typeof logActivity==='function')logActivity('set_billing','customer',name,'Billing details updated');
+  var p=document.getElementById('cust_bill_panel');if(p)p.style.display='none';
+  showToast('Billing details saved for '+name);
+}
+
+// One invoice = everything this customer currently owes. Advance held is
+// applied first: billing somebody for money they have already handed over is
+// how a good account turns into an argument.
+function generateCustomerInvoice(name){
+  var rows=ledger.filter(function(e){
+    return e.customer===name && (e.amount||0)>0 && ((e.amount||0)-(e.paidBack||0))>0.005;
+  }).sort(function(a,b){
+    return String(a.date||'').localeCompare(String(b.date||''))||((a.id||0)-(b.id||0));
+  });
+  if(!rows.length){showToast(name+' has nothing outstanding to invoice');return;}
+
+  var money=function(n){return '\u20B9'+(parseFloat(n)||0).toLocaleString('en-IN',
+    {minimumFractionDigits:2,maximumFractionDigits:2});};
+  var lines=rows.map(function(e){
+    var due=_r2((e.amount||0)-(e.paidBack||0));
+    var part=(e.fuel&&e.fuel!=='Other'?e.fuel:'Fuel')+' supplied on credit \u2014 '+e.date+
+             (e.shift?' ('+e.shift+' shift)':'')+
+             ((e.paidBack||0)>0?' \u00b7 part paid '+money(e.paidBack):'');
+    return {desc:part,qty:1,unit:due,total:due};
+  });
+  var subtotal=_r2(lines.reduce(function(s,l){return s+l.total;},0));
+  var advHeld=ledger.filter(function(e){return e.customer===name&&(e.amount||0)<0;})
+    .reduce(function(s,e){return s+(Math.abs(e.amount)-(e.paidBack||0));},0);
+  var advance=_r2(Math.max(0,Math.min(advHeld,subtotal)));
+  var taxPct=parseFloat(bizProfile.taxPct)||0;
+  var taxable=_r2(subtotal-advance);
+  var tax=_r2(taxable*taxPct/100);
+  var total=_r2(taxable+tax);
+
+  var seq=Math.max(1,parseInt(bizProfile.invSeq,10)||1);
+  var today=new Date();
+  var invNo=(bizProfile.invPrefix||'MF')+'-'+today.getFullYear()+'-'+String(seq).padStart(4,'0');
+  var dueDate=new Date(today);
+  dueDate.setDate(dueDate.getDate()+(parseInt(bizProfile.dueDays,10)||0));
+  var fmtD=function(d){return d.toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});};
+  bizProfile.invSeq=seq+1; saveBizProfileLS();
+
+  var to=getCustBilling(name);
+  var addrBlock=function(a){
+    return String(a||'').split('\n').filter(function(x){return x.trim();})
+      .map(function(x){return _esc(x.trim());}).join('<br>');
+  };
+  var partyRow=function(label,p){
+    return '<div style="font-size:11px;line-height:1.7">'+
+      '<div style="font-weight:800;margin-bottom:4px">'+label+' '+_esc(p.name)+'</div>'+
+      (p.address?'<div style="color:#444">'+addrBlock(p.address)+'</div>':'')+
+      (p.gstin?'<div style="color:#444"><b>GSTIN:</b> '+_esc(p.gstin)+'</div>':'')+
+      (p.phone?'<div style="color:#444"><b>Phone:</b> '+_esc(p.phone)+'</div>':'')+
+      (p.email?'<div style="color:#444"><b>Email:</b> '+_esc(p.email)+'</div>':'')+
+      '</div>';
+  };
+
+  var out=
+  '<div style="font-family:Arial,Helvetica,sans-serif;color:#111;padding:26px 30px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:26px">'+
+      '<div style="font-size:20px;font-weight:900;letter-spacing:4px">'+_esc(bizProfile.name||'Mani Fuels')+'</div>'+
+      '<div style="font-size:40px;font-weight:300;letter-spacing:10px">INVOICE</div>'+
+    '</div>'+
+    '<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:14px">'+
+      '<div><b>Number:</b> &nbsp;'+_esc(invNo)+'<br><b>Date:</b> &nbsp;&nbsp;&nbsp;&nbsp;'+fmtD(today)+'</div>'+
+      '<div style="text-align:right"><b>Due Date:</b> &nbsp;'+fmtD(dueDate)+'</div>'+
+    '</div>'+
+    '<div style="border-top:1px solid #111;margin-bottom:18px"></div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:22px">'+
+      partyRow('From:',{name:bizProfile.name||'Mani Fuels',address:bizProfile.address,
+        gstin:bizProfile.gstin,phone:bizProfile.phone,email:bizProfile.email})+
+      '<div style="text-align:right">'+partyRow('To:',{name:to.company,address:to.address,
+        gstin:to.gstin,phone:to.phone,email:to.email})+'</div>'+
+    '</div>'+
+    '<table style="width:100%;border-collapse:collapse;font-size:11px">'+
+      '<thead><tr>'+
+        '<th style="text-align:left;padding:8px 6px;border-bottom:1px solid #111">Description</th>'+
+        '<th style="text-align:center;padding:8px 6px;border-bottom:1px solid #111;width:80px">Quantity</th>'+
+        '<th style="text-align:right;padding:8px 6px;border-bottom:1px solid #111;width:110px">Unit Price</th>'+
+        '<th style="text-align:right;padding:8px 6px;border-bottom:1px solid #111;width:110px">Total</th>'+
+      '</tr></thead><tbody>'+
+      lines.map(function(l){
+        return '<tr>'+
+          '<td style="padding:9px 6px;border-bottom:1px solid #eee">'+_esc(l.desc)+'</td>'+
+          '<td style="padding:9px 6px;border-bottom:1px solid #eee;text-align:center">'+l.qty+'</td>'+
+          '<td style="padding:9px 6px;border-bottom:1px solid #eee;text-align:right">'+money(l.unit)+'</td>'+
+          '<td style="padding:9px 6px;border-bottom:1px solid #eee;text-align:right">'+money(l.total)+'</td>'+
+        '</tr>';
+      }).join('')+
+      '</tbody></table>'+
+    '<div style="display:flex;justify-content:flex-end;margin-top:18px">'+
+      '<table style="font-size:11px;min-width:290px">'+
+        '<tr><td style="padding:4px 10px;text-align:right;font-weight:700">Subtotal:</td>'+
+            '<td style="padding:4px 0;text-align:right">'+money(subtotal)+'</td></tr>'+
+        (advance>0?'<tr><td style="padding:4px 10px;text-align:right;font-weight:700">Less advance held:</td>'+
+            '<td style="padding:4px 0;text-align:right">\u2212 '+money(advance)+'</td></tr>':'')+
+        (taxPct>0?'<tr><td style="padding:4px 10px;text-align:right;font-weight:700">Tax ('+taxPct+'%):</td>'+
+            '<td style="padding:4px 0;text-align:right">'+money(tax)+'</td></tr>':'')+
+        '<tr><td style="padding:8px 10px;text-align:right;font-weight:900;font-size:13px;border-top:1px solid #111">Total Amount Due:</td>'+
+            '<td style="padding:8px 0;text-align:right;font-weight:900;font-size:13px;border-top:1px solid #111">'+money(total)+'</td></tr>'+
+      '</table>'+
+    '</div>'+
+    '<div style="border-top:1px solid #111;margin:26px 0 16px"></div>'+
+    '<div style="font-size:11px;line-height:1.8">'+
+      '<div style="font-weight:800;margin-bottom:6px">Payment Instructions:</div>'+
+      '<div style="color:#444">'+(bizProfile.terms?addrBlock(bizProfile.terms):'Payment due by '+fmtD(dueDate)+'.')+'</div>'+
+    '</div>'+
+    '<div style="margin-top:34px;display:flex;justify-content:space-between;font-size:10px;color:#666">'+
+      '<div>Received by: ______________________</div>'+
+      '<div>For '+_esc(bizProfile.name||'Mani Fuels')+': ______________________</div>'+
+    '</div>'+
+    '<div style="margin-top:18px;padding-top:10px;border-top:1px solid #ccc;font-size:9px;color:#888;text-align:center">'+
+      'Invoice '+_esc(invNo)+' \u00b7 covers '+lines.length+' unpaid credit entr'+(lines.length===1?'y':'ies')+
+      ' \u00b7 computer generated, no signature required'+
+    '</div>'+
+  '</div>';
+
+  document.getElementById('pdf-print-area').innerHTML=out;
+  if(typeof logActivity==='function')
+    logActivity('invoice','customer',name,invNo+' \u2014 '+money(total));
+  setTimeout(function(){window.print();},400);
+}
+
 // ── PACK SIZES CONFIG ──
 // Each entry: {size: number_in_ml, enabled: bool, rate: number}
 // 40ml is always present and cannot be removed
@@ -2359,7 +2619,8 @@ function _deviceConfig(){
     tankCfg:     g('tankCfg'),
     orderCfg:    g('orderCfg'),
     looseOilCfg: g('looseOilCfg'),
-    payrollCfg:  g('payrollCfg')
+    payrollCfg:  g('payrollCfg'),
+    bizProfile:  (typeof bizProfile!=='undefined') ? bizProfile : g('bizProfile')
   };
 }
 function _applyDeviceConfig(cfg){
@@ -2379,6 +2640,12 @@ function _applyDeviceConfig(cfg){
   // Payroll rules must be identical everywhere or two owners compute two
   // different wages from the same register.
   if(cfg.payrollCfg)  localStorage.setItem('payrollCfg', JSON.stringify(cfg.payrollCfg));
+  // Invoice header and numbering: a customer should not get two differently
+  // headed bills depending on which phone printed them.
+  if(cfg.bizProfile){
+    localStorage.setItem('bizProfile', JSON.stringify(cfg.bizProfile));
+    if(typeof bizProfile!=='undefined') bizProfile=Object.assign({},BIZ_DEFAULT,cfg.bizProfile);
+  }
   if(typeof renderLooseOilCfg==='function')renderLooseOilCfg();
   if(typeof renderStaffReport==='function' && _currentStaffTab==='report')renderStaffReport();
 }
@@ -2468,7 +2735,22 @@ function showPage(p){
   if(p==='activity'&&typeof renderActivityLog==='function')renderActivityLog();
   if(p==='staff'&&typeof renderStaff==='function'){staffShowTab(_currentStaffTab||'list');}
   if(p==='drawings'&&typeof renderDrawings==='function')renderDrawings();
+  if(typeof updateHeaderContext==='function')updateHeaderContext(p);
   if(typeof renderGlobalAlertBell==='function')renderGlobalAlertBell();
+}
+
+// The shift toggle only changes what a shift entry writes, and the P&L shortcut
+// is noise on the page it jumps to. Both appear only where they act on
+// something. Edit these two lists to change where they show.
+var SHIFT_PAGES=['entry','tally'];
+var PL_SHORTCUT_PAGES=['dashboard','history'];
+function updateHeaderContext(page){
+  var pill=document.getElementById('shiftPill');
+  if(pill)pill.style.display=SHIFT_PAGES.indexOf(page)>=0?'flex':'none';
+  // .owner-only is display:none !important, so this has to go through the
+  // 'show' class rather than an inline style.
+  var pl=document.getElementById('plQuickBtn');
+  if(pl)pl.classList.toggle('show', !!_isOwner && PL_SHORTCUT_PAGES.indexOf(page)>=0);
 }
 function toggleMenu(){
   document.getElementById('sidebar').classList.toggle('open');
@@ -3022,12 +3304,12 @@ function renderDashChart(){
       responsive:true,maintainAspectRatio:false,
       interaction:{mode:'index',intersect:false},
       plugins:{
-        legend:{display:true,position:'top',align:'end',labels:{color:'#6b7e96',font:{family:'Syne',size:10,weight:'700'},usePointStyle:true,pointStyle:'circle',padding:12,boxWidth:6}},
-        tooltip:{backgroundColor:'#18202c',borderColor:'#2a3444',borderWidth:1,titleColor:'#dce8f5',bodyColor:'#dce8f5',titleFont:{family:'Syne',weight:'700'},bodyFont:{family:'JetBrains Mono',size:11},padding:10,callbacks:{label:(c)=>` ${c.dataset.label}: ₹${c.parsed.y.toLocaleString('en-IN',{maximumFractionDigits:0})}`}}
+        legend:{display:true,position:'top',align:'end',labels:{color:'#AAAAAA',font:{family:'Syne',size:10,weight:'700'},usePointStyle:true,pointStyle:'circle',padding:12,boxWidth:6}},
+        tooltip:{backgroundColor:'#1F1F1F',borderColor:'#2F2F2F',borderWidth:1,titleColor:'#FFFFFF',bodyColor:'#FFFFFF',titleFont:{family:'Syne',weight:'700'},bodyFont:{family:'JetBrains Mono',size:11},padding:10,callbacks:{label:(c)=>` ${c.dataset.label}: ₹${c.parsed.y.toLocaleString('en-IN',{maximumFractionDigits:0})}`}}
       },
       scales:{
-        x:{grid:{color:'rgba(42,52,68,.3)'},ticks:{color:'#6b7e96',font:{family:'JetBrains Mono',size:9}}},
-        y:{grid:{color:'rgba(42,52,68,.3)'},ticks:{color:'#6b7e96',font:{family:'JetBrains Mono',size:9},callback:v=>'₹'+(v>=1000?(v/1000).toFixed(0)+'k':v)}}
+        x:{grid:{color:'rgba(47,47,47,.9)'},ticks:{color:'#AAAAAA',font:{family:'JetBrains Mono',size:9}}},
+        y:{grid:{color:'rgba(47,47,47,.9)'},ticks:{color:'#AAAAAA',font:{family:'JetBrains Mono',size:9},callback:v=>'₹'+(v>=1000?(v/1000).toFixed(0)+'k':v)}}
       }
     }
   });
@@ -4297,8 +4579,8 @@ function genReport(){
   const ctx1=document.getElementById('plChart').getContext('2d');
   plCI=new Chart(ctx1,{type:'bar',data:{labels,datasets:[{label:'Balance (₹)',data:bals,backgroundColor:colors,borderColor:borders,borderWidth:1.5,borderRadius:4}]},
     options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>'₹'+c.raw.toLocaleString('en-IN')}}},
-      scales:{x:{ticks:{color:'#6b7e96',font:{size:10}},grid:{color:'#2a3444'}},
-        y:{ticks:{color:'#6b7e96',font:{size:10},callback:v=>'₹'+v.toLocaleString('en-IN')},grid:{color:'#2a3444'}}}}});
+      scales:{x:{ticks:{color:'#AAAAAA',font:{size:10}},grid:{color:'#2F2F2F'}},
+        y:{ticks:{color:'#AAAAAA',font:{size:10},callback:v=>'₹'+v.toLocaleString('en-IN')},grid:{color:'#2F2F2F'}}}}});
   const gp=filt.reduce((s,r)=>s+r.gpay,0);
   const pt=filt.reduce((s,r)=>s+r.paytm,0);
   const cs=filt.reduce((s,r)=>s+r.cash,0);
@@ -4309,7 +4591,7 @@ function genReport(){
         backgroundColor:['rgba(0,212,160,.7)','rgba(255,176,32,.7)','rgba(77,166,255,.7)'],
         borderColor:['#00d4a0','#ffb020','#4da6ff'],borderWidth:1.5}]},
     options:{responsive:true,cutout:'65%',
-      plugins:{legend:{labels:{color:'#6b7e96',font:{size:11}}},
+      plugins:{legend:{labels:{color:'#AAAAAA',font:{size:11}}},
         tooltip:{callbacks:{label:c=>'₹'+c.raw.toLocaleString('en-IN')}}}}});
   // P&L section
   renderPL(from,to,filt);
@@ -4549,13 +4831,13 @@ function renderPL(from, to, shiftRecs){
       responsive:true,maintainAspectRatio:true,
       interaction:{mode:'index',intersect:false},
       plugins:{
-        legend:{labels:{color:'#6b7e96',font:{family:'Syne',size:11,weight:'700'},usePointStyle:true,padding:10}},
-        tooltip:{backgroundColor:'#18202c',borderColor:'#2a3444',borderWidth:1,titleColor:'#dce8f5',bodyColor:'#dce8f5',padding:10,
+        legend:{labels:{color:'#AAAAAA',font:{family:'Syne',size:11,weight:'700'},usePointStyle:true,padding:10}},
+        tooltip:{backgroundColor:'#1F1F1F',borderColor:'#2F2F2F',borderWidth:1,titleColor:'#FFFFFF',bodyColor:'#FFFFFF',padding:10,
           callbacks:{label:c=>' '+c.dataset.label+': ₹'+c.raw.toLocaleString('en-IN')}}
       },
       scales:{
-        x:{grid:{color:'rgba(42,52,68,.3)'},ticks:{color:'#6b7e96',font:{family:'JetBrains Mono',size:9}}},
-        y:{grid:{color:'rgba(42,52,68,.3)'},ticks:{color:'#6b7e96',font:{family:'JetBrains Mono',size:9},callback:v=>'₹'+(Math.abs(v)>=1000?(v/1000).toFixed(0)+'k':v)}}
+        x:{grid:{color:'rgba(47,47,47,.9)'},ticks:{color:'#AAAAAA',font:{family:'JetBrains Mono',size:9}}},
+        y:{grid:{color:'rgba(47,47,47,.9)'},ticks:{color:'#AAAAAA',font:{family:'JetBrains Mono',size:9},callback:v=>'₹'+(Math.abs(v)>=1000?(v/1000).toFixed(0)+'k':v)}}
       }
     }
   });
@@ -4574,8 +4856,8 @@ function renderPL(from, to, shiftRecs){
   const ctx2 = document.getElementById('plDonutChart').getContext('2d');
   if(filtered.length===0){
     _plDonutChart = new Chart(ctx2,{type:'doughnut',
-      data:{labels:['No profit data'],datasets:[{data:[1],backgroundColor:['#2a3444'],borderWidth:0}]},
-      options:{responsive:true,cutout:'65%',plugins:{legend:{labels:{color:'#6b7e96',font:{size:10}}},tooltip:{enabled:false}}}});
+      data:{labels:['No profit data'],datasets:[{data:[1],backgroundColor:['#2F2F2F'],borderWidth:0}]},
+      options:{responsive:true,cutout:'65%',plugins:{legend:{labels:{color:'#AAAAAA',font:{size:10}}},tooltip:{enabled:false}}}});
   } else {
     _plDonutChart = new Chart(ctx2,{type:'doughnut',
       data:{labels:filtered.map(d=>d.label),datasets:[{
@@ -4584,7 +4866,7 @@ function renderPL(from, to, shiftRecs){
         borderColor:filtered.map(d=>d.color),borderWidth:1.5
       }]},
       options:{responsive:true,cutout:'65%',
-        plugins:{legend:{position:'bottom',labels:{color:'#6b7e96',font:{family:'Syne',size:10,weight:'700'},usePointStyle:true,padding:10,boxWidth:8}},
+        plugins:{legend:{position:'bottom',labels:{color:'#AAAAAA',font:{family:'Syne',size:10,weight:'700'},usePointStyle:true,padding:10,boxWidth:8}},
           tooltip:{callbacks:{label:c=>' '+c.label+': ₹'+c.raw.toLocaleString('en-IN')}}}}});
   }
 }
@@ -4622,6 +4904,7 @@ function addLedgerEntry(){
   form.style.display=form.style.display==='none'?'block':'none';
   if(form.style.display==='block'){
     document.getElementById('lf_type').value='credit';
+    var _d1=document.getElementById('lf_date'); if(_d1)_d1.value=_isoLocal();
     onLfTypeChange();
   }
 }
@@ -4637,7 +4920,7 @@ function submitLedgerEntry(){
   //             paidBack = how much of that has been resolved
   // For an advance, amount is negative and paidBack starts at 0; the customer "owes" -₹X (i.e. has credit balance)
   if(type==='advance')amt=-Math.abs(amt);
-  const date=document.getElementById('shiftDate').value||_isoLocal();
+  const date=(document.getElementById('lf_date')||{}).value||_isoLocal();
   const newEntry3={id:_newId(),date,customer:name,shift,fuel,amount:amt,paidBack:0,kind:type};
   ledger.push(newEntry3);
   saveLedger();
@@ -4656,6 +4939,7 @@ function addLedgerEntryFor(){
   document.getElementById('form2_custname').textContent=currentLedgerCustomer||'';
   if(form.style.display==='block'){
     document.getElementById('lf_type2').value='credit';
+    var _d2=document.getElementById('lf_date2'); if(_d2)_d2.value=_isoLocal();
     onLfTypeChange2();
   }
 }
@@ -4667,7 +4951,7 @@ function submitLedgerEntry2(){
   let amt=parseFloat(document.getElementById('lf_amt2').value)||0;
   if(!amt){showToast('Enter amount');return;}
   if(type==='advance')amt=-Math.abs(amt);
-  const date=document.getElementById('shiftDate').value||_isoLocal();
+  const date=(document.getElementById('lf_date2')||{}).value||_isoLocal();
   const newEntry2={id:_newId(),date,customer:currentLedgerCustomer,shift,fuel,amount:amt,paidBack:0,kind:type};
   ledger.push(newEntry2);
   saveLedger();
@@ -4817,6 +5101,7 @@ function renderLedger(){
       <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
         <span style="font-size:11px;color:var(--muted)">${c.entries.length} transaction${c.entries.length!==1?'s':''}</span>
         <div style="display:flex;gap:6px">
+          <button class="btn btn-g cust-inv-btn" data-name="${name}" style="padding:4px 10px;font-size:11px">🧾 INV</button>
           <button class="btn btn-g cust-stmt-btn" data-name="${name}" style="padding:4px 10px;font-size:11px">📄 PDF</button>
           <button class="btn btn-d cust-del-btn" data-name="${name}" style="padding:4px 10px;font-size:11px">&#128465;</button>
           <button class="save-btn cust-view-btn" data-name="${name}" style="padding:5px 14px;font-size:11px">VIEW &#8594;</button>
@@ -4830,6 +5115,9 @@ function renderLedger(){
     });
     card.querySelector('.cust-stmt-btn').addEventListener('click',function(e){
       e.stopPropagation();generateCustomerStatement(this.dataset.name);
+    });
+    card.querySelector('.cust-inv-btn').addEventListener('click',function(e){
+      e.stopPropagation();generateCustomerInvoice(this.dataset.name);
     });
     card.onclick=()=>openLedgerDetail(name);
     cards.appendChild(card);
@@ -4853,6 +5141,7 @@ function openLedgerDetail(name){
   document.getElementById('detail_name').textContent=name;
   document.getElementById('ledger_form2').style.display='none';
   document.getElementById('cust_disc_panel').style.display='none';
+  const _bp=document.getElementById('cust_bill_panel'); if(_bp)_bp.style.display='none';
   const discRate=getCustDiscount(name);
   document.getElementById('cust_disc_display').textContent=discRate>0?'₹'+discRate.toFixed(2)+'/L':'₹0/L';
 
@@ -6113,15 +6402,15 @@ function renderAdvChart(a){
     ]},
     options:{responsive:true,maintainAspectRatio:false,
       interaction:{mode:'index',intersect:false},
-      plugins:{legend:{labels:{color:'#6b7e96',font:{family:'Syne',size:11,weight:'700'},
+      plugins:{legend:{labels:{color:'#AAAAAA',font:{family:'Syne',size:11,weight:'700'},
         usePointStyle:true,padding:12,boxWidth:8}},
-        tooltip:{backgroundColor:'#18202c',borderColor:'#2a3444',borderWidth:1,
-          titleColor:'#dce8f5',bodyColor:'#dce8f5',padding:10,
+        tooltip:{backgroundColor:'#1F1F1F',borderColor:'#2F2F2F',borderWidth:1,
+          titleColor:'#FFFFFF',bodyColor:'#FFFFFF',padding:10,
           callbacks:{label:function(c){return ' '+c.dataset.label+': '+c.raw.toLocaleString('en-IN')+' L';}}}},
-      scales:{x:{grid:{color:'rgba(42,52,68,.3)'},ticks:{color:'#6b7e96',
+      scales:{x:{grid:{color:'rgba(47,47,47,.9)'},ticks:{color:'#AAAAAA',
           font:{family:'JetBrains Mono',size:9},maxTicksLimit:11}},
-        y:{beginAtZero:true,grid:{color:'rgba(42,52,68,.3)'},
-          ticks:{color:'#6b7e96',font:{family:'JetBrains Mono',size:9},
+        y:{beginAtZero:true,grid:{color:'rgba(47,47,47,.9)'},
+          ticks:{color:'#AAAAAA',font:{family:'JetBrains Mono',size:9},
             callback:function(v){return (v>=1000?(v/1000).toFixed(0)+'k':v)+' L';}}}}}
   });
 }
@@ -6561,6 +6850,7 @@ function importData(event){
         if(opHSD!=null) localStorage.setItem('fuelOpeningHSD',opHSD);
         // New format extras
         if(data.customerProfiles) localStorage.setItem('custProfiles',JSON.stringify(data.customerProfiles));
+        if(data.bizProfile) localStorage.setItem('bizProfile',JSON.stringify(data.bizProfile));
         if(data.packReg) localStorage.setItem('packReg',JSON.stringify(data.packReg));
         if(data.packSizes) localStorage.setItem('packSizes',JSON.stringify(data.packSizes));
         if(data.rateHistory) localStorage.setItem('rateHistory',JSON.stringify(data.rateHistory));
@@ -6613,11 +6903,11 @@ function exportPDF(){
   let out=`
   <div style="background:linear-gradient(135deg,#0a0e13 0%,#1a1a2e 100%);color:#fff;padding:48px 40px;text-align:center;border-radius:8px;margin-bottom:28px;page-break-after:avoid">
     <div style="font-size:38px;font-weight:900;letter-spacing:8px;margin-bottom:6px">MANI<span style="color:#00d4a0">FUELS</span></div>
-    <div style="font-size:11px;color:#6b7e96;letter-spacing:5px;margin-bottom:28px">FUEL STATION — BUSINESS DATA REPORT</div>
-    <div style="border-top:1px solid #2a3444;padding-top:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;text-align:center">
-      <div><div style="font-size:9px;color:#6b7e96;letter-spacing:2px;margin-bottom:4px">REPORT DATE</div><div style="font-size:13px;font-weight:700">${date}</div></div>
-      <div><div style="font-size:9px;color:#6b7e96;letter-spacing:2px;margin-bottom:4px">TIME</div><div style="font-size:13px;font-weight:700">${time}</div></div>
-      <div><div style="font-size:9px;color:#6b7e96;letter-spacing:2px;margin-bottom:4px">TOTAL SECTIONS</div><div style="font-size:13px;font-weight:700">6 Sections</div></div>
+    <div style="font-size:11px;color:#AAAAAA;letter-spacing:5px;margin-bottom:28px">FUEL STATION — BUSINESS DATA REPORT</div>
+    <div style="border-top:1px solid #2F2F2F;padding-top:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;text-align:center">
+      <div><div style="font-size:9px;color:#AAAAAA;letter-spacing:2px;margin-bottom:4px">REPORT DATE</div><div style="font-size:13px;font-weight:700">${date}</div></div>
+      <div><div style="font-size:9px;color:#AAAAAA;letter-spacing:2px;margin-bottom:4px">TIME</div><div style="font-size:13px;font-weight:700">${time}</div></div>
+      <div><div style="font-size:9px;color:#AAAAAA;letter-spacing:2px;margin-bottom:4px">TOTAL SECTIONS</div><div style="font-size:13px;font-weight:700">6 Sections</div></div>
     </div>
   </div>`;
 
@@ -6996,10 +7286,10 @@ function generateCustomerStatement(name){
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div>
           <div style="font-size:28px;font-weight:900;letter-spacing:6px">MANI<span style="color:#00d4a0">FUELS</span></div>
-          <div style="font-size:10px;color:#6b7e96;letter-spacing:3px;margin-top:4px">CUSTOMER ACCOUNT STATEMENT</div>
+          <div style="font-size:10px;color:#AAAAAA;letter-spacing:3px;margin-top:4px">CUSTOMER ACCOUNT STATEMENT</div>
         </div>
         <div style="text-align:right">
-          <div style="font-size:9px;color:#6b7e96;letter-spacing:2px">STATEMENT DATE</div>
+          <div style="font-size:9px;color:#AAAAAA;letter-spacing:2px">STATEMENT DATE</div>
           <div style="font-size:13px;font-weight:700">${dateStr}</div>
         </div>
       </div>
@@ -8343,6 +8633,7 @@ function exportFullBackup(){
         rates:JSON.parse(localStorage.getItem('fuelRates')||'{}'),
         opening:{msd:fuelOpeningMSD||0,hsd:fuelOpeningHSD||0},
         customerProfiles:JSON.parse(localStorage.getItem('custProfiles')||'{}'),
+        bizProfile:JSON.parse(localStorage.getItem('bizProfile')||'{}'),
         packReg:JSON.parse(localStorage.getItem('packReg')||'[]'),
         packSizes:JSON.parse(localStorage.getItem('packSizes')||'[]'),
         rateHistory:JSON.parse(localStorage.getItem('rateHistory')||'[]'),
@@ -8696,17 +8987,32 @@ async function sbSaveSettings() {
 // ── CUSTOMER PROFILES (per-customer fixed discount rate) ──
 async function sbSaveCustProfile(name) {
   if (!_currentUser) return;   // no _supa: _sbUpsert queues it
+  const p = customerProfiles[name] || {};
+  const base = {
+    customer_name: name,
+    user_id: _currentUser.id,
+    discount_per_l: p.discountPerL || 0,
+    notes: p.notes || '',
+    updated_at: new Date().toISOString(),
+    updated_by: _currentUser.username
+  };
+  // `billing` is a newer column. Until db/012_billing.sql is applied the row is
+  // rejected outright, which would take the discount rate down with it:
+  //   alter table customer_profiles add column if not exists billing jsonb default '{}'::jsonb;
+  const full = Object.assign({ billing: p.billing || {} }, base);
+  if (!_supa || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+    await _sbUpsert('customer_profiles', full);
+    return;
+  }
   try {
-    const p = customerProfiles[name] || {};
-    await _sbUpsert('customer_profiles', {
-      customer_name: name,
-      user_id: _currentUser.id,
-      discount_per_l: p.discountPerL || 0,
-      notes: p.notes || '',
-      updated_at: new Date().toISOString(),
-      updated_by: _currentUser.username
-    });
-  } catch(e){ console.error('Save customer profile failed:', e.message); }
+    const { error } = await _supa.from('customer_profiles')
+      .upsert(full, { onConflict: 'customer_name' });
+    if (error) throw error;
+  } catch(e){
+    console.warn('customer_profiles rejected billing column, retrying without it:', e.message);
+    try { await _sbUpsert('customer_profiles', base); }
+    catch(e2){ console.error('Save customer profile failed:', e2.message); }
+  }
 }
 
 async function sbLoadCustProfiles() {
@@ -8718,7 +9024,8 @@ async function sbLoadCustProfiles() {
       r.data.forEach(p => {
         customerProfiles[p.customer_name] = {
           discountPerL: p.discount_per_l || 0,
-          notes: p.notes || ''
+          notes: p.notes || '',
+          billing: p.billing || {}
         };
       });
       saveCustProfiles();
