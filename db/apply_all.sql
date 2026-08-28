@@ -1,17 +1,21 @@
 -- ═══════════════════════════════════════════════════════════════════
--- ManiFuels — apply_all.sql   (v2.5)
+-- ManiFuels — apply_all.sql   (v2.9)
 --
--- Migrations 001–009 in order. Your base schema already exists and is NOT
--- recreated here.
+-- Migrations 001–012 in order. The base schema already exists and is NOT
+-- recreated here; this adds the columns and tables the current client writes
+-- to, repairs realtime, and re-asserts grants.
 --
 -- Idempotent and safe against live data. Runs as one transaction: if any part
 -- fails, nothing changes.
 --
--- ⚠ 008 re-keys every row to one station id. It MUST go out together with the
---   client release that sets MF_STATION. Take a backup first.
+-- Paste the whole file into: Supabase → SQL Editor → New query → Run.
+-- Expected: "Success. No rows returned" plus a few NOTICE lines.
 --
--- Paste the whole file into: Supabase → SQL Editor → New query → Run
+-- 007 and 008 touch live rows (settings carry-over, one-station re-key).
+-- TAKE A BACKUP FIRST: Actions → Nightly database backup → Run workflow.
 -- ═══════════════════════════════════════════════════════════════════
+
+
 
 -- ▼▼▼ 001_reconcile.sql ▼▼▼
 
@@ -87,6 +91,9 @@ end $$;
 --    Left as a comment deliberately — this is the only place your fuel rates
 --    live and it is not something to automate blind.
 
+-- ▲▲▲ 001_reconcile.sql ▲▲▲
+
+
 -- ▼▼▼ 002_dip_readings.sql ▼▼▼
 
 -- ManiFuels — 002_dip_readings.sql
@@ -97,7 +104,7 @@ end $$;
 
 create table if not exists public.dip_readings (
   id          bigint primary key,
-  user_id     text not null default 'shriviswath',
+  user_id     text not null default 'manifuels',   -- station id, not a person (see 008)
   date        date not null,
   slot        text not null,                 -- morning | night | opening | closing
   type        text not null,                 -- MSD | HSD
@@ -115,9 +122,12 @@ create unique index if not exists dip_readings_unique_slot
 create index if not exists dip_readings_date_idx
   on public.dip_readings (user_id, type, date desc);
 
--- Match the access model of every other table in this schema (see 006 for RLS).
+-- Match the access model of every other table in this schema (see 099 for RLS).
 alter table public.dip_readings disable row level security;
 grant all on public.dip_readings to anon, authenticated;
+
+-- ▲▲▲ 002_dip_readings.sql ▲▲▲
+
 
 -- ▼▼▼ 003_realtime.sql ▼▼▼
 
@@ -138,7 +148,7 @@ begin
     'shift_records','stock_items','ledger_entries','oil_invoices','fuel_loads',
     'app_settings','pack_sizes','users','customer_profiles','pack_register',
     'activity_log','rate_history','staff','staff_attendance','staff_payments',
-    'owner_drawings','dip_readings'
+    'owner_drawings','dip_readings','notes'
   ] loop
     if to_regclass('public.'||t) is null then
       raise notice 'skipping %, not present', t;
@@ -155,6 +165,9 @@ begin
   end loop;
 end $$;
 
+-- ▲▲▲ 003_realtime.sql ▲▲▲
+
+
 -- ▼▼▼ 004_grants.sql ▼▼▼
 
 -- ManiFuels — 004_grants.sql
@@ -164,7 +177,7 @@ end $$;
 -- that table alone. This re-asserts the access model the whole schema uses.
 --
 -- This is a stopgap, not the answer. The answer is RLS with real auth, staged
--- as 005_rls_and_auth.sql.pending. Until then the anon key can read and write
+-- as 099_rls_and_auth.sql.pending. Until then the anon key can read and write
 -- everything, which is exactly the exposure that migration closes.
 
 do $$
@@ -174,7 +187,7 @@ begin
     'shift_records','stock_items','ledger_entries','oil_invoices','fuel_loads',
     'app_settings','settings','pack_sizes','users','customer_profiles',
     'pack_register','activity_log','rate_history','staff','staff_attendance',
-    'staff_payments','owner_drawings','dip_readings'
+    'staff_payments','owner_drawings','dip_readings','notes'
   ] loop
     if to_regclass('public.'||t) is null then
       raise notice 'skipping %, not present', t;
@@ -201,6 +214,9 @@ end $$;
 --   select tablename, rowsecurity from pg_tables
 --   where schemaname='public' order by 1;          -- rowsecurity should be false
 
+-- ▲▲▲ 004_grants.sql ▲▲▲
+
+
 -- ▼▼▼ 005_settings_config.sql ▼▼▼
 
 -- ManiFuels — 005_settings_config.sql
@@ -222,6 +238,9 @@ alter table public.app_settings
 --     "looseOilCfg": {"stockId":"502","litresPerUnit":5}
 --   }
 
+-- ▲▲▲ 005_settings_config.sql ▲▲▲
+
+
 -- ▼▼▼ 006_staff_salary_history.sql ▼▼▼
 
 -- ManiFuels — 006_staff_salary_history.sql
@@ -236,6 +255,9 @@ alter table public.app_settings
 
 alter table public.staff
   add column if not exists salary_history jsonb not null default '[]'::jsonb;
+
+-- ▲▲▲ 006_staff_salary_history.sql ▲▲▲
+
 
 -- ▼▼▼ 007_settings_carryover.sql ▼▼▼
 
@@ -270,6 +292,9 @@ where a.user_id = s.user_id
 
 -- 3 ── retire the dead table. Uncomment once step 2 looks right.
 --   drop table public.settings;
+
+-- ▲▲▲ 007_settings_carryover.sql ▲▲▲
+
 
 -- ▼▼▼ 008_one_station.sql ▼▼▼
 
@@ -337,50 +362,223 @@ alter table public.customer_profiles alter column user_id set default 'manifuels
 --   select distinct user_id from stock_items;      -- one row: manifuels
 --   select user_id, opening_msd, opening_hsd, rates from app_settings;  -- one row
 
+-- ▲▲▲ 008_one_station.sql ▲▲▲
+
+
 -- ▼▼▼ 009_updated_at.sql ▼▼▼
 
 -- ManiFuels — 009_updated_at.sql
 --
--- The client stamps updated_at on every row it writes and uses it to resolve
--- sync conflicts: newest wins. Three tables never had the column, so Postgres
--- rejected the whole row with
+-- The client sends `updated_at` on stock_items, ledger_entries, oil_invoices,
+-- fuel_loads and owner_drawings. Merge resolution depends on it: a row without
+-- a timestamp always loses to the server copy, so a local edit is silently
+-- undone by the next sync.
 --
---   column "updated_at" of relation "fuel_loads" does not exist
+-- More urgently: PostgREST rejects an insert naming a column that does not
+-- exist. If this migration has not been applied, EVERY write to those four
+-- tables fails, lands in the outbox, and the header shows "n unsent" forever.
+-- That is the usual cause of "the app works but nothing reaches Supabase".
 --
--- The write then sat in the outbox retrying — which is why fuel loads saved on
--- one device never appeared on another. stock_items and shift_records already
--- had the column, which is why those synced fine and the fault looked specific
--- to loads.
---
--- Without a timestamp the merge falls back to "server always wins", so an edit
--- made on a phone is silently undone by the next sync. These columns are what
--- make last-write-wins actually work.
+-- Idempotent. Safe against live data.
 
-alter table public.ledger_entries
-  add column if not exists updated_at timestamptz default now();
+alter table public.stock_items    add column if not exists updated_at timestamptz default now();
+alter table public.ledger_entries add column if not exists updated_at timestamptz default now();
+alter table public.oil_invoices   add column if not exists updated_at timestamptz default now();
+alter table public.fuel_loads     add column if not exists updated_at timestamptz default now();
 
-alter table public.oil_invoices
-  add column if not exists updated_at timestamptz default now();
-
-alter table public.fuel_loads
-  add column if not exists updated_at timestamptz default now();
-
--- Existing rows get a sensible starting point rather than a null, so the first
--- merge after this migration does not treat every server row as older than a
--- local copy that has never been edited.
-update public.ledger_entries set updated_at = coalesce(updated_at, created_at, now()) where updated_at is null;
-update public.oil_invoices   set updated_at = coalesce(updated_at, created_at, now()) where updated_at is null;
-update public.fuel_loads     set updated_at = coalesce(updated_at, created_at, now()) where updated_at is null;
+-- Backfill so existing rows are not treated as "older than everything".
+update public.stock_items    set updated_at = now() where updated_at is null;
+update public.ledger_entries set updated_at = now() where updated_at is null;
+update public.oil_invoices   set updated_at = now() where updated_at is null;
+update public.fuel_loads     set updated_at = now() where updated_at is null;
 
 -- Verify:
---   select table_name from information_schema.columns
---   where column_name='updated_at' and table_schema='public' order by 1;
---   -- expect: fuel_loads, ledger_entries, oil_invoices, shift_records, stock_items, app_settings, customer_profiles
+--   select column_name from information_schema.columns
+--   where table_schema='public' and column_name='updated_at' order by table_name;
+
+-- ▲▲▲ 009_updated_at.sql ▲▲▲
+
+
+-- ▼▼▼ 010_ensure_tables.sql ▼▼▼
+
+-- ManiFuels — 010_ensure_tables.sql
+--
+-- The base schema was created by hand in the SQL editor, so which tables exist
+-- depends on which version of that script was run. Anything missing fails
+-- silently: supabase-js resolves with {error}, the row is parked in the outbox,
+-- and the app looks like it saved. This creates whatever is absent, leaves
+-- whatever exists untouched, and asserts the access model.
+--
+-- Idempotent. Never drops or alters existing columns.
+
+create table if not exists public.customer_profiles (
+  customer_name  text primary key,
+  user_id        text not null default 'manifuels',
+  discount_per_l numeric default 0,
+  notes          text default '',
+  updated_at     timestamptz default now(),
+  updated_by     text
+);
+
+create table if not exists public.pack_register (
+  id         bigint primary key,
+  user_id    text not null default 'manifuels',
+  size       integer not null default 40,
+  date       date not null,
+  supplier   text default '',
+  qty        numeric default 0,
+  cost       numeric default 0,
+  total_cost numeric default 0,
+  notes      text default '',
+  created_by text
+);
+
+create table if not exists public.staff (
+  id             bigint primary key,
+  user_id        text not null default 'manifuels',
+  name           text not null,
+  role           text default 'Operator',
+  phone          text default '',
+  monthly_salary numeric default 0,
+  joined_date    date,
+  notes          text default '',
+  active         boolean default true,
+  salary_history jsonb not null default '[]'::jsonb
+);
+
+create table if not exists public.staff_attendance (
+  id       bigserial primary key,
+  user_id  text not null default 'manifuels',
+  staff_id bigint not null,
+  date     date not null,
+  shift    text not null,
+  status   text,
+  notes    text default ''
+);
+create unique index if not exists staff_attendance_natural_key
+  on public.staff_attendance (staff_id, date, shift);
+
+create table if not exists public.staff_payments (
+  id               bigint primary key,
+  user_id          text not null default 'manifuels',
+  staff_id         bigint not null,
+  date             date not null,
+  type             text not null,
+  amount           numeric default 0,
+  advance_deducted numeric default 0,
+  notes            text default '',
+  created_by       text
+);
+
+create table if not exists public.owner_drawings (
+  id         bigint primary key,
+  user_id    text not null default 'manifuels',
+  date       date not null,
+  amount     numeric default 0,
+  purpose    text default '',
+  notes      text default '',
+  created_by text,
+  updated_at timestamptz default now()
+);
+
+-- Free-text notes. The only table in the schema with no fixed shape, which is
+-- the point: it holds the things that do not have a form yet.
+create table if not exists public.notes (
+  id         bigint primary key,
+  user_id    text not null default 'manifuels',
+  title      text default '',
+  body       text default '',
+  tag        text default '',
+  pinned     boolean default false,
+  created_by text,
+  updated_by text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create index if not exists notes_recent_idx on public.notes (user_id, updated_at desc);
+
+create table if not exists public.activity_log (
+  id           bigserial primary key,
+  username     text,
+  display_name text,
+  action       text,
+  entity_type  text,
+  entity_id    text,
+  details      text default '',
+  created_at   timestamptz default now()
+);
+
+create table if not exists public.rate_history (
+  id         bigserial primary key,
+  fuel       text,
+  old_rate   numeric,
+  new_rate   numeric,
+  changed_by text,
+  changed_at timestamptz default now()
+);
+
+-- Same access model as the rest of the schema until 099 lands.
+do $$
+declare t text;
+begin
+  foreach t in array array[
+    'customer_profiles','pack_register','staff','staff_attendance',
+    'staff_payments','owner_drawings','notes','activity_log','rate_history'
+  ] loop
+    execute format('alter table public.%I disable row level security', t);
+    execute format('grant all on public.%I to anon, authenticated', t);
+  end loop;
+end $$;
+
+do $$
+declare s text;
+begin
+  for s in select sequencename from pg_sequences where schemaname='public' loop
+    execute format('grant usage, select on sequence public.%I to anon, authenticated', s);
+  end loop;
+end $$;
+
+-- ▲▲▲ 010_ensure_tables.sql ▲▲▲
+
+
+-- ▼▼▼ 011_drawings_owner.sql ▼▼▼
+
+-- ManiFuels — 011_drawings_owner.sql
+--
+-- A drawing recorded who ENTERED it (created_by) but not who TOOK the money.
+-- With four owners on one account that is the only question the page is
+-- actually asked, so it gets its own column rather than being buried in the
+-- purpose text.
+
+alter table public.owner_drawings
+  add column if not exists owner      text default '',
+  add column if not exists updated_at timestamptz default now();
+
+update public.owner_drawings set updated_at = now() where updated_at is null;
+
+-- ▲▲▲ 011_drawings_owner.sql ▲▲▲
+
+
+-- ▼▼▼ 012_billing.sql ▼▼▼
+
+-- ManiFuels — 012_billing.sql
+--
+-- Bill-to block for customer invoicing: registered name, GSTIN, address,
+-- phone, email. One jsonb column rather than five, because it is printed as a
+-- block and never queried field by field.
+
+alter table public.customer_profiles
+  add column if not exists billing jsonb not null default '{}'::jsonb;
+
+-- ▲▲▲ 012_billing.sql ▲▲▲
+
 
 -- ═══════════════════════════════════════════════════════════════════
--- Verify:
---   select distinct user_id from stock_items;                    -- manifuels
+-- Verify afterwards:
+--   select distinct user_id from stock_items;              -- one row: manifuels
+--   select user_id, opening_msd, opening_hsd from app_settings;
 --   select table_name from information_schema.columns
---    where column_name='updated_at' and table_schema='public' order by 1;
---   select user_id, opening_msd, opening_hsd from app_settings;  -- one row
+--    where table_schema='public' and column_name='updated_at' order by 1;
+--   select tablename, rowsecurity from pg_tables
+--    where schemaname='public' order by 1;                 -- rowsecurity false
 -- ═══════════════════════════════════════════════════════════════════
