@@ -184,6 +184,32 @@ input::placeholder{color:var(--dim)}
   .pdf-page-break{page-break-before:always}
   @page{margin:15mm;size:A4}
 }
+/* ── FORM GRID ────────────────────────────────────────────────────────────
+   Every inline form hardcoded its column count, so a 360px phone was handed
+   six fixed columns and the fields ran off the card. auto-fit reflows. */
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end}
+.fgrid>div{min-width:0}
+.fgrid .flabel{display:block;min-width:0;margin-bottom:4px}
+.fgrid input,.fgrid select{width:100%;height:34px}
+.fgrid textarea{width:100%}
+.fgrid-actions{display:flex;gap:6px;align-items:center}
+.fgrid-actions .btn,.fgrid-actions .save-btn{height:34px;white-space:nowrap}
+/* .save-btn carried margin-left:auto from an old nav layout, which shoved
+   every in-form button to the right edge of its row. */
+.save-btn{margin-left:0;margin-right:0}
+@media(max-width:760px){
+  header{height:auto;min-height:52px;padding:6px 12px;flex-wrap:wrap;gap:6px}
+  .hdr-right{flex-wrap:wrap;gap:6px}
+  header .logo{font-size:16px;letter-spacing:2px}
+  #dtChip{display:none}
+  nav{height:auto;min-height:46px;padding:6px 10px}
+}
+@media(max-width:640px){
+  /* fixed multi-column grids are inline styles and cannot be reflowed any
+     other way; at phone width they overflow the card. */
+  [style*="repeat(3,1fr)"],[style*="repeat(4,1fr)"],[style*="repeat(5,1fr)"]{grid-template-columns:repeat(2,1fr)!important}
+  .tally-wrap,.dash-wrap{padding:10px}
+}
 @media(max-width:768px){.entry-grid{grid-template-columns:1fr}.sum-grid{grid-template-columns:1fr 1fr}.charts-grid{grid-template-columns:1fr}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -375,6 +401,7 @@ document.addEventListener('DOMContentLoaded',function(){
   <div class="sidebar-nav">
     <div class="sidebar-section">OVERVIEW</div>
     <button class="nav-tab active" onclick="showPage('dashboard');closeMenu()"><span class="tab-icon">🏠</span>Dashboard</button>
+    <button class="nav-tab" onclick="showPage('notes');closeMenu()"><span class="tab-icon">📝</span>Notes</button>
     <div class="sidebar-section">SHIFT</div>
     <button class="nav-tab" onclick="showPage('entry');closeMenu()"><span class="tab-icon">📋</span>Shift Entry</button>
     <button class="nav-tab" onclick="showPage('tally');closeMenu()"><span class="tab-icon">⚖</span>Tally</button>
@@ -1285,7 +1312,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
     <div id="ledger_form" style="display:none;margin-bottom:12px">
       <div class="card" style="border-color:var(--diesel)">
         <div class="card-head" style="color:var(--diesel)">NEW LEDGER ENTRY</div>
-        <div style="display:grid;grid-template-columns:130px 140px 1fr 1fr 1fr auto;gap:8px;align-items:end;flex-wrap:wrap">
+        <div class="fgrid">
           <div><div class="flabel" style="margin-bottom:4px">DATE</div>
             <input type="date" id="lf_date" class="date-inp" style="width:100%;height:32px"></div>
           <div><div class="flabel" style="margin-bottom:4px">TYPE</div>
@@ -1301,8 +1328,8 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
             </select></div>
           <div><div class="flabel" id="lf_amt_label" style="margin-bottom:4px">CREDIT AMOUNT (₹)</div>
             <input type="number" id="lf_amt" placeholder="0" style="width:100%"></div>
-          <div style="display:flex;gap:6px">
-            <button class="save-btn" style="padding:6px 16px;white-space:nowrap" onclick="submitLedgerEntry()">&#10003; ADD</button>
+          <div class="fgrid-actions">
+            <button class="save-btn" style="padding:6px 16px" onclick="submitLedgerEntry()">&#10003; ADD</button>
             <button class="btn btn-g" onclick="document.getElementById('ledger_form').style.display='none'">&#10005;</button>
           </div>
         </div>
@@ -1331,7 +1358,8 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <span id="cust_disc_display" style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--diesel)">₹0/L</span>
         <button onclick="editCustDiscount()" style="font-family:'Syne',sans-serif;font-size:10px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:2px 8px;border-radius:3px;cursor:pointer;font-weight:700">EDIT</button>
       </div>
-      <button class="btn btn-g" onclick="editCustBilling()" style="margin-left:auto;padding:6px 14px">🏢 BILLING DETAILS</button>
+      <button class="btn btn-g" onclick="openLedgerAdjust()" style="margin-left:auto;padding:6px 14px">⇄ ADJUST / TRANSFER</button>
+      <button class="btn btn-g" onclick="editCustBilling()" style="padding:6px 14px">🏢 BILLING DETAILS</button>
       <button class="btn btn-g" onclick="generateCustomerInvoice(currentLedgerCustomer)" style="padding:6px 14px">🧾 INVOICE PDF</button>
       <button class="btn btn-g" onclick="generateCustomerStatement(currentLedgerCustomer)" style="padding:6px 14px">📄 STATEMENT PDF</button>
       <button class="btn btn-g" onclick="addLedgerEntryFor()" style="padding:6px 14px">&#65291; ADD TRANSACTION</button>
@@ -1348,6 +1376,36 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
           <button class="btn btn-g" onclick="document.getElementById('cust_disc_panel').style.display='none'">&#10005;</button>
         </div>
         <div id="disc_preview" style="margin-top:8px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)"></div>
+      </div>
+    </div>
+    <!-- Move an amount between two customer accounts. Both sides are written. -->
+    <div id="adj_panel" style="display:none;margin-bottom:12px">
+      <div class="card" style="border-color:var(--purple)">
+        <div class="card-head" style="color:var(--purple)">ADJUST / TRANSFER &mdash; <span id="adj_from_name"></span></div>
+        <div class="fgrid" style="margin-bottom:10px">
+          <div><div class="flabel">DIRECTION</div>
+            <select id="adj_dir" onchange="adjPreview()">
+              <option value="give">Give from this customer &rarr; other</option>
+              <option value="take">Take from other &rarr; this customer</option>
+            </select></div>
+          <div><div class="flabel">OTHER CUSTOMER</div>
+            <select id="adj_other" onchange="onAdjOtherChange()"></select>
+            <input type="text" id="adj_other_new" placeholder="New customer name" style="display:none" oninput="adjPreview()"></div>
+          <div><div class="flabel">AMOUNT (₹)</div>
+            <input type="number" id="adj_amt" placeholder="0" min="0" oninput="adjPreview()"></div>
+          <div><div class="flabel">REASON</div>
+            <input type="text" id="adj_reason" placeholder="e.g. paid on his behalf"></div>
+        </div>
+        <div id="adj_preview" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:10px;min-height:16px;line-height:1.6"></div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:10px;line-height:1.6">
+          Two rows are written, one on each account, sharing a reference. Nothing
+          is created or destroyed &mdash; the money only changes account. Delete
+          both rows together if you need to undo it.
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="save-btn" onclick="submitLedgerAdjust()">&#10003; RECORD</button>
+          <button class="btn btn-g" onclick="document.getElementById('adj_panel').style.display='none'">CANCEL</button>
+        </div>
       </div>
     </div>
     <!-- Bill-to block for this customer. Used by the invoice, nothing else. -->
@@ -1372,7 +1430,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
     <div id="ledger_form2" style="display:none;margin-bottom:12px">
       <div class="card" style="border-color:var(--diesel)">
         <div class="card-head" style="color:var(--diesel)">NEW TRANSACTION FOR <span id="form2_custname"></span></div>
-        <div style="display:grid;grid-template-columns:130px 140px 1fr 1fr auto;gap:8px;align-items:end">
+        <div class="fgrid">
           <div><div class="flabel" style="margin-bottom:4px">DATE</div>
             <input type="date" id="lf_date2" class="date-inp" style="width:100%;height:32px"></div>
           <div><div class="flabel" style="margin-bottom:4px">TYPE</div>
@@ -1386,8 +1444,8 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
             </select></div>
           <div><div class="flabel" id="lf_amt_label2" style="margin-bottom:4px">CREDIT AMOUNT (₹)</div>
             <input type="number" id="lf_amt2" placeholder="0" style="width:100%"></div>
-          <div style="display:flex;gap:6px">
-            <button class="save-btn" style="padding:6px 16px;white-space:nowrap" onclick="submitLedgerEntry2()">&#10003; ADD</button>
+          <div class="fgrid-actions">
+            <button class="save-btn" style="padding:6px 16px" onclick="submitLedgerEntry2()">&#10003; ADD</button>
             <button class="btn btn-g" onclick="document.getElementById('ledger_form2').style.display='none'">&#10005;</button>
           </div>
         </div>
@@ -1431,7 +1489,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
   <div id="oilreg_form" style="display:none;margin-bottom:16px">
     <div class="card" style="border-color:var(--diesel)">
       <div class="card-head" style="color:var(--diesel)">NEW PURCHASE INVOICE</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+      <div class="fgrid" style="margin-bottom:10px">
         <div><div class="flabel" style="margin-bottom:4px">INVOICE DATE</div>
           <input type="date" id="or_date" class="date-inp" style="width:100%"></div>
         <div><div class="flabel" style="margin-bottom:4px">INVOICE NUMBER</div>
@@ -1565,7 +1623,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
     <div id="staff_form" style="display:none;margin-bottom:14px">
       <div class="card" style="border-color:var(--blue);max-width:640px">
         <div class="card-head" style="color:var(--blue)" id="sf_form_title">NEW STAFF MEMBER</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+        <div class="fgrid" style="margin-bottom:10px">
           <div><div class="flabel" style="margin-bottom:4px">NAME</div>
             <input type="text" id="sf_name" placeholder="Full name"></div>
           <div><div class="flabel" style="margin-bottom:4px">ROLE</div>
@@ -1573,7 +1631,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
           <div><div class="flabel" style="margin-bottom:4px">PHONE</div>
             <input type="tel" id="sf_phone" placeholder="10-digit"></div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div class="fgrid" style="margin-bottom:10px">
           <div><div class="flabel" style="margin-bottom:4px">MONTHLY SALARY (₹)</div>
             <input type="number" id="sf_salary" placeholder="0" min="0"></div>
           <div><div class="flabel" style="margin-bottom:4px">JOINED DATE</div>
@@ -1695,7 +1753,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
     <div id="pay_form" style="display:none;margin-bottom:14px">
       <div class="card" style="border-color:var(--green);max-width:680px">
         <div class="card-head" style="color:var(--green)">RECORD PAYMENT</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+        <div class="fgrid" style="margin-bottom:10px">
           <div><div class="flabel" style="margin-bottom:4px">STAFF</div>
             <select id="pf_staff" onchange="onPayStaffChange()" style="width:100%;padding:5px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;height:32px"></select></div>
           <div><div class="flabel" style="margin-bottom:4px">DATE</div>
@@ -1756,12 +1814,18 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
   <div id="draw_form" style="display:none;margin-bottom:14px">
     <div class="card" style="border-color:#b48cff;max-width:560px">
       <div class="card-head" style="color:#b48cff">NEW DRAWING</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
-        <div><div class="flabel" style="margin-bottom:4px">DATE</div>
-          <input type="date" id="dw_date" class="date-inp" style="width:100%"></div>
-        <div><div class="flabel" style="margin-bottom:4px">AMOUNT (₹)</div>
+      <div class="fgrid" style="margin-bottom:10px">
+        <div><div class="flabel">DATE</div>
+          <input type="date" id="dw_date" class="date-inp"></div>
+        <div><div class="flabel">AMOUNT (₹)</div>
           <input type="number" id="dw_amt" placeholder="0" min="0"></div>
-        <div><div class="flabel" style="margin-bottom:4px">PURPOSE</div>
+        <div><div class="flabel">TAKEN BY</div>
+          <select id="dw_owner">
+            <option value="">— select —</option>
+            <option>Shri Viswath C K</option><option>Kalimuthu M</option>
+            <option>Kumutha K</option><option>Nithin K</option><option>Other</option>
+          </select></div>
+        <div><div class="flabel">PURPOSE</div>
           <input type="text" id="dw_purpose" placeholder="e.g. Family expense"></div>
       </div>
       <div style="margin-bottom:10px">
@@ -1780,7 +1844,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
   </div>
   <div class="card" style="overflow-x:auto">
     <table class="data-tbl" style="width:100%;min-width:540px">
-      <thead><tr><th>DATE</th><th>AMOUNT</th><th>PURPOSE</th><th>NOTES</th><th>BY</th><th></th></tr></thead>
+      <thead><tr><th>DATE</th><th>AMOUNT</th><th>TAKEN BY</th><th>PURPOSE</th><th>NOTES</th><th>ENTERED BY</th><th></th></tr></thead>
       <tbody id="dw_body"></tbody>
     </table>
     <div id="dw_empty" style="text-align:center;padding:24px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;display:none">No drawings recorded yet.</div>
@@ -1808,6 +1872,9 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <option value="add_pack">Pack purchases</option>
         <option value="set_disc">Discount changes</option>
         <option value="save_dip">Dip readings</option>
+        <option value="adjust">Ledger adjustments</option>
+        <option value="add_note">Notes added</option>
+        <option value="drawing">Owner drawings</option>
       </select>
       <button class="btn btn-g" onclick="renderActivityLog()" style="padding:6px 14px">&#8635; REFRESH</button>
     </div>
@@ -1934,7 +2001,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <span>NEW FUEL LOAD &#8212; BILL ENTRY</span>
         <span id="fl_stage_badge" data-stage="1" style="font-size:10px;padding:3px 10px;border-radius:4px;background:rgba(77,166,255,.15);color:var(--blue)">STAGE 1 &#8212; ENTRY</span>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+      <div class="fgrid" style="margin-bottom:10px">
         <div><div class="flabel" style="margin-bottom:4px">DATE</div>
           <input type="date" id="fl_date" class="date-inp" style="width:100%"></div>
         <div><div class="flabel" style="margin-bottom:4px">INVOICE NO.</div>
@@ -1946,7 +2013,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
             <option value="MSD">MSD (Petrol)</option><option value="HSD">HSD (Diesel)</option>
           </select></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+      <div class="fgrid" style="margin-bottom:10px">
         <div><div class="flabel" style="margin-bottom:4px">DRIVER NAME</div>
           <input type="text" id="fl_driver" placeholder="Driver name"></div>
         <div><div class="flabel" style="margin-bottom:4px">LORRY NUMBER</div>
@@ -2096,6 +2163,56 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
 
 </div>
 
+
+<!-- ════ NOTES ════ -->
+<div class="page" id="page-notes" style="padding:16px">
+  <div style="max-width:1000px;margin:0 auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px">
+      <div class="sec" style="margin:0;border:none"><span class="dot db"></span>NOTES</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="text" id="note_search" placeholder="Search notes…" oninput="renderNotes()"
+          style="width:200px;height:34px">
+        <button class="btn btn-g" onclick="toggleNoteForm()">&#65291; NEW NOTE</button>
+      </div>
+    </div>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:12px;line-height:1.6">
+      Anything that does not fit a form: what to ask the supplier, a meter that
+      is drifting, who owes what outside the ledger. Shared across all four
+      logins and kept in the nightly backup.
+    </div>
+
+    <div id="note_form" style="display:none;margin-bottom:14px">
+      <div class="card" style="border-color:var(--blue)">
+        <div class="card-head" style="color:var(--blue)" id="nf_title">NEW NOTE</div>
+        <div class="fgrid" style="margin-bottom:10px">
+          <div><div class="flabel">TITLE</div>
+            <input type="text" id="nf_head" placeholder="Short title"></div>
+          <div><div class="flabel">TAG (OPTIONAL)</div>
+            <input type="text" id="nf_tag" list="noteTagList" placeholder="e.g. Supplier, Repair, Reminder">
+            <datalist id="noteTagList">
+              <option value="Supplier"><option value="Repair"><option value="Reminder">
+              <option value="Staff"><option value="Customer"><option value="Cash">
+            </datalist></div>
+          <div><div class="flabel">PIN TO TOP</div>
+            <select id="nf_pin"><option value="no">No</option><option value="yes">Yes</option></select></div>
+        </div>
+        <div style="margin-bottom:10px">
+          <div class="flabel" style="margin-bottom:4px">NOTE</div>
+          <textarea id="nf_body" rows="4" placeholder="Write it here…" style="width:100%;resize:vertical"></textarea>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="save-btn" onclick="submitNote()" id="nf_save">&#10003; SAVE</button>
+          <button class="btn btn-g" onclick="cancelNoteEdit()">CANCEL</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="notes_list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px"></div>
+    <div id="notes_empty" style="text-align:center;padding:30px;color:var(--muted);font-family:'JetBrains Mono',monospace;display:none">
+      No notes yet. Click &#65291; NEW NOTE.
+    </div>
+  </div>
+</div>
 
 <div id="update-banner">
   <span>New version available</span>
@@ -2700,7 +2817,8 @@ const PAGE_LABELS={
   oilreg:'🧾 OIL REGISTER',fuelload:'⛽ FUEL LOADS',dip:'📏 DIP & VARIATION',
   order:'🛒 ORDER ADVISOR',
   activity:'📜 ACTIVITY LOG',
-  staff:'👥 STAFF REGISTER',drawings:'💼 OWNER DRAWINGS'
+  staff:'👥 STAFF REGISTER',drawings:'💼 OWNER DRAWINGS',
+  notes:'📝 NOTES'
 };
 const OWNER_ONLY_PAGES=['report','drawings','activity'];
 function showPage(p){
@@ -2735,6 +2853,7 @@ function showPage(p){
   if(p==='activity'&&typeof renderActivityLog==='function')renderActivityLog();
   if(p==='staff'&&typeof renderStaff==='function'){staffShowTab(_currentStaffTab||'list');}
   if(p==='drawings'&&typeof renderDrawings==='function')renderDrawings();
+  if(p==='notes'&&typeof renderNotes==='function')renderNotes();
   if(typeof updateHeaderContext==='function')updateHeaderContext(p);
   if(typeof renderGlobalAlertBell==='function')renderGlobalAlertBell();
 }
@@ -3265,6 +3384,17 @@ document.addEventListener('click',function(e){
 function renderDashChart(){
   const canvas = document.getElementById('dashRevenueChart');
   if(!canvas) return;
+  // Chart.js is a CDN script. On a cold offline start it is simply not there,
+  // and an uncaught throw here used to take the whole dashboard render with it
+  // — KPIs, alerts and tanks included.
+  if(typeof Chart==='undefined'){
+    canvas.parentNode.innerHTML='<div class="empty-state">Chart unavailable offline</div>';
+    return;
+  }
+  try{ _renderDashChartInner(canvas); }
+  catch(e){ console.warn('dashboard chart failed:',e.message); }
+}
+function _renderDashChartInner(canvas){
 
   // Build last 14 days
   const days=[];
@@ -4594,7 +4724,9 @@ function genReport(){
       plugins:{legend:{labels:{color:'#AAAAAA',font:{size:11}}},
         tooltip:{callbacks:{label:c=>'₹'+c.raw.toLocaleString('en-IN')}}}}});
   // P&L section
-  renderPL(from,to,filt);
+  try{ renderPL(from,to,filt); }
+  catch(e){ console.warn('P&L render failed:',e.message);
+    const ps=document.getElementById('pl_section'); if(ps)ps.style.display='none'; }
 }
 
 // ═══════════════════════════════════════════════════
@@ -5142,6 +5274,7 @@ function openLedgerDetail(name){
   document.getElementById('ledger_form2').style.display='none';
   document.getElementById('cust_disc_panel').style.display='none';
   const _bp=document.getElementById('cust_bill_panel'); if(_bp)_bp.style.display='none';
+  const _ap=document.getElementById('adj_panel'); if(_ap)_ap.style.display='none';
   const discRate=getCustDiscount(name);
   document.getElementById('cust_disc_display').textContent=discRate>0?'₹'+discRate.toFixed(2)+'/L':'₹0/L';
 
@@ -6858,6 +6991,7 @@ function importData(event){
         if(data.staffAttendance) localStorage.setItem('staffAttendance',JSON.stringify(data.staffAttendance));
         if(data.staffPayments) localStorage.setItem('staffPayments',JSON.stringify(data.staffPayments));
         if(data.ownerDrawings) localStorage.setItem('ownerDrawings',JSON.stringify(data.ownerDrawings));
+        if(data.notes) localStorage.setItem('mfNotes',JSON.stringify(data.notes));
         if(data.activityLogLocal) localStorage.setItem('activityLogLocal',JSON.stringify(data.activityLogLocal));
         overlay.remove();
         showToast('✓ Data imported successfully! Reloading...');
@@ -8288,6 +8422,7 @@ function toggleDrawingForm(){
   if(f.style.display==='block'){
     document.getElementById('dw_date').value=_isoLocal();
     document.getElementById('dw_amt').value='';
+    var _ow=document.getElementById('dw_owner'); if(_ow)_ow.value='';
     document.getElementById('dw_purpose').value='';
     document.getElementById('dw_notes').value='';
   }
@@ -8299,7 +8434,11 @@ function submitDrawing(){
   const purpose=_clean(document.getElementById('dw_purpose').value.trim());
   const notes=_clean(document.getElementById('dw_notes').value.trim());
   if(!amt){showToast('Enter amount');return;}
-  const d={id:Date.now(),date,amount:amt,purpose,notes,createdBy:_currentUser?_currentUser.username:''};
+  // Date.now() collides when two rows are written in the same millisecond.
+  const owner=_clean((document.getElementById('dw_owner')||{}).value||'');
+  const d={id:_newId(),date,amount:_r2(amt),owner:owner,purpose,notes,
+           updatedAt:new Date().toISOString(),
+           createdBy:_currentUser?_currentUser.username:''};
   ownerDrawings.unshift(d);
   saveDrawingsLS();
   if(_currentUser&&typeof sbSaveDrawing==='function')sbSaveDrawing(d).catch(console.error);
@@ -8340,7 +8479,8 @@ function renderDrawings(){
     const tr=document.createElement('tr');
     tr.innerHTML=`<td>${d.date}</td>
       <td style="color:#b48cff;font-weight:700">₹${d.amount.toLocaleString('en-IN')}</td>
-      <td>${d.purpose||'—'}</td>
+      <td>${_esc(d.owner||'—')}</td>
+      <td>${_esc(d.purpose||'—')}</td>
       <td style="font-size:11px;color:var(--muted)">${d.notes||'—'}</td>
       <td style="font-size:11px;color:var(--muted)">${d.createdBy||'—'}</td>
       <td><button class="btn btn-d" style="padding:3px 8px;font-size:10px" onclick="delDrawing(${d.id})">&#10005;</button></td>`;
@@ -8403,17 +8543,33 @@ async function sbSavePayment(p){
 async function sbSaveDrawing(d){
   if(!_currentUser)return;   // no _supa: _sbUpsert queues it
   try{
-    await _sbUpsert('owner_drawings', {
+    const base={
       id:Math.round(d.id),user_id:_currentUser.id,date:d.date,
       amount:d.amount,purpose:d.purpose||'',notes:d.notes||'',
+      updated_at:d.updatedAt||new Date().toISOString(),
       created_by:d.createdBy||_currentUser.username
-    });
+    };
+    // `owner` is a newer column (db/010). Retry without it rather than lose the
+    // drawing entirely on a database that has not been migrated yet.
+    if(!_supa||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+      await _sbUpsert('owner_drawings', Object.assign({owner:d.owner||''},base)); return;
+    }
+    try{
+      const {error}=await _supa.from('owner_drawings')
+        .upsert(Object.assign({owner:d.owner||''},base),{onConflict:'id'});
+      if(error)throw error;
+    }catch(e2){
+      console.warn('owner_drawings rejected owner/updated_at, retrying minimal:',e2.message);
+      delete base.updated_at;
+      await _sbUpsert('owner_drawings', base);
+    }
   }catch(e){console.error('Save drawing failed:',e.message);}
 }
 async function sbLoadStaffAll(){
   if(!_currentUser||!_supa)return;
   try{
     const sR=await _supa.from('staff').select('*').eq('user_id',_currentUser.id);
+    if(sR.error){console.warn('staff read rejected:',sR.error.message);return;}
     if(sR.data&&sR.data.length){
       staffList=sR.data.map(r=>({
         id:Number(r.id),name:r.name,role:r.role,phone:r.phone,
@@ -8447,14 +8603,267 @@ async function sbLoadDrawings(){
   if(!_currentUser||!_supa)return;
   try{
     const r=await _supa.from('owner_drawings').select('*').eq('user_id',_currentUser.id).order('date',{ascending:false}).limit(500);
-    if(r.data&&r.data.length){
-      ownerDrawings=r.data.map(x=>({
-        id:Number(x.id),date:x.date,amount:x.amount,
-        purpose:x.purpose,notes:x.notes,createdBy:x.created_by
-      }));
-      saveDrawingsLS();
-    }
+    // supabase-js resolves with {error}; an unchecked read looked like an empty
+    // table, so a permissions failure silently wiped the page.
+    if(r.error){console.warn('owner_drawings read rejected:',r.error.message);return;}
+    const remote=(r.data||[]).map(x=>({
+      id:Number(x.id),date:x.date,amount:x.amount,owner:x.owner||'',
+      purpose:x.purpose,notes:x.notes,createdBy:x.created_by,
+      updatedAt:x.updated_at||x.created_at||''
+    }));
+    // Replacing the array destroyed any drawing recorded on this device and not
+    // yet uploaded — the same fault the shift and ledger paths already fixed.
+    const m=_mergeById(ownerDrawings,remote,'updatedAt');
+    ownerDrawings=m.merged.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+    saveDrawingsLS();
+    for(const d of m.localOnly){ await sbSaveDrawing(d); }
   }catch(e){console.warn('Drawings sync failed (table may not exist yet):',e.message);}
+}
+
+// ══════════════════════════════════════════════════════════════════
+// NOTES
+// A free-text pad that syncs. Everything else in this app is a form with a
+// schema; this is the place for the things that do not have one yet.
+// ══════════════════════════════════════════════════════════════════
+var notesList=JSON.parse(localStorage.getItem('mfNotes')||'[]');
+var _editingNoteId=null;
+function saveNotesLS(){localStorage.setItem('mfNotes',JSON.stringify(notesList));}
+
+function toggleNoteForm(){
+  var f=document.getElementById('note_form');
+  if(!f)return;
+  var open=f.style.display==='none';
+  f.style.display=open?'block':'none';
+  if(open)cancelNoteEdit(true);
+}
+function cancelNoteEdit(keepOpen){
+  _editingNoteId=null;
+  ['nf_head','nf_tag','nf_body'].forEach(function(id){
+    var e=document.getElementById(id); if(e)e.value='';
+  });
+  var p=document.getElementById('nf_pin'); if(p)p.value='no';
+  var t=document.getElementById('nf_title'); if(t)t.textContent='NEW NOTE';
+  var s=document.getElementById('nf_save'); if(s)s.innerHTML='&#10003; SAVE';
+  if(!keepOpen){var f=document.getElementById('note_form'); if(f)f.style.display='none';}
+}
+function editNote(id){
+  var n=notesList.find(function(x){return String(x.id)===String(id);});
+  if(!n)return;
+  _editingNoteId=n.id;
+  var f=document.getElementById('note_form'); if(f)f.style.display='block';
+  var set=function(i,v){var e=document.getElementById(i); if(e)e.value=(v==null?'':v);};
+  set('nf_head',n.title); set('nf_tag',n.tag); set('nf_body',n.body);
+  set('nf_pin',n.pinned?'yes':'no');
+  var t=document.getElementById('nf_title'); if(t)t.textContent='EDIT NOTE';
+  var s=document.getElementById('nf_save'); if(s)s.innerHTML='&#10003; UPDATE';
+  if(f.scrollIntoView)f.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function submitNote(){
+  var g=function(id){var e=document.getElementById(id);return e?e.value:'';};
+  var title=_clean(g('nf_head').trim());
+  var body=String(g('nf_body')||'').replace(/[<>]/g,'').trim().slice(0,4000);
+  var tag=_clean(g('nf_tag').trim());
+  var pinned=g('nf_pin')==='yes';
+  if(!title&&!body){showToast('Write something first');return;}
+  var now=new Date().toISOString();
+  var n;
+  if(_editingNoteId!=null){
+    n=notesList.find(function(x){return String(x.id)===String(_editingNoteId);});
+    if(!n){cancelNoteEdit();return;}
+    n.title=title||'(untitled)'; n.body=body; n.tag=tag; n.pinned=pinned;
+    n.updatedAt=now; n.updatedBy=_currentUser?_currentUser.username:'';
+  } else {
+    n={id:_newId(),title:title||'(untitled)',body:body,tag:tag,pinned:pinned,
+       createdAt:now,updatedAt:now,
+       createdBy:_currentUser?_currentUser.username:'',
+       updatedBy:_currentUser?_currentUser.username:''};
+    notesList.unshift(n);
+  }
+  saveNotesLS();
+  if(_currentUser&&typeof sbSaveNote==='function')sbSaveNote(n).catch(console.error);
+  if(typeof logActivity==='function')
+    logActivity(_editingNoteId!=null?'edit_note':'add_note','note',n.id,n.title);
+  cancelNoteEdit();
+  renderNotes();
+  showToast('Note saved');
+}
+function toggleNotePin(id){
+  var n=notesList.find(function(x){return String(x.id)===String(id);});
+  if(!n)return;
+  n.pinned=!n.pinned; n.updatedAt=new Date().toISOString();
+  saveNotesLS();
+  if(_currentUser&&typeof sbSaveNote==='function')sbSaveNote(n).catch(console.error);
+  renderNotes();
+}
+function delNote(id){
+  var n=notesList.find(function(x){return String(x.id)===String(id);});
+  if(!confirm('Delete "'+((n&&n.title)||'this note')+'"?'))return;
+  notesList=notesList.filter(function(x){return String(x.id)!==String(id);});
+  saveNotesLS();
+  if(_currentUser&&typeof _sbRemove==='function')_sbRemove('notes',id,'id');
+  if(typeof logActivity==='function')logActivity('del_note','note',id,(n&&n.title)||'');
+  renderNotes();
+  showToast('Note deleted');
+}
+function renderNotes(){
+  var wrap=document.getElementById('notes_list');
+  var empty=document.getElementById('notes_empty');
+  if(!wrap)return;
+  var qEl=document.getElementById('note_search');
+  var q=(qEl?qEl.value:'').toLowerCase().trim();
+  var rows=notesList.slice().filter(function(n){
+    if(!q)return true;
+    return ((n.title||'')+' '+(n.body||'')+' '+(n.tag||'')).toLowerCase().indexOf(q)>=0;
+  }).sort(function(a,b){
+    if(!!b.pinned!==!!a.pinned)return b.pinned?1:-1;
+    return String(b.updatedAt||'').localeCompare(String(a.updatedAt||''));
+  });
+  if(!rows.length){
+    wrap.innerHTML='';
+    if(empty){empty.style.display='block';
+      empty.textContent=q?'No note matches "'+q+'".':'No notes yet. Click + NEW NOTE.';}
+    return;
+  }
+  if(empty)empty.style.display='none';
+  wrap.innerHTML=rows.map(function(n){
+    var when=n.updatedAt?new Date(n.updatedAt).toLocaleString('en-IN',
+      {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+    return '<div class="card" style="border-color:'+(n.pinned?'var(--diesel)':'var(--border)')+
+      ';display:flex;flex-direction:column;gap:8px">'+
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">'+
+        '<div style="font-family:\'Syne\',sans-serif;font-weight:800;font-size:14px;color:var(--text);word-break:break-word">'+
+          (n.pinned?'📌 ':'')+_esc(n.title||'(untitled)')+'</div>'+
+        (n.tag?'<span class="badge" style="background:rgba(77,166,255,.12);color:var(--blue);white-space:nowrap">'+_esc(n.tag)+'</span>':'')+
+      '</div>'+
+      '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--text);line-height:1.6;white-space:pre-wrap;word-break:break-word">'+
+        _esc(n.body||'')+'</div>'+
+      '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--muted)">'+
+        _esc(n.updatedBy||n.createdBy||'')+(when?' · '+when:'')+'</div>'+
+      '<div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">'+
+        '<button class="btn btn-g" style="padding:4px 10px;font-size:10px" onclick="toggleNotePin('+n.id+')">'+
+          (n.pinned?'UNPIN':'PIN')+'</button>'+
+        '<button class="btn btn-g" style="padding:4px 10px;font-size:10px" onclick="editNote('+n.id+')">&#9998; EDIT</button>'+
+        '<button class="btn btn-d" style="padding:4px 10px;font-size:10px" onclick="delNote('+n.id+')">&#10005;</button>'+
+      '</div></div>';
+  }).join('');
+}
+
+async function sbSaveNote(n){
+  if(!_currentUser)return;   // no _supa: _sbUpsert queues it
+  await _sbUpsert('notes',{
+    id:Math.round(n.id), user_id:_currentUser.id,
+    title:n.title||'', body:n.body||'', tag:n.tag||'', pinned:!!n.pinned,
+    created_by:n.createdBy||_currentUser.username,
+    updated_by:n.updatedBy||_currentUser.username,
+    created_at:n.createdAt||new Date().toISOString(),
+    updated_at:n.updatedAt||new Date().toISOString()
+  });
+}
+async function sbLoadNotes(){
+  if(!_currentUser||!_supa)return;
+  var r=await _supa.from('notes').select('*').eq('user_id',_currentUser.id)
+          .order('updated_at',{ascending:false}).limit(500);
+  if(r.error){console.warn('notes read rejected:',r.error.message);return;}
+  var remote=(r.data||[]).map(function(x){return {
+    id:Number(x.id),title:x.title,body:x.body,tag:x.tag,pinned:!!x.pinned,
+    createdAt:x.created_at,updatedAt:x.updated_at,
+    createdBy:x.created_by,updatedBy:x.updated_by};});
+  var m=_mergeById(notesList,remote,'updatedAt');
+  notesList=m.merged; saveNotesLS();
+  for(var i=0;i<m.localOnly.length;i++){ await sbSaveNote(m.localOnly[i]); }
+  if(document.querySelector('#page-notes.active'))renderNotes();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// LEDGER ADJUSTMENTS — move money between customer accounts
+//
+// A customer overpays, or a shortfall has to be carried by somebody else.
+// Writing it off on one side only leaves the books unbalanced and nothing to
+// point at later. An adjustment writes BOTH sides: the amount leaves one
+// account and lands in the other, with the same reference on each row.
+// ══════════════════════════════════════════════════════════════════
+function openLedgerAdjust(){
+  var name=currentLedgerCustomer;if(!name)return;
+  var p=document.getElementById('adj_panel');if(!p)return;
+  var open=p.style.display==='none';
+  p.style.display=open?'block':'none';
+  if(!open)return;
+  var nm=document.getElementById('adj_from_name'); if(nm)nm.textContent=name;
+  var sel=document.getElementById('adj_other');
+  var names=Array.from(new Set(ledger.map(function(e){return e.customer;})))
+    .filter(function(n){return n!==name;}).sort();
+  sel.innerHTML=names.map(function(n){return '<option value="'+_esc(n)+'">'+_esc(n)+'</option>';}).join('')+
+    '<option value="__new__">＋ New customer…</option>';
+  var ni=document.getElementById('adj_other_new'); if(ni){ni.style.display=names.length?'none':'block';ni.value='';}
+  if(!names.length)sel.style.display='none'; else sel.style.display='';
+  var a=document.getElementById('adj_amt'); if(a)a.value='';
+  var r=document.getElementById('adj_reason'); if(r)r.value='';
+  adjPreview();
+}
+function onAdjOtherChange(){
+  var sel=document.getElementById('adj_other');
+  var ni=document.getElementById('adj_other_new');
+  if(sel.value==='__new__'){sel.style.display='none';ni.style.display='block';ni.focus();}
+  adjPreview();
+}
+function _adjOtherName(){
+  var sel=document.getElementById('adj_other');
+  var ni=document.getElementById('adj_other_new');
+  if(ni&&ni.style.display!=='none')return _clean(ni.value.trim());
+  return sel&&sel.value!=='__new__'?_clean(sel.value):'';
+}
+function adjPreview(){
+  var el=document.getElementById('adj_preview');
+  if(!el)return;
+  var from=currentLedgerCustomer||'—';
+  var other=_adjOtherName()||'(other customer)';
+  var amt=parseFloat((document.getElementById('adj_amt')||{}).value)||0;
+  var dir=(document.getElementById('adj_dir')||{}).value||'give';
+  if(!amt){el.textContent='';return;}
+  el.innerHTML = dir==='give'
+    ? fmt(amt)+' moves <b>out of '+_esc(from)+'</b> and <b>into '+_esc(other)+
+      '</b>. '+_esc(from)+"'s balance goes up by "+fmt(amt)+', '+_esc(other)+"'s goes down by the same."
+    : fmt(amt)+' moves <b>out of '+_esc(other)+'</b> and <b>into '+_esc(from)+
+      '</b>. '+_esc(other)+"'s balance goes up by "+fmt(amt)+', '+_esc(from)+"'s goes down by the same.";
+}
+function submitLedgerAdjust(){
+  var from=currentLedgerCustomer;if(!from)return;
+  var other=_adjOtherName();
+  var amt=_r2(Math.abs(parseFloat((document.getElementById('adj_amt')||{}).value)||0));
+  var dir=(document.getElementById('adj_dir')||{}).value||'give';
+  var reason=_clean((document.getElementById('adj_reason')||{}).value||'');
+  if(!other){showToast('Pick or type the other customer');return;}
+  if(other===from){showToast('Pick a different customer');return;}
+  if(!amt){showToast('Enter an amount');return;}
+
+  var ref='ADJ-'+_newId();
+  var date=(document.getElementById('lf_date2')||{}).value||_isoLocal();
+  var mk=function(cust,signed,counterpart,word){
+    return {id:_newId(),date:date,customer:cust,shift:shift,fuel:'ADJUST',
+            amount:signed,paidBack:0,kind:'adjust',
+            notes:ref+': '+word+' '+counterpart+(reason?' — '+reason:'')};
+  };
+  var rowFrom,rowOther;
+  if(dir==='give'){
+    rowFrom  = mk(from,  amt,  other, 'transferred to');
+    rowOther = mk(other, -amt, from,  'received from');
+  } else {
+    rowFrom  = mk(from,  -amt, other, 'received from');
+    rowOther = mk(other, amt,  from,  'transferred to');
+  }
+  ledger.push(rowFrom); ledger.push(rowOther);
+  saveLedger();
+  if(_currentUser){
+    sbSaveLedgerEntry(rowFrom).catch(console.error);
+    sbSaveLedgerEntry(rowOther).catch(console.error);
+  }
+  if(typeof logActivity==='function')
+    logActivity('adjust','ledger',ref,fmt(amt)+' '+(dir==='give'?from+' → '+other:other+' → '+from)+
+      (reason?' • '+reason:''));
+  var p=document.getElementById('adj_panel'); if(p)p.style.display='none';
+  refreshCreditSelects();refreshCredBackSelects();
+  openLedgerDetail(from);
+  showToast('Adjustment recorded on both accounts — '+ref);
 }
 
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500)}
@@ -8641,6 +9050,7 @@ function exportFullBackup(){
         staffAttendance:JSON.parse(localStorage.getItem('staffAttendance')||'[]'),
         staffPayments:JSON.parse(localStorage.getItem('staffPayments')||'[]'),
         ownerDrawings:JSON.parse(localStorage.getItem('ownerDrawings')||'[]'),
+        notes:JSON.parse(localStorage.getItem('mfNotes')||'[]'),
         activityLogLocal:JSON.parse(localStorage.getItem('activityLogLocal')||'[]')
       }
     };
@@ -9019,6 +9429,7 @@ async function sbLoadCustProfiles() {
   if (!_currentUser || !_supa) return;
   try {
     const r = await _supa.from('customer_profiles').select('*').eq('user_id', _currentUser.id);
+    if (r.error) { console.warn('customer_profiles read rejected:', r.error.message); return; }
     if (r.data && r.data.length) {
       customerProfiles = {};
       r.data.forEach(p => {
@@ -9058,6 +9469,7 @@ async function sbLoadPackReg() {
   if (!_currentUser || !_supa) return;
   try {
     const r = await _supa.from('pack_register').select('*').eq('user_id', _currentUser.id).order('date', { ascending: false });
+    if (r.error) { console.warn('pack_register read rejected:', r.error.message); return; }
     if (r.data && r.data.length) {
       packReg = r.data.map(p => ({
         id: Number(p.id), size: p.size || 40, date: p.date, supplier: p.supplier,
@@ -9269,6 +9681,7 @@ async function loadAllFromSupabase(silent) {
     try { await sbLoadPackReg(); } catch(e){ console.warn('Pack register not loaded:',e); }
     try { await sbLoadStaffAll(); } catch(e){ console.warn('Staff not loaded:',e); }
     try { await sbLoadDrawings(); } catch(e){ console.warn('Drawings not loaded:',e); }
+    try { await sbLoadNotes(); } catch(e){ console.warn('Notes not loaded:',e); }
 
     // Re-render everything after sync
     renderMasterStock();
@@ -9574,6 +9987,8 @@ function startRealtimeSync(){
       .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_items' },      function(){ silentSync(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'oil_invoices' },     function(){ silentSync(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' },     function(){ silentSync(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'owner_drawings' },   function(){ silentSync(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notes' },            function(){ silentSync(); })
       .subscribe(function(status){
         _realtimeLive = (status === 'SUBSCRIBED');
         if(!_realtimeLive){
@@ -9619,6 +10034,8 @@ async function silentSync(){
       if(pid==='stock'   && typeof renderMasterStock==='function')renderMasterStock();
       if(pid==='oilreg'  && typeof renderOilReg==='function')     renderOilReg();
       if(pid==='fuelload'&& typeof renderFuelLoads==='function')  renderFuelLoads();
+      if(pid==='notes'   && typeof renderNotes==='function')      renderNotes();
+      if(pid==='drawings'&& typeof renderDrawings==='function')   renderDrawings();
       if(pid==='report'  && typeof renderReport==='function')     renderReport();
     }
     if(typeof renderGlobalAlertBell==='function')renderGlobalAlertBell();
