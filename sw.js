@@ -1,9 +1,9 @@
-// ManiFuels Service Worker — v5
+// ManiFuels Service Worker — v6
 // Scope: served from the repo root on GitHub Pages, so './' resolves to
 // /manifuels/. Registered from index.html as a real file (a blob: URL is
 // rejected by Chrome, which is why offline never worked before v4).
 
-const CACHE = 'manifuels-v5';
+const CACHE = 'manifuels-v6';
 
 const PRECACHE = [
   './',
@@ -77,7 +77,7 @@ self.addEventListener('fetch', e => {
         }
         return resp;
       }).catch(() => caches.match('./index.html').then(cached => cached ||
-        new Response('<h2 style="font-family:monospace;color:#00d4a0;background:#0a0e13;padding:40px;margin:0;min-height:100vh">ManiFuels — offline, and no copy is cached yet. Open the app once with a connection.</h2>',
+        new Response('<h2 style="font-family:monospace;color:#00d4a0;background:#121212;padding:40px;margin:0;min-height:100vh">ManiFuels — offline, and no copy is cached yet. Open the app once with a connection.</h2>',
           { headers: { 'Content-Type': 'text/html' } })))
     );
     return;
