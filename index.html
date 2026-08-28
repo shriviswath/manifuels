@@ -2166,7 +2166,7 @@ function getCustDiscount(name){return (customerProfiles[name]&&customerProfiles[
 // ══════════════════════════════════════════════════════════════════
 var BIZ_DEFAULT={name:'Mani Fuels',gstin:'',address:'',phone:'',email:'',
   invPrefix:'MF',invSeq:1,taxPct:0,dueDays:7,
-  terms:'Payment can be made in cash, GPay or Paytm at the bunk office.'};
+  terms:'Payment can be made in Cash, UPI or NetBanking Transaction with the given details.'};
 var bizProfile=Object.assign({},BIZ_DEFAULT,(function(){
   try{return JSON.parse(localStorage.getItem('bizProfile')||'{}');}catch(e){return {};}
 })());
@@ -2312,7 +2312,7 @@ function generateCustomerInvoice(name){
       '<thead><tr>'+
         '<th style="text-align:left;padding:8px 6px;border-bottom:1px solid #111">Description</th>'+
         '<th style="text-align:center;padding:8px 6px;border-bottom:1px solid #111;width:80px">Quantity</th>'+
-        '<th style="text-align:right;padding:8px 6px;border-bottom:1px solid #111;width:110px">Unit Price</th>'+
+        '<th style="text-align:right;padding:8px 6px;border-bottom:1px solid #111;width:110px">Price</th>'+
         '<th style="text-align:right;padding:8px 6px;border-bottom:1px solid #111;width:110px">Total</th>'+
       '</tr></thead><tbody>'+
       lines.map(function(l){
