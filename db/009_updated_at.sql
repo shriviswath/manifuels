@@ -1,37 +1,28 @@
 -- ManiFuels — 009_updated_at.sql
 --
--- The client stamps updated_at on every row it writes and uses it to resolve
--- sync conflicts: newest wins. Three tables never had the column, so Postgres
--- rejected the whole row with
+-- The client sends `updated_at` on stock_items, ledger_entries, oil_invoices,
+-- fuel_loads and owner_drawings. Merge resolution depends on it: a row without
+-- a timestamp always loses to the server copy, so a local edit is silently
+-- undone by the next sync.
 --
---   column "updated_at" of relation "fuel_loads" does not exist
+-- More urgently: PostgREST rejects an insert naming a column that does not
+-- exist. If this migration has not been applied, EVERY write to those four
+-- tables fails, lands in the outbox, and the header shows "n unsent" forever.
+-- That is the usual cause of "the app works but nothing reaches Supabase".
 --
--- The write then sat in the outbox retrying — which is why fuel loads saved on
--- one device never appeared on another. stock_items and shift_records already
--- had the column, which is why those synced fine and the fault looked specific
--- to loads.
---
--- Without a timestamp the merge falls back to "server always wins", so an edit
--- made on a phone is silently undone by the next sync. These columns are what
--- make last-write-wins actually work.
+-- Idempotent. Safe against live data.
 
-alter table public.ledger_entries
-  add column if not exists updated_at timestamptz default now();
+alter table public.stock_items    add column if not exists updated_at timestamptz default now();
+alter table public.ledger_entries add column if not exists updated_at timestamptz default now();
+alter table public.oil_invoices   add column if not exists updated_at timestamptz default now();
+alter table public.fuel_loads     add column if not exists updated_at timestamptz default now();
 
-alter table public.oil_invoices
-  add column if not exists updated_at timestamptz default now();
-
-alter table public.fuel_loads
-  add column if not exists updated_at timestamptz default now();
-
--- Existing rows get a sensible starting point rather than a null, so the first
--- merge after this migration does not treat every server row as older than a
--- local copy that has never been edited.
-update public.ledger_entries set updated_at = coalesce(updated_at, created_at, now()) where updated_at is null;
-update public.oil_invoices   set updated_at = coalesce(updated_at, created_at, now()) where updated_at is null;
-update public.fuel_loads     set updated_at = coalesce(updated_at, created_at, now()) where updated_at is null;
+-- Backfill so existing rows are not treated as "older than everything".
+update public.stock_items    set updated_at = now() where updated_at is null;
+update public.ledger_entries set updated_at = now() where updated_at is null;
+update public.oil_invoices   set updated_at = now() where updated_at is null;
+update public.fuel_loads     set updated_at = now() where updated_at is null;
 
 -- Verify:
---   select table_name from information_schema.columns
---   where column_name='updated_at' and table_schema='public' order by 1;
---   -- expect: fuel_loads, ledger_entries, oil_invoices, shift_records, stock_items, app_settings, customer_profiles
+--   select column_name from information_schema.columns
+--   where table_schema='public' and column_name='updated_at' order by table_name;
