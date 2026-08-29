@@ -3,7 +3,7 @@
 // /manifuels/. Registered from index.html as a real file (a blob: URL is
 // rejected by Chrome, which is why offline never worked before v4).
 
-const CACHE = 'manifuels-v6';
+const CACHE = 'manifuels-v7';
 
 const PRECACHE = [
   './',
