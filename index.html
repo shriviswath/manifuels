@@ -184,6 +184,25 @@ input::placeholder{color:var(--dim)}
   .pdf-page-break{page-break-before:always}
   @page{margin:15mm;size:A4}
 }
+/* ── CREDIT LEDGER CARDS ──────────────────────────────────────────────────
+   A grid item defaults to min-width:auto, so a card whose four buttons cannot
+   shrink simply grows past its 280px track and spills over the next column —
+   which is exactly what the ledger was doing. min-width:0 lets the track win,
+   and the button row wraps instead of pushing. */
+#customer_cards{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))!important;align-items:start}
+.cust-card{min-width:0;overflow:hidden;display:flex;flex-direction:column;gap:10px}
+.cust-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.cust-name{font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:var(--text);line-height:1.25;overflow-wrap:anywhere;min-width:0}
+.cust-head .badge{flex:0 0 auto;white-space:nowrap}
+.cust-boxes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;text-align:center}
+.cust-box{background:var(--s3);border-radius:4px;padding:8px 4px;min-width:0}
+.cust-box-t{font-size:9px;letter-spacing:1px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cust-box-v{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;overflow-wrap:anywhere;line-height:1.2}
+.cust-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:auto}
+.cust-count{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);white-space:nowrap}
+.cust-actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;flex:1 1 auto}
+.cust-actions button{padding:5px 9px!important;font-size:10px!important;letter-spacing:.5px;white-space:nowrap;flex:0 0 auto}
+
 /* ── FORM GRID ────────────────────────────────────────────────────────────
    Every inline form hardcoded its column count, so a 360px phone was handed
    six fixed columns and the fields ran off the card. auto-fit reflows. */
@@ -5192,51 +5211,37 @@ function renderLedger(){
     }
 
     const card=document.createElement('div');
-    card.className='card';
+    card.className='card cust-card';
     card.style.cssText='cursor:pointer;border-color:var(--border2);transition:border-color .2s';
     card.onmouseenter=()=>card.style.borderColor='var(--diesel)';
     card.onmouseleave=()=>card.style.borderColor='var(--border2)';
     // Show 3 mini boxes; if customer has advance, show advance held instead of "given"
-    const boxes=c.advanceReceived>0
-      ? `<div style="background:var(--s3);border-radius:4px;padding:8px 4px">
-          <div style="font-size:9px;letter-spacing:2px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;margin-bottom:3px">CREDIT</div>
-          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--red)">&#8377;${c.creditGiven.toLocaleString('en-IN')}</div>
-        </div>
-        <div style="background:var(--s3);border-radius:4px;padding:8px 4px">
-          <div style="font-size:9px;letter-spacing:2px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;margin-bottom:3px">ADV REC'D</div>
-          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--green)">&#8377;${c.advanceReceived.toLocaleString('en-IN')}</div>
-        </div>
-        <div style="background:var(--s3);border-radius:4px;padding:8px 4px">
-          <div style="font-size:9px;letter-spacing:2px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;margin-bottom:3px">${balanceLabel}</div>
-          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:${balanceCls}">${balanceVal}</div>
-        </div>`
-      : `<div style="background:var(--s3);border-radius:4px;padding:8px 4px">
-          <div style="font-size:9px;letter-spacing:2px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;margin-bottom:3px">GIVEN</div>
-          <div style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--red)">&#8377;${c.creditGiven.toLocaleString('en-IN')}</div>
-        </div>
-        <div style="background:var(--s3);border-radius:4px;padding:8px 4px">
-          <div style="font-size:9px;letter-spacing:2px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;margin-bottom:3px">PAID</div>
-          <div style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--green)">&#8377;${c.paid.toLocaleString('en-IN')}</div>
-        </div>
-        <div style="background:var(--s3);border-radius:4px;padding:8px 4px">
-          <div style="font-size:9px;letter-spacing:2px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;margin-bottom:3px">${balanceLabel}</div>
-          <div style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:${balanceCls}">${balanceVal}</div>
-        </div>`;
+    // Three fixed boxes, whatever the state — the labels change, the layout
+    // does not, so cards in the same row line up.
+    const _box=(label,value,colour)=>
+      '<div class="cust-box"><div class="cust-box-t">'+label+'</div>'+
+      '<div class="cust-box-v" style="color:'+colour+'">'+value+'</div></div>';
+    const _money=n=>'\u20B9'+Math.round(n).toLocaleString('en-IN');
+    const boxes = c.advanceReceived>0
+      ? _box('CREDIT',_money(c.creditGiven),'var(--red)')+
+        _box("ADV REC'D",_money(c.advanceReceived),'var(--green)')+
+        _box(balanceLabel,balanceVal,balanceCls)
+      : _box('GIVEN',_money(c.creditGiven),'var(--red)')+
+        _box('PAID',_money(c.paid),'var(--green)')+
+        _box(balanceLabel,balanceVal,balanceCls);
     card.innerHTML=`
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:var(--text)">${name}</div>
+      <div class="cust-head">
+        <div class="cust-name">${_esc(name)}</div>
         ${statusBadge}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px;text-align:center">
-        ${boxes}
-      </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-        <span style="font-size:11px;color:var(--muted)">${c.entries.length} transaction${c.entries.length!==1?'s':''}</span>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-g cust-inv-btn" data-name="${name}" style="padding:4px 10px;font-size:11px">🧾 INV</button>
-          <button class="btn btn-g cust-stmt-btn" data-name="${name}" style="padding:4px 10px;font-size:11px">📄 PDF</button>
-          <button class="btn btn-d cust-del-btn" data-name="${name}" style="padding:4px 10px;font-size:11px">&#128465;</button>
-          <button class="save-btn cust-view-btn" data-name="${name}" style="padding:5px 14px;font-size:11px">VIEW &#8594;</button>
+      <div class="cust-boxes">${boxes}</div>
+      <div class="cust-foot">
+        <span class="cust-count">${c.entries.length} txn${c.entries.length!==1?'s':''}</span>
+        <div class="cust-actions">
+          <button class="btn btn-g cust-inv-btn" data-name="${_esc(name)}" title="Invoice PDF">🧾 INV</button>
+          <button class="btn btn-g cust-stmt-btn" data-name="${_esc(name)}" title="Statement PDF">📄 PDF</button>
+          <button class="btn btn-d cust-del-btn" data-name="${_esc(name)}" title="Delete customer">&#128465;</button>
+          <button class="save-btn cust-view-btn" data-name="${_esc(name)}">VIEW &#8594;</button>
         </div>
       </div>`;
     card.querySelector('.cust-del-btn').addEventListener('click',function(e){
