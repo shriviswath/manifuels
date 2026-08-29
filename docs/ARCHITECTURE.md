@@ -116,6 +116,76 @@ The real fix is a store layer where saving *is* syncing, so there is nothing to
 forget. Worth doing after `db/006`, not before — no sense hardening a data path
 that is about to be rewritten.
 
+## Notes and ledger adjustments
+
+`notes` is the only table with no fixed shape. Everything else in the app is a
+form with a schema; the pad is where the things that do not have one yet live.
+It merges by id on `updated_at`, same as every other collection.
+
+An **adjustment** moves an amount between two customer accounts. It writes two
+rows sharing one `ADJ-<id>` reference — `+X` on the account the money leaves,
+`-X` on the account it lands in, both `kind='adjust'`, `fuel='ADJUST'`. Nothing
+is created or destroyed, so the ledger totals are unchanged and either side can
+be traced to the other. Writing one side only was the tempting shortcut and it
+leaves the books unbalanced with nothing to point at three months later.
+
+## Why writes fail silently at the database, not the client
+
+Three separate faults have produced "the app saved it but Supabase is empty":
+
+1. A column named in the insert does not exist (`updated_at`, `stock_sold`,
+   `billing`, `owner`). PostgREST rejects the whole row.
+2. The table does not exist — the base schema was hand-run and versions differ.
+3. RLS re-enabled on one table from the dashboard.
+
+All three look identical from the app: the outbox parks the row and the header
+shows "n unsent". `db/apply_all.sql` fixes 1 and 2; `db/004_grants.sql` fixes 3.
+Where a column is genuinely new, the writer retries without it rather than lose
+the record — `sbSaveRecord`, `sbSaveCustProfile` and `sbSaveDrawing` all do this.
+
+## Deletes need a tombstone
+
+Deleting is two operations: remove it here, ask the server to remove it there.
+The second can fail — offline, rejected, or simply slower than the next poll —
+and `_mergeById` had no memory of the first, so the server's copy was pulled
+straight back in. The row "came back", which reads as data corruption and is
+really just an ordering problem.
+
+`_tombAdd(table,id)` records the id at the moment the delete is *attempted*,
+not after it succeeds. `_dropDeleted(table, remoteRows)` filters the pulled set
+against that record and re-issues any delete that evidently did not stick.
+Tombstones expire after 60 days — long enough for a phone that was switched off
+for a month.
+
+## Ids must be integers
+
+An older build minted ids as `Date.now()+Math.random()`, so rows created then
+carry a fractional id against a `bigint` column. Two consequences, both of which
+presented as "the credit ledger does not sync":
+
+* `sbSaveAllLedger` sent the raw id. One fractional value makes Postgres reject
+  the **whole array**, and `saveLedger()` sends the entire ledger on every
+  change — so one legacy row stopped all credit sync.
+* the per-row writer rounded before sending, so the server knew the row by a
+  different id than the device did. The merge saw two rows; a delete aimed at
+  one never touched the other.
+
+`_intId()` rounds on the way in and out. `_normaliseIds()` repairs the stored
+ledger once at boot, collapsing a rounding pair into one row and keeping the
+larger `paidBack` so a recorded payment is never lost.
+
+## A rejected array must not cost the whole array
+
+`_sbUpsert` now splits a rejected batch and retries row by row, so a bad row
+costs one row instead of every row, and the console names the id that failed.
+
+## Sync Health
+
+The outbox always knew why the server refused a write; it only ever said so in
+the console. **Sync Health** (user menu, or tap the "n unsent" chip) shows the
+per-table rejection message, maps the common ones to the migration that fixes
+them, and offers retry, discard, and copy-diagnostics.
+
 ## Known sharp edges
 
 * `user_id` is the username, so each owner has a separate set of books.
