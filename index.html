@@ -2289,6 +2289,16 @@ let plCI=null,collCI=null;
 document.getElementById('shiftDate').value=_isoLocal();
 setShiftId();setDateTime();setInterval(setDateTime,30000);
 let ledger=JSON.parse(localStorage.getItem('fuelLedger')||'[]');
+// One-time repair of legacy fractional ids. Runs before anything reads the
+// ledger, so the rest of the app only ever sees integers.
+(function(){
+  var n=_normaliseIds(ledger,'updatedAt');
+  if(n.fixed){
+    ledger=n.rows;
+    localStorage.setItem('fuelLedger',JSON.stringify(ledger));
+    console.warn('Repaired '+n.fixed+' ledger row id(s) — legacy fractional ids');
+  }
+})();
 // customerProfiles: {name: {discountPerL: number, notes: string}}
 let customerProfiles=JSON.parse(localStorage.getItem('custProfiles')||'{}');
 function saveCustProfiles(){localStorage.setItem('custProfiles',JSON.stringify(customerProfiles));}
@@ -3034,6 +3044,39 @@ function _r2(n){return Math.round(((parseFloat(n)||0)+Number.EPSILON)*100)/100;}
 // same millisecond (saving a shift with 4 credit lines does exactly that).
 var _idSeq=0;
 function _newId(){_idSeq=(_idSeq+1)%1000;return Date.now()*1000+_idSeq;}
+
+// An older build minted ids as Date.now()+Math.random(), so rows created then
+// carry a FRACTIONAL id. The column is bigint. Two consequences, both of which
+// looked like "the ledger does not sync":
+//   • a single fractional id in a bulk upsert makes Postgres reject the whole
+//     array, so every ledger write failed on account of one legacy row;
+//   • the per-row writer rounded before sending, so the server knew the row by
+//     a different id than the device did — the merge saw two rows, and a
+//     delete aimed at one never touched the other.
+// Everything is rounded on the way in and on the way out, once.
+function _intId(v){
+  var n=Math.round(parseFloat(v));
+  return isFinite(n)?n:_newId();
+}
+function _normaliseIds(arr,tsField){
+  if(!Array.isArray(arr))return {rows:arr,fixed:0};
+  var seen={},out=[],fixed=0;
+  arr.forEach(function(r){
+    if(!r||r.id==null){out.push(r);return;}
+    var id=_intId(r.id);
+    if(id!==r.id){r.id=id;fixed++;}
+    var k=String(id),prev=seen[k];
+    if(prev===undefined){seen[k]=out.length;out.push(r);return;}
+    // Same row, two roundings — keep whichever was touched last, and never
+    // lose a payment that was recorded against only one of the copies.
+    var a=out[prev],b=r;
+    var keep=(tsField&&String(b[tsField]||'')>String(a[tsField]||''))?b:a;
+    var other=keep===a?b:a;
+    if((other.paidBack||0)>(keep.paidBack||0))keep.paidBack=other.paidBack;
+    out[prev]=keep;fixed++;
+  });
+  return {rows:out,fixed:fixed};
+}
 
 // ── REVENUE of a shift = value of goods sold. rightTotal also contains credBack
 // (money collected against OLD credit), which is a receivable coming back, not a
@@ -5362,7 +5405,7 @@ function deleteCustomer(name){
   if(!confirm(warn)) return;
 
   // Remove from the server too, or the next sync merges every row back in.
-  rows.forEach(function(e){ _sbRemove('ledger_entries', Math.round(e.id), 'id'); });
+  rows.forEach(function(e){ _sbRemove('ledger_entries', _intId(e.id), 'id'); });
   if(customerProfiles[name]) _sbRemove('customer_profiles', name, 'customer_name');
 
   ledger=ledger.filter(e=>e.customer!==name);
@@ -8522,7 +8565,7 @@ async function sbDeleteAttendance(staffId,date,shift){
   if(!_currentUser)return;
   const where={user_id:_currentUser.id, staff_id:staffId, date:date, shift:shift};
   if(!_supa||(typeof navigator!=='undefined'&&navigator.onLine===false)){
-    _outboxQueue('staff_attendance','deleteWhere',where); return;
+    _outboxQueue('staff_attendance','deleteWhere',where,null,'offline'); return;
   }
   try{
     const {error}=await _supa.from('staff_attendance').delete()
@@ -8530,7 +8573,7 @@ async function sbDeleteAttendance(staffId,date,shift){
     if(error)throw new Error(error.message);
   }catch(e){
     console.warn('Attendance delete queued for retry:',e.message);
-    _outboxQueue('staff_attendance','deleteWhere',where);
+    _outboxQueue('staff_attendance','deleteWhere',where,null,e.message);
   }
 }
 
@@ -8576,6 +8619,7 @@ async function sbLoadStaffAll(){
     const sR=await _supa.from('staff').select('*').eq('user_id',_currentUser.id);
     if(sR.error){console.warn('staff read rejected:',sR.error.message);return;}
     if(sR.data&&sR.data.length){
+      sR.data=_dropDeleted('staff',sR.data);
       staffList=sR.data.map(r=>({
         id:Number(r.id),name:r.name,role:r.role,phone:r.phone,
         monthlySalary:r.monthly_salary,joinedDate:r.joined_date,
@@ -8594,6 +8638,7 @@ async function sbLoadStaffAll(){
     }
     const pR=await _supa.from('staff_payments').select('*').eq('user_id',_currentUser.id).order('date',{ascending:false}).limit(1000);
     if(pR.data&&pR.data.length){
+      pR.data=_dropDeleted('staff_payments',pR.data);
       staffPayments=pR.data.map(r=>({
         id:Number(r.id),staffId:Number(r.staff_id),date:r.date,
         type:r.type,amount:r.amount,notes:r.notes,
@@ -8618,7 +8663,7 @@ async function sbLoadDrawings(){
     }));
     // Replacing the array destroyed any drawing recorded on this device and not
     // yet uploaded — the same fault the shift and ledger paths already fixed.
-    const m=_mergeById(ownerDrawings,remote,'updatedAt');
+    const m=_mergeById(ownerDrawings,_dropDeleted('owner_drawings',remote),'updatedAt');
     ownerDrawings=m.merged.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
     saveDrawingsLS();
     for(const d of m.localOnly){ await sbSaveDrawing(d); }
@@ -8773,7 +8818,7 @@ async function sbLoadNotes(){
     id:Number(x.id),title:x.title,body:x.body,tag:x.tag,pinned:!!x.pinned,
     createdAt:x.created_at,updatedAt:x.updated_at,
     createdBy:x.created_by,updatedBy:x.updated_by};});
-  var m=_mergeById(notesList,remote,'updatedAt');
+  var m=_mergeById(notesList,_dropDeleted('notes',remote),'updatedAt');
   notesList=m.merged; saveNotesLS();
   for(var i=0;i<m.localOnly.length;i++){ await sbSaveNote(m.localOnly[i]); }
   if(document.querySelector('#page-notes.active'))renderNotes();
@@ -8871,6 +8916,106 @@ function submitLedgerAdjust(){
   showToast('Adjustment recorded on both accounts — '+ref);
 }
 
+// ══════════════════════════════════════════════════════════════════
+// SYNC HEALTH
+// The outbox already knows exactly why the server refused a row. It was only
+// ever written to the console, so from the shop floor a failure looked like
+// nothing at all. This puts the rejection message on screen.
+// ══════════════════════════════════════════════════════════════════
+function showSyncHealth(){
+  var jobs=_outboxRead();
+  var byTable={};
+  jobs.forEach(function(j){
+    if(!byTable[j.table])byTable[j.table]={n:0,tries:0,err:'',op:j.op};
+    byTable[j.table].n++;
+    byTable[j.table].tries=Math.max(byTable[j.table].tries,j.tries||0);
+    if(j.lastError&&!byTable[j.table].err)byTable[j.table].err=j.lastError;
+  });
+  var t=_tombRead(), tombs=0;
+  Object.keys(t).forEach(function(k){tombs+=Object.keys(t[k]).length;});
+
+  var rows=Object.keys(byTable).map(function(tab){
+    var b=byTable[tab];
+    return '<tr><td style="font-weight:700">'+_esc(tab)+'</td>'+
+      '<td>'+b.n+' '+_esc(b.op)+'</td>'+
+      '<td>'+b.tries+'</td>'+
+      '<td style="color:var(--red);font-size:10px;word-break:break-word">'+_esc(b.err||'—')+'</td></tr>';
+  }).join('');
+
+  var hint='';
+  var allErr=jobs.map(function(j){return j.lastError||'';}).join(' ');
+  if(/column .* does not exist|Could not find the '.*' column/i.test(allErr))
+    hint='A column the app writes is missing from the database. Run <b>db/apply_all.sql</b> in the Supabase SQL editor — 009 and 010 are the usual culprits.';
+  else if(/row-level security|permission denied|401|JWT/i.test(allErr))
+    hint='RLS is on, or the grant was revoked, for that table. Run <b>db/004_grants.sql</b>.';
+  else if(/relation .* does not exist/i.test(allErr))
+    hint='That table does not exist yet. Run <b>db/010_ensure_tables.sql</b>.';
+  else if(/invalid input syntax|out of range/i.test(allErr))
+    hint='A value does not fit its column — the id or amount on the row named above. The row is listed in the console.';
+
+  var html=
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'+
+      '<div style="font-family:\'Syne\',sans-serif;font-weight:800;font-size:16px;letter-spacing:1.5px">⚕ SYNC HEALTH</div>'+
+      '<button onclick="document.getElementById(\'syncHealthOverlay\').style.display=\'none\'" style="background:transparent;border:1px solid var(--border2);color:var(--muted);padding:5px 12px;border-radius:4px;cursor:pointer">✕</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:14px">'+
+      '<div class="sbox"><div class="sb-t">Connection</div><div class="sb-v" style="font-size:14px;color:'+
+        ((typeof navigator!=='undefined'&&navigator.onLine===false)?'var(--red)">OFFLINE':'var(--green)">ONLINE')+'</div></div>'+
+      '<div class="sbox"><div class="sb-t">Unsent writes</div><div class="sb-v" style="font-size:14px;color:'+
+        (jobs.length?'var(--red)':'var(--green)')+'">'+jobs.length+'</div></div>'+
+      '<div class="sbox"><div class="sb-t">Last sync</div><div class="sb-v" style="font-size:14px">'+
+        (_lastSyncTime?new Date(_lastSyncTime).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}):'never')+'</div></div>'+
+      '<div class="sbox"><div class="sb-t">Deletes remembered</div><div class="sb-v" style="font-size:14px">'+tombs+'</div></div>'+
+    '</div>'+
+    (jobs.length
+      ? '<table class="data-tbl" style="width:100%"><thead><tr><th>TABLE</th><th>WAITING</th><th>TRIES</th><th>SERVER SAID</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+        (hint?'<div style="margin-top:12px;padding:10px 12px;background:rgba(255,176,32,.08);border-left:3px solid var(--diesel);border-radius:4px;font-size:11px;color:var(--text);line-height:1.6">'+hint+'</div>':'')
+      : '<div style="text-align:center;padding:22px;color:var(--green);font-family:\'JetBrains Mono\',monospace;font-size:12px">✓ Everything on this device has reached the server.</div>')+
+    '<div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">'+
+      '<button class="save-btn" onclick="syncNow();document.getElementById(\'syncHealthOverlay\').style.display=\'none\'">⟳ RETRY NOW</button>'+
+      (jobs.length?'<button class="btn btn-d" onclick="discardOutbox()">DISCARD '+jobs.length+' UNSENT</button>':'')+
+      '<button class="btn btn-g" onclick="copySyncDiag()">COPY DETAILS</button>'+
+    '</div>'+
+    '<div style="margin-top:10px;font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--muted);line-height:1.6">'+
+      'Discarding throws away changes that never reached the server. They stay on '+
+      'this device until the next sync overwrites them. Only do it if the rows are wrong.'+
+    '</div>';
+
+  var o=document.getElementById('syncHealthOverlay');
+  if(!o){
+    o=document.createElement('div');
+    o.id='syncHealthOverlay';
+    o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:860;display:flex;align-items:center;justify-content:center;padding:20px';
+    o.innerHTML='<div id="syncHealthBody" style="background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:22px;max-width:720px;width:100%;max-height:85vh;overflow-y:auto"></div>';
+    document.body.appendChild(o);
+  }
+  document.getElementById('syncHealthBody').innerHTML=html;
+  o.style.display='flex';
+}
+function discardOutbox(){
+  var n=_outboxDepth();
+  if(!confirm('Discard '+n+' unsent change(s)?\n\nThey will never reach the server.'))return;
+  localStorage.removeItem(MF_OUTBOX_KEY);
+  _outboxBadge();
+  if(typeof logActivity==='function')logActivity('outbox_discard','data',null,n+' unsent write(s) discarded');
+  showSyncHealth();
+  showToast('Discarded '+n+' unsent change(s)');
+}
+function copySyncDiag(){
+  var d={when:new Date().toISOString(),online:navigator.onLine,
+         user:_currentUser?_currentUser.username:null,station:MF_STATION,
+         lastSync:_lastSyncTime?new Date(_lastSyncTime).toISOString():null,
+         outbox:_outboxRead().map(function(j){
+           return {table:j.table,op:j.op,tries:j.tries,error:j.lastError||'',
+                   id:(j.rows&&j.rows[0]&&j.rows[0].id)||j.rows};}),
+         counts:{shifts:records.length,ledger:ledger.length,stock:stock.length}};
+  var txt=JSON.stringify(d,null,2);
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){showToast('Diagnostics copied');},
+      function(){console.log(txt);showToast('Copied to console instead');});
+  } else { console.log(txt); showToast('Printed to console'); }
+}
+
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500)}
 
 // ── PWA SETUP ──
@@ -8932,6 +9077,7 @@ function toggleUserMenu(){
   h+='<div style="font-size:13px;color:var(--text);margin-bottom:8px">'+email+'</div>';
   h+='<div style="border-top:1px solid var(--border);padding-top:10px">';
   h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="syncNow()">&#8635; SYNC NOW</button>';
+  h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="this.closest(\'#user-dropdown\').remove();showSyncHealth()">&#9877; SYNC HEALTH</button>';
   h+='<button class="nav-tab" style="width:100%;padding:8px;color:var(--red)" onclick="signOut()">&#9211; SIGN OUT</button>';
   h+='</div>';
   d.innerHTML=h;document.body.appendChild(d);
@@ -9088,6 +9234,59 @@ function exportFullBackup(){
 // ══════════════════════════════════════════════════════════════════
 var MF_OUTBOX_KEY='mf_outbox';
 
+// ══════════════════════════════════════════════════════════════════
+// TOMBSTONES
+// Deleting a row removes it here and asks the server to remove it there. Those
+// are two separate things and the second one can fail — offline, rejected, or
+// simply slower than the next poll. The merge had no memory of the deletion,
+// so the server's copy was pulled straight back in and the row "came back".
+// A tombstone is that memory: an id we deleted, and when.
+// ══════════════════════════════════════════════════════════════════
+var MF_TOMB_KEY='mf_tombstones';
+var MF_TOMB_DAYS=60;   // long enough for a phone that was off for a month
+
+function _tombRead(){
+  try{ return JSON.parse(localStorage.getItem(MF_TOMB_KEY)||'{}'); }catch(e){ return {}; }
+}
+function _tombWrite(t){
+  try{ localStorage.setItem(MF_TOMB_KEY, JSON.stringify(t)); }catch(e){}
+}
+function _tombKey(id){ return String(Math.round(parseFloat(id))||id); }
+function _tombAdd(table,id){
+  var t=_tombRead();
+  if(!t[table])t[table]={};
+  t[table][_tombKey(id)]=Date.now();
+  _tombWrite(t);
+}
+function _tombHas(table,id){
+  var t=_tombRead();
+  return !!(t[table]&&t[table][_tombKey(id)]);
+}
+function _tombPrune(){
+  var t=_tombRead(), cut=Date.now()-MF_TOMB_DAYS*86400000, changed=false;
+  Object.keys(t).forEach(function(tab){
+    Object.keys(t[tab]).forEach(function(k){
+      if(t[tab][k]<cut){ delete t[tab][k]; changed=true; }
+    });
+    if(!Object.keys(t[tab]).length){ delete t[tab]; changed=true; }
+  });
+  if(changed)_tombWrite(t);
+}
+// Drop anything the server still holds that we have already deleted, and ask
+// again — the first delete evidently did not stick.
+function _dropDeleted(table, rows){
+  if(!rows||!rows.length)return rows||[];
+  var kept=[], resend=[];
+  rows.forEach(function(r){
+    if(r&&r.id!=null&&_tombHas(table,r.id))resend.push(r.id); else kept.push(r);
+  });
+  if(resend.length){
+    console.warn('Re-deleting '+resend.length+' row(s) the server still has in '+table);
+    resend.forEach(function(id){ _sbRemove(table, Math.round(id), 'id'); });
+  }
+  return kept;
+}
+
 function _outboxRead(){
   try{ return JSON.parse(localStorage.getItem(MF_OUTBOX_KEY)||'[]'); }catch(e){ return []; }
 }
@@ -9095,10 +9294,14 @@ function _outboxWrite(q){
   try{ localStorage.setItem(MF_OUTBOX_KEY, JSON.stringify(q.slice(-500))); }catch(e){}
   _outboxBadge();
 }
-function _outboxQueue(table, op, rows, key){
+function _outboxQueue(table, op, rows, key, why){
   const q=_outboxRead();
   q.push({qid:_newId(), table:table, op:op, rows:rows, key:key||null,
-          ts:new Date().toISOString(), tries:0});
+          ts:new Date().toISOString(), tries:0,
+          // Why it was parked. Without this, a job that has not been retried
+          // yet shows no reason at all, which is the moment somebody actually
+          // looks at it.
+          lastError:why||''});
   _outboxWrite(q);
 }
 function _outboxDepth(){ return _outboxRead().length; }
@@ -9108,7 +9311,9 @@ function _outboxBadge(){
   const n=_outboxDepth();
   el.style.display = n ? 'inline-block' : 'none';
   el.textContent = n===1 ? '1 unsent' : (n+' unsent');
-  el.title='Changes saved on this device but not yet on the server. They will send automatically.';
+  el.title='Changes saved on this device but not yet on the server. Tap to see why.';
+  el.style.cursor='pointer';
+  el.onclick=function(){ if(typeof showSyncHealth==='function')showSyncHealth(); };
 }
 async function _outboxFlush(){
   if(!_currentUser||!_supa)return 0;
@@ -9171,14 +9376,35 @@ async function _sbUpsert(table, rows){
   const arr = Array.isArray(rows) ? rows : [rows];
   if(!arr.length) return;
   if(!_supa || (typeof navigator!=='undefined' && navigator.onLine===false)){
-    _outboxQueue(table,'upsert',arr); return;
+    _outboxQueue(table,'upsert',arr,null,'offline'); return;
   }
   try{
     const { error } = await _supa.from(table).upsert(arr,{onConflict:_conflictKey(table)});
     if(error) throw new Error(error.message);
   }catch(e){
+    // A rejected array takes every row with it. saveLedger() sends the WHOLE
+    // ledger on every change, so one unacceptable row stopped all credit sync
+    // — and looked exactly like "the database is not updating". Split and
+    // retry, so a bad row costs one row.
+    if(arr.length>1){
+      console.warn('Bulk upsert rejected on '+table+' ('+e.message+') — retrying row by row');
+      let failed=0, firstErr='';
+      for(const row of arr){
+        try{
+          const r=await _supa.from(table).upsert(row,{onConflict:_conflictKey(table)});
+          if(r.error) throw new Error(r.error.message);
+        }catch(e2){
+          failed++; if(!firstErr)firstErr=e2.message;
+          console.error('row rejected on '+table+' id='+(row&&row.id)+':',e2.message);
+          _outboxQueue(table,'upsert',[row],null,e2.message);
+        }
+      }
+      if(failed&&typeof showToast==='function')
+        showToast('⚠ '+failed+' of '+arr.length+' '+table+' row(s) rejected: '+firstErr.slice(0,60));
+      return;
+    }
     console.warn('Queued for retry:',table,e.message);
-    _outboxQueue(table,'upsert',arr);
+    _outboxQueue(table,'upsert',arr,null,e.message);
   }
 }
 
@@ -9223,8 +9449,11 @@ function _mergeById(local, remote, tsField){
 async function _sbRemove(table, id, keyCol){
   if(!_currentUser) return;
   const col = keyCol || 'id';
+  // Remember it before trying, not after: if this call throws, the delete is
+  // queued and the merge still must not resurrect the row in the meantime.
+  if(col==='id') _tombAdd(table, id);
   if(!_supa || (typeof navigator!=='undefined' && navigator.onLine===false)){
-    _outboxQueue(table,'delete',id,col); return;
+    _outboxQueue(table,'delete',id,col,'offline'); return;
   }
   try{
     const { error } = await _supa.from(table).delete()
@@ -9232,7 +9461,7 @@ async function _sbRemove(table, id, keyCol){
     if(error) throw new Error(error.message);
   }catch(e){
     console.warn('Delete queued for retry:',table,e.message);
-    _outboxQueue(table,'delete',id,col);
+    _outboxQueue(table,'delete',id,col,e.message);
   }
 }
 
@@ -9312,7 +9541,7 @@ async function sbSaveAllStock() {
 async function sbSaveLedgerEntry(entry) {
   if (!_currentUser) return;   // no _supa: _sbUpsert queues it
   try {
-    const id = Math.round(entry.id);
+    const id = _intId(entry.id);
     await _sbUpsert('ledger_entries', {
       id: id, user_id: _currentUser.id,
       date: entry.date, customer: entry.customer, shift: entry.shift,
@@ -9328,7 +9557,7 @@ async function sbSaveLedgerEntry(entry) {
 async function sbDeleteLedgerEntry(id) {
   if (!_currentUser) return;   // no _supa: _sbUpsert queues it
   try {
-    await _sbRemove('ledger_entries', Math.round(id), 'id');
+    await _sbRemove('ledger_entries', _intId(id), 'id');
   } catch(e){ console.error('Delete ledger entry failed:', e.message); }
 }
 
@@ -9336,7 +9565,7 @@ async function sbSaveAllLedger() {
   if (!_currentUser) return;   // no _supa: _sbUpsert queues it
   try {
   const rows = ledger.map(e => ({
-    id: e.id, user_id: _currentUser.id,
+    id: _intId(e.id), user_id: _currentUser.id,
     date: e.date, customer: e.customer, shift: e.shift,
     fuel: e.fuel, amount: e.amount, paid_back: e.paidBack || 0,
     kind: e.kind || (e.amount < 0 ? 'advance' : 'credit'),
@@ -9476,6 +9705,7 @@ async function sbLoadPackReg() {
     const r = await _supa.from('pack_register').select('*').eq('user_id', _currentUser.id).order('date', { ascending: false });
     if (r.error) { console.warn('pack_register read rejected:', r.error.message); return; }
     if (r.data && r.data.length) {
+      r.data = _dropDeleted('pack_register', r.data);
       packReg = r.data.map(p => ({
         id: Number(p.id), size: p.size || 40, date: p.date, supplier: p.supplier,
         qty: p.qty, cost: p.cost, totalCost: p.total_cost, notes: p.notes
@@ -9535,6 +9765,7 @@ async function loadAllFromSupabase(silent) {
   try {
     // Send anything parked on this device before pulling, otherwise the pull
     // could overwrite a local row that has not been uploaded yet.
+    _tombPrune();
     const _sent = await _outboxFlush();
     if(_sent && !silent) showToast('✓ '+_sent+' queued change'+(_sent>1?'s':'')+' sent');
 
@@ -9589,7 +9820,7 @@ async function loadAllFromSupabase(silent) {
         meters: r.meters || {},
         looseOilUnits: r.loose_oil_units || 0
       }));
-      const mrg = _mergeById(records, remoteRecs, 'savedAt');
+      const mrg = _mergeById(records, _dropDeleted('shift_records',remoteRecs), 'savedAt');
       records = mrg.merged.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
       localStorage.setItem('fuelRecords', JSON.stringify(records));
       // Reuse the normal writer so the column list can never drift again.
@@ -9601,7 +9832,7 @@ async function loadAllFromSupabase(silent) {
         id: s.id, name: s.name, cat: s.cat, unit: s.unit, qty: s.qty, rate: s.rate,
         updatedAt: s.updated_at
       }));
-      const mrg = _mergeById(stock, remoteStock, 'updatedAt');
+      const mrg = _mergeById(stock, _dropDeleted('stock_items',remoteStock), 'updatedAt');
       stock = mrg.merged;
       localStorage.setItem('fuelStock', JSON.stringify(stock));
       if (mrg.localOnly.length) await sbSaveAllStock();
@@ -9615,8 +9846,8 @@ async function loadAllFromSupabase(silent) {
         notes: e.notes || '',
         shiftId: e.shift_id || null, updatedAt: e.updated_at
       }));
-      const mrgL = _mergeById(ledger, remoteLed, 'updatedAt');
-      ledger = mrgL.merged;
+      const mrgL = _mergeById(ledger, _dropDeleted('ledger_entries',remoteLed), 'updatedAt');
+      ledger = _normaliseIds(mrgL.merged,'updatedAt').rows;
       localStorage.setItem('fuelLedger', JSON.stringify(ledger));
       for (const e of mrgL.localOnly) { await sbSaveLedgerEntry(e); }
     }
@@ -9628,7 +9859,7 @@ async function loadAllFromSupabase(silent) {
         profit: inv.profit, amountDue: inv.amount_due, amountPaid: inv.amount_paid,
         updatedAt: inv.updated_at
       }));
-      const mrgO = _mergeById(oilReg, remoteOil, 'updatedAt');
+      const mrgO = _mergeById(oilReg, _dropDeleted('oil_invoices',remoteOil), 'updatedAt');
       oilReg = mrgO.merged;
       localStorage.setItem('oilReg', JSON.stringify(oilReg));
       for (const i of mrgO.localOnly) { await sbSaveOilInvoice(i); }
@@ -9649,7 +9880,7 @@ async function loadAllFromSupabase(silent) {
         amountDue: l.amount_due, amountPaid: l.amount_paid,
         locked: l.locked||false, updatedAt: l.updated_at
       }));
-      const mrgF = _mergeById(fuelLoads, remoteLoads, 'updatedAt');
+      const mrgF = _mergeById(fuelLoads, _dropDeleted('fuel_loads',remoteLoads), 'updatedAt');
       fuelLoads = mrgF.merged;
       localStorage.setItem('fuelLoads', JSON.stringify(fuelLoads));
       for (const l of mrgF.localOnly) { await sbSaveFuelLoad(l); }
@@ -9661,7 +9892,7 @@ async function loadAllFromSupabase(silent) {
         observed:d.observed_l, book:d.book_l, variation:d.variation_l,
         notes:d.notes||'', savedAt:d.saved_at
       }));
-      const mrgD = _mergeById(typeof dipReadings!=='undefined'?dipReadings:[], remoteDips, 'savedAt');
+      const mrgD = _mergeById(typeof dipReadings!=='undefined'?dipReadings:[], _dropDeleted('dip_readings',remoteDips), 'savedAt');
       dipReadings = mrgD.merged;
       saveDipsLS();
       mrgD.localOnly.forEach(function(d){ sbSaveDip(d).catch(function(){}); });
