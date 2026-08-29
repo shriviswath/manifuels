@@ -615,6 +615,15 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
 .pl-card.net-neg{border-left:3px solid var(--red);background:linear-gradient(135deg,var(--s2) 0%,rgba(255,77,106,.06) 100%)}.pl-card.net-neg .pl-val{color:var(--red)}
 .pl-card.margin{border-left:3px solid var(--petrol)}.pl-card.margin .pl-val{color:var(--petrol)}
 
+/* The P&L was one flat row of cards in which "Purchases" sat between COGS and
+   Gross Profit, so the eye read it as part of the subtraction when it is not.
+   Two bands, and the arithmetic written out underneath. */
+#pl_cards{display:block}
+.pl-band{margin-bottom:14px}
+.pl-band-t{font-family:'Syne',sans-serif;font-weight:800;font-size:10px;letter-spacing:2.5px;color:var(--muted);text-transform:uppercase;margin-bottom:8px}
+.pl-band-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.pl-recon{background:var(--s2);border:1px solid var(--border);border-left:3px solid var(--petrol);border-radius:8px;padding:14px;margin-bottom:14px;font-family:'JetBrains Mono',monospace;font-size:11px}
+.pl-warn{background:rgba(255,176,32,.08);border:1px solid var(--diesel);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text);line-height:1.7}
 .pl-charts-row{display:grid;grid-template-columns:2fr 1fr;gap:12px}
 @media(max-width:900px){.pl-charts-row{grid-template-columns:1fr}}
 </style>
@@ -1355,14 +1364,33 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <div id="lf_hint" style="margin-top:6px;font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace"></div>
       </div>
     </div>
-    <!-- Overall summary boxes -->
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
-      <div class="sbox"><div class="sb-t">Total Credit Given</div><div class="sb-v" style="color:var(--red)" id="led_total_given">&#8377;0</div></div>
-      <div class="sbox"><div class="sb-t">Total Paid Back</div><div class="sb-v" style="color:var(--green)" id="led_total_paid">&#8377;0</div></div>
-      <div class="sbox"><div class="sb-t">Outstanding Balance</div><div class="sb-v" style="color:var(--diesel)" id="led_outstanding">&#8377;0</div></div>
+    <!-- Period + list controls. Credit given and settled are FLOWS and are
+         scoped to a period; what a customer owes is a POSITION and is always
+         as of today, whatever period is selected. -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+      <span class="lbl">PERIOD</span>
+      <button class="range-btn" id="lp_month"     onclick="setLedgerPeriod('month')">THIS MONTH</button>
+      <button class="range-btn" id="lp_lastmonth" onclick="setLedgerPeriod('lastmonth')">LAST MONTH</button>
+      <button class="range-btn" id="lp_3m"        onclick="setLedgerPeriod('3m')">LAST 3 MONTHS</button>
+      <button class="range-btn" id="lp_year"      onclick="setLedgerPeriod('year')">THIS YEAR</button>
+      <button class="range-btn" id="lp_all"       onclick="setLedgerPeriod('all')">ALL TIME</button>
+      <input type="text" id="led_search" placeholder="Search customer…" oninput="renderLedger()"
+        style="width:180px;height:32px;margin-left:auto">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);white-space:nowrap">
+        <input type="checkbox" id="led_hide_settled" checked onchange="renderLedger()"> hide settled
+      </label>
     </div>
+    <!-- Summary boxes -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:8px">
+      <div class="sbox"><div class="sb-t">Credit Given <span id="led_period_lbl" style="color:var(--petrol)">this month</span></div><div class="sb-v" style="color:var(--red)" id="led_total_given">&#8377;0</div></div>
+      <div class="sbox"><div class="sb-t">Settled Against It</div><div class="sb-v" style="color:var(--green)" id="led_total_paid">&#8377;0</div></div>
+      <div class="sbox"><div class="sb-t">Outstanding Now <span style="color:var(--muted)">(all time)</span></div><div class="sb-v" style="color:var(--diesel)" id="led_outstanding">&#8377;0</div></div>
+      <div class="sbox"><div class="sb-t">Advance Held</div><div class="sb-v" style="color:var(--green)" id="led_advance_held">&#8377;0</div></div>
+    </div>
+    <div id="led_period_note" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:14px;line-height:1.6"></div>
     <!-- Customer cards grid -->
     <div id="customer_cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px"></div>
+    <div id="led_hidden_note" style="text-align:center;padding:14px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;display:none"></div>
     <div id="no_ledger" style="text-align:center;padding:30px;color:var(--muted);font-family:'JetBrains Mono',monospace">No credit entries yet. Click &#65291; ADD ENTRY to start.</div>
   </div>
 
@@ -2957,23 +2985,25 @@ function renderWeeklyPL(){
 
   // Calculate components for both periods
   function calc(recs){
-    const revenue=recs.reduce((s,r)=>s+_recRevenue(r),0);
-    const exp=recs.reduce((s,r)=>s+(r.exp||0),0);
-    // Use realized fuel margin where rates are known
-    const rates=JSON.parse(localStorage.getItem('fuelRates')||'{}');
-    const msdRate=parseFloat(rates.msd)||0;
-    const hsdRate=parseFloat(rates.hsd)||0;
-    const loads=JSON.parse(localStorage.getItem('fuelLoads')||'[]');
-    // Weighted-avg buy price
-    const msdAvg=_fuelWAC('MSD');
-    const hsdAvg=_fuelWAC('HSD');
-    const msdMargin=msdRate-msdAvg;
-    const hsdMargin=hsdRate-hsdAvg;
-    const totalMSDL=recs.reduce((s,r)=>s+(r.msdT||0),0);
-    const totalHSDL=recs.reduce((s,r)=>s+(r.hsdT||0),0);
-    const realizedFuel=(totalMSDL*msdMargin)+(totalHSDL*hsdMargin);
+    // Measured against what the pump actually took that week — msdV — not
+    // today's board rate. Using the current rate on historical litres reported
+    // last month's profit at this month's price, and a mid-shift price change
+    // was invisible to it.
+    const tv=recs.reduce((s,r)=>s+
+      ((r.msdT?(r.msdV/r.msdT)*(r.testMSDL||0):0)+
+       (r.hsdT?(r.hsdV/r.hsdT)*(r.testHSDL||0):0)),0);   // testing, both sides
+    const revenue=Math.max(0,recs.reduce((s,r)=>s+_recRevenue(r),0)-tv);
+    const exp=Math.max(0,recs.reduce((s,r)=>s+(r.exp||0),0)-tv);
+    const msdAvg=_fuelWAC('MSD'), hsdAvg=_fuelWAC('HSD');
+    const totalMSDL=Math.max(0,recs.reduce((s,r)=>s+(r.msdT||0)-(r.testMSDL||0),0));
+    const totalHSDL=Math.max(0,recs.reduce((s,r)=>s+(r.hsdT||0)-(r.testHSDL||0),0));
+    const fuelTake=recs.reduce((s,r)=>s+(r.msdV||0)+(r.hsdV||0),0)-tv;
+    const realizedFuel=fuelTake-(totalMSDL*msdAvg+totalHSDL*hsdAvg);
     const profit=realizedFuel-exp;
-    return {revenue,exp,profit,msdL:totalMSDL,hsdL:totalHSDL,shifts:recs.length};
+    // No load costed = no cost per litre = no profit figure. Saying so beats
+    // printing revenue and calling it profit.
+    const costKnown=!((totalMSDL>0&&msdAvg<=0)||(totalHSDL>0&&hsdAvg<=0));
+    return {revenue,exp,profit,costKnown,msdL:totalMSDL,hsdL:totalHSDL,shifts:recs.length};
   }
 
   const tw=calc(recsThis), lw=calc(recsLast);
@@ -2986,17 +3016,18 @@ function renderWeeklyPL(){
   const cls=profitDelta>=0?'var(--green)':'var(--red)';
   const arrow=profitDelta>=0?'▲':'▼';
 
+  const _known=tw.costKnown&&lw.costKnown;
   el.innerHTML=`
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
       <div style="padding:14px;background:rgba(61,220,132,.05);border:1px solid rgba(61,220,132,.2);border-radius:8px">
         <div style="font-family:'Syne',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px">PROFIT THIS WEEK</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:800;color:${tw.profit>=0?'var(--green)':'var(--red)'}">${fmt(tw.profit)}</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:4px">Last week: ${fmt(lw.profit)}</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:800;color:${_known?(tw.profit>=0?'var(--green)':'var(--red)'):'var(--muted)'}">${_known?fmt(tw.profit):'—'}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">${_known?('Last week: '+fmt(lw.profit)):'No fuel load costed yet — record a tanker'}</div>
       </div>
       <div style="padding:14px;background:rgba(${profitDelta>=0?'61,220,132':'255,77,106'},.05);border:1px solid ${cls};border-radius:8px">
         <div style="font-family:'Syne',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px">CHANGE vs LAST WEEK</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:800;color:${cls}">${arrow} ${fmt(Math.abs(profitDelta))}</div>
-        <div style="font-size:10px;color:${cls};margin-top:4px">${profitPct>=0?'+':''}${profitPct.toFixed(1)}% ${profitDelta>=0?'better':'worse'}</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:800;color:${_known?cls:'var(--muted)'}">${_known?(arrow+' '+fmt(Math.abs(profitDelta))):'—'}</div>
+        <div style="font-size:10px;color:${_known?cls:'var(--muted)'};margin-top:4px">${_known?((profitPct>=0?'+':'')+profitPct.toFixed(1)+'% '+(profitDelta>=0?'better':'worse')):'profit needs a cost per litre'}</div>
       </div>
       <div style="padding:14px;background:var(--s3);border:1px solid var(--border2);border-radius:8px">
         <div style="font-family:'Syne',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px">REVENUE THIS WEEK</div>
@@ -4642,20 +4673,24 @@ function toggleTagFilter(){
 }
 
 function _summarizeRecs(recs){
-  const ratesObj=JSON.parse(localStorage.getItem('fuelRates')||'{}');
-  const msdRate=parseFloat(ratesObj.msd)||0;
-  const hsdRate=parseFloat(ratesObj.hsd)||0;
-  const loads=JSON.parse(localStorage.getItem('fuelLoads')||'[]');
-  const msdAvg=_fuelWAC('MSD');
-  const hsdAvg=_fuelWAC('HSD');
-  const msdMargin=msdRate-msdAvg, hsdMargin=hsdRate-hsdAvg;
-  const totalMSDL=recs.reduce((s,r)=>s+(r.msdT||0),0);
-  const totalHSDL=recs.reduce((s,r)=>s+(r.hsdT||0),0);
-  const realizedFuel=(totalMSDL*msdMargin)+(totalHSDL*hsdMargin);
-  const exp=recs.reduce((s,r)=>s+(r.exp||0),0);
-  const revenue=recs.reduce((s,r)=>s+_recRevenue(r),0);
+  // Same basis as the P&L and the dashboard: recorded takings less the
+  // weighted-average landed cost of the litres that actually left, testing
+  // removed from both sides. Comparing two periods with today's rate applied
+  // to both made a price rise look like flat trade.
+  const tv=recs.reduce((s,r)=>s+
+    ((r.msdT?(r.msdV/r.msdT)*(r.testMSDL||0):0)+
+     (r.hsdT?(r.hsdV/r.hsdT)*(r.testHSDL||0):0)),0);
+  const msdAvg=_fuelWAC('MSD'), hsdAvg=_fuelWAC('HSD');
+  const totalMSDL=Math.max(0,recs.reduce((s,r)=>s+(r.msdT||0)-(r.testMSDL||0),0));
+  const totalHSDL=Math.max(0,recs.reduce((s,r)=>s+(r.hsdT||0)-(r.testHSDL||0),0));
+  const fuelTake=recs.reduce((s,r)=>s+(r.msdV||0)+(r.hsdV||0),0)-tv;
+  const realizedFuel=fuelTake-(totalMSDL*msdAvg+totalHSDL*hsdAvg);
+  const exp=Math.max(0,recs.reduce((s,r)=>s+(r.exp||0),0)-tv);
+  const revenue=Math.max(0,recs.reduce((s,r)=>s+_recRevenue(r),0)-tv);
   const credit=recs.reduce((s,r)=>s+(r.credit||0),0);
-  return {shifts:recs.length,msdL:totalMSDL,hsdL:totalHSDL,revenue,exp,profit:realizedFuel-exp,credit,realizedFuel};
+  const costKnown=!((totalMSDL>0&&msdAvg<=0)||(totalHSDL>0&&hsdAvg<=0));
+  return {shifts:recs.length,msdL:totalMSDL,hsdL:totalHSDL,revenue,exp,
+          profit:realizedFuel-exp,credit,realizedFuel,costKnown};
 }
 
 function renderCompareResult(){
@@ -4706,9 +4741,14 @@ function renderCompareResult(){
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
       ${cell('REVENUE',sa.revenue,sb.revenue,fmtR,'var(--petrol)')}
-      ${cell('REALIZED FUEL PROFIT',sa.realizedFuel,sb.realizedFuel,fmtR,'var(--green)')}
+      ${(sa.costKnown&&sb.costKnown)
+        ? cell('REALIZED FUEL PROFIT',sa.realizedFuel,sb.realizedFuel,fmtR,'var(--green)')+
+          cell('NET PROFIT',sa.profit,sb.profit,fmtR,sa.profit>=0?'var(--green)':'var(--red)')
+        : `<div style="background:var(--s2);border:1px solid var(--diesel);border-radius:6px;padding:12px;grid-column:span 2">
+             <div style="font-size:9px;letter-spacing:1.5px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;margin-bottom:6px">PROFIT</div>
+             <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--diesel);line-height:1.6">Not comparable — one of these periods has fuel sold with no load costed.</div>
+           </div>`}
       ${cell('EXPENSES',sa.exp,sb.exp,fmtR,'var(--red)')}
-      ${cell('NET PROFIT',sa.profit,sb.profit,fmtR,sa.profit>=0?'var(--green)':'var(--red)')}
       ${cell('MSD VOLUME (L)',sa.msdL,sb.msdL,n=>n.toFixed(0)+' L','var(--petrol)')}
       ${cell('HSD VOLUME (L)',sa.hsdL,sb.hsdL,n=>n.toFixed(0)+' L','var(--diesel)')}
       ${cell('CREDIT GIVEN',sa.credit,sb.credit,fmtR,'var(--diesel)')}
@@ -4838,10 +4878,30 @@ function renderPL(from, to, shiftRecs){
   section.style.display='block';
   document.getElementById('pl_period').textContent=_formatRange(from,to);
 
-  // ── REVENUE: value of goods sold. Credit repayments are excluded. ──
-  const revenue = shiftRecs.reduce((s,r)=>s+_recRevenue(r),0);
+  // ── TESTING FUEL ──────────────────────────────────────────────────────
+  // The test measure is drawn through the nozzle and poured straight back. The
+  // meter counts it, so it arrives in msdV as revenue, and the shift books the
+  // same rupees as an expense to keep the cash tally straight. Those two
+  // cancel and always did. What did not cancel: COGS was charging the landed
+  // cost of litres that never left the tank, so every test quietly reduced
+  // reported profit by its own cost. Both sides come out here.
+  const _testVal=(r,f)=>{
+    const L =(f==='MSD')?(r.testMSDL||0):(r.testHSDL||0);
+    const lt=(f==='MSD')?(r.msdT||0):(r.hsdT||0);
+    const vl=(f==='MSD')?(r.msdV||0):(r.hsdV||0);
+    return lt>0?(vl/lt)*L:0;   // that shift's own rate, so a mid-shift price change is respected
+  };
+  const testMSDL   = shiftRecs.reduce((s,r)=>s+(r.testMSDL||0),0);
+  const testHSDL   = shiftRecs.reduce((s,r)=>s+(r.testHSDL||0),0);
+  const testValMSD = shiftRecs.reduce((s,r)=>s+_testVal(r,'MSD'),0);
+  const testValHSD = shiftRecs.reduce((s,r)=>s+_testVal(r,'HSD'),0);
+  const testValue  = testValMSD + testValHSD;
+
+  // ── REVENUE: value of goods sold. Credit repayments and testing excluded. ──
+  const revenueGross = shiftRecs.reduce((s,r)=>s+_recRevenue(r),0);
+  const revenue = Math.max(0, revenueGross - testValue);
   // Break down where revenue came from:
-  const revFuel = shiftRecs.reduce((s,r)=>s+(r.msdV||0)+(r.hsdV||0),0);
+  const revFuel = shiftRecs.reduce((s,r)=>s+(r.msdV||0)+(r.hsdV||0),0) - testValue;
   const revOilPack = shiftRecs.reduce((s,r)=>s+(r.pv||0)+(r.ov||0),0);
   const revStock = shiftRecs.reduce((s,r)=>s+(r.stRev||0),0);
 
@@ -4865,7 +4925,11 @@ function renderPL(from, to, shiftRecs){
   const purchases = fuelCOGS + oilCOGS;
 
   // ── OPERATING EXPENSES: shift expenses in period ──
-  const opex = shiftRecs.reduce((s,r)=>s+(r.exp||0),0);
+  // The testing lines inside r.exp mirror the revenue removed above. Taking
+  // both out leaves net profit unchanged and stops gross margin being
+  // flattered by fuel that was never sold.
+  const opexGross = shiftRecs.reduce((s,r)=>s+(r.exp||0),0);
+  const opex = Math.max(0, opexGross - testValue);
 
   // ── COGS: cost of what was actually SOLD ──
   const totalMSDL = shiftRecs.reduce((s,r)=>s+(r.msdT||0),0);
@@ -4874,12 +4938,16 @@ function renderPL(from, to, shiftRecs){
   const sumHSDV   = shiftRecs.reduce((s,r)=>s+(r.hsdV||0),0);
   // Fuel: litres sold × weighted-average landed cost per litre at period end.
   const wacMSD = _fuelWAC('MSD', to), wacHSD = _fuelWAC('HSD', to);
-  const cogsFuel = totalMSDL*wacMSD + totalHSDL*wacHSD;
+  const soldMSDL = Math.max(0, totalMSDL - testMSDL);
+  const soldHSDL = Math.max(0, totalHSDL - testHSDL);
+  const cogsFuel = soldMSDL*wacMSD + soldHSDL*wacHSD;
   // Oil / packs / counter stock: records hold only a rupee total per shift, so
   // cost is estimated from the buy:sell ratio of all oil invoices. Returns 0
   // (no estimate) until at least one invoice carries both prices.
   const costRatio  = _stockCostRatio();
-  const nonFuelRev = Math.max(0, revenue - sumMSDV - sumHSDV);
+  // Gross, because testing is a fuel-side figure only — netting it here would
+  // shift the shortfall onto oil and counter stock.
+  const nonFuelRev = Math.max(0, revenueGross - sumMSDV - sumHSDV);
   let cogsExact=0, unpricedRev=0;
   shiftRecs.forEach(function(r){
     const q=_recNonFuelCOGS(r);
@@ -4890,13 +4958,18 @@ function renderPL(from, to, shiftRecs){
   const cogsNonFuel = cogsExact + cogsEstimated;
   const totalCOGS = cogsFuel + cogsNonFuel;
 
+  // Fuel was sold but no load has ever been costed, so there is no cost per
+  // litre to subtract. Reporting revenue minus nothing as "profit" is worse
+  // than reporting nothing: the screenshot said 100% margin on ₹91,367.
+  const fuelUncosted = (totalMSDL>0&&wacMSD<=0)||(totalHSDL>0&&wacHSD<=0);
   const grossProfit = revenue - totalCOGS;
   const netProfit = grossProfit - opex;
   const grossMarginPct = revenue>0 ? (grossProfit/revenue*100) : 0;
   const netMarginPct = revenue>0 ? (netProfit/revenue*100) : 0;
   // Fuel margin actually realised: what the pump took in, less what those
   // litres cost. Negative is real information, so it is not clamped at zero.
-  const realizedFuelProfit = (sumMSDV - totalMSDL*wacMSD) + (sumHSDV - totalHSDL*wacHSD);
+  const realizedFuelProfit = (sumMSDV - testValMSD - soldMSDL*wacMSD) +
+                             (sumHSDV - testValHSD - soldHSDL*wacHSD);
 
   // ── CREDIT CUSTOMER DISCOUNT DEDUCTION (P&L only) ──
   // For each credit customer with a fixed ₹/L discount, estimate total discount given
@@ -4908,11 +4981,21 @@ function renderPL(from, to, shiftRecs){
   creditCustNames.forEach(name=>{
     const discPerL=customerProfiles[name].discountPerL||0;
     if(!discPerL)return;
-    // Sum credit given to this customer in the period
-    const custCredit=ledger.filter(e=>e.customer===name&&(!from||e.date>=from)&&(!to||e.date<=to))
-      .reduce((s,e)=>s+e.amount,0);
-    // Estimate litres from credit amount ÷ avg rate
-    const estLitres=avgFuelRate>0?custCredit/avgFuelRate:0;
+    // Only fuel actually taken on credit. An advance is a negative row and not
+    // a sale; an account adjustment is money moving between two customers.
+    // Summing the raw column counted both as litres and invented a discount
+    // that was never given. Each row is also divided by ITS OWN fuel's rate —
+    // the average of petrol and diesel overstated every diesel line.
+    const msdRate=parseFloat(rates.msd)||avgFuelRate;
+    const hsdRate=parseFloat(rates.hsd)||avgFuelRate;
+    const estLitres=ledger.filter(e=>
+        e.customer===name && (e.amount||0)>0 &&
+        e.kind!=='adjust' && e.fuel!=='ADJUST' &&
+        (!from||e.date>=from) && (!to||e.date<=to))
+      .reduce(function(s,e){
+        const rate = e.fuel==='MSD'?msdRate : (e.fuel==='HSD'?hsdRate : avgFuelRate);
+        return s + (rate>0 ? e.amount/rate : 0);
+      },0);
     totalCreditDiscounts+=estLitres*discPerL;
   });
   const netProfitAfterDisc = netProfit - totalCreditDiscounts;
@@ -4932,63 +5015,139 @@ function renderPL(from, to, shiftRecs){
   const totalAdvances=sPaysInRange.filter(p=>p.type==='advance').reduce((s,p)=>s+(p.amount||0),0);
   const totalAdvRecovered=sPaysInRange.reduce((s,p)=>s+(p.advanceDeducted||0),0);
   const totalBonuses=sPaysInRange.filter(p=>p.type==='bonus').reduce((s,p)=>s+(p.amount||0),0);
-  const totalStaffCost=totalSalaries+totalBonuses;
+  // Earned, from the attendance register. Falls back to what was paid only if
+  // no attendance has been marked at all, so the figure is never silently zero.
+  const wages=(typeof _wagesEarned==='function')?_wagesEarned(from,to):{earned:0,unmarked:0,staff:0};
+  const wagesAccrued=wages.earned>0;
+  const totalStaffCost=(wagesAccrued?wages.earned:totalSalaries)+totalBonuses;
   // Owner drawings are an appropriation of profit, not an expense. They are
   // reported below the profit line as cash taken out.
   const netAfterAll=netProfitAfterDisc-totalStaffCost;
   const cashAfterDrawings=netAfterAll-totalDrawings;
   const staffCashOut=totalSalaries-totalAdvRecovered+totalAdvances+totalBonuses;
 
+  // ── IS THE COST OF THE FUEL EVEN KNOWN? ───────────────────────────────
+  // With no load recorded on or before the period end, the weighted-average
+  // cost is zero, COGS comes out zero, and the page cheerfully reports a 100%
+  // margin. That is not a small inaccuracy, it is a number that must not be
+  // shown as profit at all.
+  const gapMSD = totalMSDL>0 && wacMSD<=0;
+  const gapHSD = totalHSDL>0 && wacHSD<=0;
+  const costKnown = !(gapMSD||gapHSD);
+  const gapLitres = (gapMSD?soldMSDL:0)+(gapHSD?soldHSDL:0);
+
   // ── BUILD KPI CARDS ──
   const netCls = netProfit>=0 ? 'net-pos' : 'net-neg';
   const netAfterDiscCls = netProfitAfterDisc>=0 ? 'net-pos' : 'net-neg';
   const netAfterAllCls = netAfterAll>=0 ? 'net-pos' : 'net-neg';
-  const cardsHtml = [
+  const _NA='—';
+  const _uncostedNote = fuelUncosted
+    ? ((totalMSDL>0&&wacMSD<=0?totalMSDL.toFixed(0)+'L MSD':'')+
+       ((totalMSDL>0&&wacMSD<=0)&&(totalHSDL>0&&wacHSD<=0)?' and ':'')+
+       (totalHSDL>0&&wacHSD<=0?totalHSDL.toFixed(0)+'L HSD':''))
+    : '';
+  const netFinal = netAfterAll;                 // gross − opex − wages − discounts
+  const _pc = (part,whole) => whole>0 ? (part/whole*100).toFixed(1)+'%' : '—';
+
+  // TRADING — the figures that make up the profit, in the order they subtract.
+  const tradingCards = [
     {cls:'revenue', lbl:'Revenue',     val:fmt(revenue),
      sub:`Fuel: ${fmt(revFuel)} • Oil: ${fmt(revOilPack)}${revStock>0?' • Stock: '+fmt(revStock):''}`},
-    {cls:'cogs',    lbl:'COGS (Goods Sold)', val:fmt(totalCOGS),
+    {cls:'cogs',    lbl:'Cost of Goods Sold', val:fuelUncosted?_NA:fmt(totalCOGS),
      sub:`Fuel ${fmt(cogsFuel)} • Other ${fmt(cogsNonFuel)}`+
          (cogsEstimated>0?` (${fmt(cogsExact)} costed, ${fmt(cogsEstimated)} estimated)`
           :(unpricedRev>0?` — ${fmt(unpricedRev)} of sales has no purchase price yet`:''))+
-         (((totalMSDL>0&&wacMSD<=0)||(totalHSDL>0&&wacHSD<=0))?' • ⚠ fuel sold with no load costed — margin is overstated':'')},
-    {cls:'cogs',    lbl:'Purchases (Cash Out)', val:fmt(purchases),
-     sub:`${loadsInRange.length} fuel load${loadsInRange.length!==1?'s':''} • ${oilInRange.length} oil inv. — stock bought, not sold`},
-    {cls:'gross',   lbl:'Gross Profit',     val:fmt(grossProfit),
-     sub:`Margin: ${grossMarginPct.toFixed(1)}%`},
-    {cls:'opex',    lbl:'Operating Expenses', val:fmt(opex),
-     sub:`From ${shiftRecs.length} shift${shiftRecs.length!==1?'s':''}`},
-    {cls:netCls,    lbl:'Net Profit',       val:fmt(netProfit),
-     sub:`Margin: ${netMarginPct.toFixed(1)}% • Before wages/discounts/drawings`},
+         ((testMSDL+testHSDL)>0?` • excludes ${(testMSDL+testHSDL).toFixed(1)}L returned from testing`:'')},
+    {cls: fuelUncosted?'cogs':'gross', lbl:'Gross Profit', val:fuelUncosted?_NA:fmt(grossProfit),
+     sub: fuelUncosted?'needs a costed fuel load':`Revenue less COGS • margin ${_pc(grossProfit,revenue)}`},
+    {cls:'opex',    lbl:'Running Expenses', val:'−'+fmt(opex),
+     sub:`From ${shiftRecs.length} shift${shiftRecs.length!==1?'s':''}, testing fuel excluded`},
+    ...(totalStaffCost>0?[
+      {cls:'opex', lbl:'Staff Wages', val:'−'+fmt(totalStaffCost),
+       sub:(wagesAccrued
+             ? `Earned by ${wages.staff} staff from the attendance register`+
+               (totalBonuses>0?` + ${fmt(totalBonuses)} bonus`:'')+
+               ` • ${fmt(totalSalaries)} of it paid so far`+
+               (wages.unmarked>0?` • ⚠ ${wages.unmarked} unmarked day(s), so understated`:'')
+             : `No attendance marked — using the ${fmt(totalSalaries)} actually paid`)},
+    ]:[]),
     ...(totalCreditDiscounts>0?[
       {cls:'opex',  lbl:'Credit Discounts', val:'−'+fmt(totalCreditDiscounts),
-       sub:`Fixed ₹/L discounts for ${creditCustNames.length} customer${creditCustNames.length!==1?'s':''}`},
+       sub:`Estimated ₹/L discount for ${creditCustNames.length} customer${creditCustNames.length!==1?'s':''}`},
     ]:[]),
-    ...(totalStaffCost>0?[
-      {cls:'opex', lbl:'Staff Costs', val:'−'+fmt(totalStaffCost),
-       sub:`Gross salaries ${fmt(totalSalaries)} • Bonuses ${fmt(totalBonuses)} • Cash out ${fmt(staffCashOut)} (advances excluded)`},
-    ]:[]),
-    ...(totalDrawings>0?[
-      {cls:'opex', lbl:'Owner Drawings', val:'−'+fmt(totalDrawings),
-       sub:`${drawingsInRange.length} drawing${drawingsInRange.length!==1?'s':''} — profit taken out, not an expense`},
-    ]:[]),
-    ...((totalCreditDiscounts>0||totalDrawings>0||totalStaffCost>0)?[
-      {cls:netAfterAllCls, lbl:'NET PROFIT (FINAL)', val:fmt(netAfterAll),
-       sub:`After COGS, expenses, wages and discounts`},
-    ]:[]),
-    ...(totalDrawings>0?[
-      {cls: cashAfterDrawings>=0?'net-pos':'net-neg', lbl:'CASH AFTER DRAWINGS', val:fmt(cashAfterDrawings),
-       sub:`Net profit less ${fmt(totalDrawings)} taken by owners`},
-    ]:[]),
-    {cls:'margin',  lbl:'Realized Fuel Profit', val:fmt(realizedFuelProfit),
-     sub:`${totalMSDL.toFixed(0)}L MSD @ ${fmt(wacMSD)}/L + ${totalHSDL.toFixed(0)}L HSD @ ${fmt(wacHSD)}/L cost`},
+    {cls: fuelUncosted?'cogs':(netFinal>=0?'net-pos':'net-neg'), lbl:'NET PROFIT',
+     val: fuelUncosted?_NA:fmt(netFinal),
+     sub: fuelUncosted?'needs a costed fuel load'
+                      :`After COGS, expenses, wages and discounts • margin ${_pc(netFinal,revenue)}`},
+    {cls:'margin',  lbl:'Realized Fuel Margin', val:fuelUncosted?_NA:fmt(realizedFuelProfit),
+     sub: fuelUncosted ? `${_uncostedNote} has no landed cost on record`
+       : `${soldMSDL.toFixed(0)}L MSD @ ${fmt(wacMSD)}/L + ${soldHSDL.toFixed(0)}L HSD @ ${fmt(wacHSD)}/L landed cost`},
   ];
-  document.getElementById('pl_cards').innerHTML = cardsHtml.map(c=>`
+
+  // CASH MOVEMENT — real money, but not part of the profit subtraction. These
+  // used to sit in the same row as COGS and Gross Profit, so the eye read
+  // "Purchases ₹7,81,574" as something being deducted above. It is not.
+  const cashCards = [
+    {cls:'cogs', lbl:'Stock Bought (cash out)', val:fmt(purchases),
+     sub:`${loadsInRange.length} fuel load${loadsInRange.length!==1?'s':''} • ${oilInRange.length} oil invoice${oilInRange.length!==1?'s':''} — paid for, sold later`},
+    ...(staffCashOut>0?[
+      {cls:'cogs', lbl:'Paid to Staff (cash out)', val:fmt(staffCashOut),
+       sub:`Salary ${fmt(totalSalaries)} − advance recovered ${fmt(totalAdvRecovered)} + advances ${fmt(totalAdvances)} + bonus ${fmt(totalBonuses)}`},
+    ]:[]),
+    ...(totalDrawings>0?[
+      {cls:'opex', lbl:'Owner Drawings', val:fmt(totalDrawings),
+       sub:`${drawingsInRange.length} drawing${drawingsInRange.length!==1?'s':''} — profit taken out, not a business expense`},
+    ]:[]),
+    ...((totalDrawings>0&&!fuelUncosted)?[
+      {cls: cashAfterDrawings>=0?'net-pos':'net-neg', lbl:'Left After Drawings', val:fmt(cashAfterDrawings),
+       sub:`Net profit less the ${fmt(totalDrawings)} taken by the owners`},
+    ]:[]),
+  ];
+
+  const _cardHtml = list => list.map(c=>`
     <div class="pl-card ${c.cls}">
       <div class="pl-lbl">${c.lbl}</div>
       <div class="pl-val">${c.val}</div>
       <div class="pl-sub">${c.sub}</div>
-    </div>
-  `).join('');
+    </div>`).join('');
+
+  // The arithmetic, written out. Every deduction appears exactly once, so a
+  // figure that looks wrong can be traced rather than argued about.
+  const _line=(lbl,val,neg)=>
+    '<div style="display:flex;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px dotted var(--border)">'+
+    '<span style="color:var(--muted)">'+lbl+'</span>'+
+    '<span style="font-weight:700;color:'+(neg?'var(--red)':'var(--text)')+'">'+(neg?'− ':'')+val+'</span></div>';
+  const recon =
+    '<div class="pl-recon">'+
+      '<div class="pl-band-t">HOW THE NET FIGURE IS REACHED</div>'+
+      _line('Revenue — goods sold, excluding testing fuel and credit repaid',fmt(revenue))+
+      _line('Cost of those goods',fuelUncosted?'not known':fmt(totalCOGS),true)+
+      _line('Running expenses',fmt(opex),true)+
+      (totalStaffCost>0?_line(wagesAccrued?'Wages earned this period':'Wages paid this period',fmt(totalStaffCost),true):'')+
+      (totalCreditDiscounts>0?_line('Credit discounts (estimated)',fmt(totalCreditDiscounts),true):'')+
+      '<div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0 2px;font-family:\'Syne\',sans-serif;font-weight:800;font-size:14px">'+
+        '<span>NET PROFIT</span><span style="color:'+
+        (fuelUncosted?'var(--diesel)':(netFinal>=0?'var(--green)':'var(--red)'))+'">'+
+        (fuelUncosted?'—':fmt(netFinal))+'</span></div>'+
+      (totalDrawings>0?'<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--muted);margin-top:6px">'+
+        'Owner drawings of '+fmt(totalDrawings)+' come out of that profit — they are not deducted before it.</div>':'')+
+    '</div>';
+
+  const warn = fuelUncosted
+    ? '<div class="pl-warn">⚠ <b>These figures exclude the cost of the fuel.</b> '+
+      _uncostedNote+' was sold in this period with no purchase cost on record on or before '+
+      (to||'today')+'. Enter the tanker under <b>Fuel Loads</b> — or if it is already entered '+
+      'on another phone, open <b>Sync Health</b> from the user menu. Gross and net stay blank '+
+      'until then: revenue with no cost against it is not profit.</div>'
+    : '';
+
+  document.getElementById('pl_cards').innerHTML =
+    warn+
+    '<div class="pl-band"><div class="pl-band-t">TRADING — what the business earned</div>'+
+      '<div class="pl-band-grid">'+_cardHtml(tradingCards)+'</div></div>'+
+    recon+
+    (cashCards.length?'<div class="pl-band"><div class="pl-band-t">CASH MOVEMENT — money in and out, outside the profit sum</div>'+
+      '<div class="pl-band-grid">'+_cardHtml(cashCards)+'</div></div>':'');
 
   // ── DAILY TREND CHART ──
   // Aggregate by date: revenue (from shifts), COGS (from loads+oil), net (revenue - COGS - opex for that day)
@@ -5018,8 +5177,8 @@ function renderPL(from, to, shiftRecs){
   _plTrendChart = new Chart(ctx,{
     data:{labels:trendLabels,datasets:[
       {type:'bar',label:'Revenue',data:trendRev,backgroundColor:'rgba(77,166,255,.65)',borderColor:'#4da6ff',borderWidth:1,borderRadius:3,order:2},
-      {type:'bar',label:'Purchases',data:trendCogs,backgroundColor:'rgba(255,176,32,.6)',borderColor:'#ffb020',borderWidth:1,borderRadius:3,order:3},
-      {type:'line',label:'Cash Flow',data:trendNet,borderColor:'#3ddc84',backgroundColor:'rgba(61,220,132,.12)',borderWidth:2.5,tension:.3,fill:false,pointRadius:3,pointHoverRadius:6,pointBackgroundColor:'#3ddc84',order:1,yAxisID:'y'}
+      {type:'bar',label:'Stock bought',data:trendCogs,backgroundColor:'rgba(255,176,32,.6)',borderColor:'#ffb020',borderWidth:1,borderRadius:3,order:3},
+      {type:'line',label:'Revenue − stock − expenses',data:trendNet,borderColor:'#3ddc84',backgroundColor:'rgba(61,220,132,.12)',borderWidth:2.5,tension:.3,fill:false,pointRadius:3,pointHoverRadius:6,pointBackgroundColor:'#3ddc84',order:1,yAxisID:'y'}
     ]},
     options:{
       responsive:true,maintainAspectRatio:true,
@@ -5039,9 +5198,13 @@ function renderPL(from, to, shiftRecs){
   // ── PROFIT COMPOSITION DONUT ──
   // Split realized profit by source: fuel / oil invoices / shift stock
   const realizedStockProfit = 0; // we don't track cost-per-stock-item per shift, so leave 0 or estimate later
+  // Realised, not potential. oilProfit is the margin on everything PURCHASED,
+  // so a big invoice made the donut claim profit on oil still sitting on the
+  // shelf. This is what was actually sold, less what it cost.
+  const realizedNonFuel = nonFuelRev - cogsNonFuel;
   const donutData = [
-    {label:'Fuel Margin',color:'#00d4a0',value:Math.max(0,Math.round(realizedFuelProfit))},
-    {label:'Oil Invoice Profit',color:'#ffb020',value:Math.max(0,Math.round(oilProfit))},
+    {label:'Fuel Margin',color:'#00d4a0',value:fuelUncosted?0:Math.max(0,Math.round(realizedFuelProfit))},
+    {label:'Oil / Stock Margin',color:'#ffb020',value:Math.max(0,Math.round(realizedNonFuel))},
   ];
   // Only show slices with value > 0 for readability
   const filtered = donutData.filter(d=>d.value>0);
@@ -5189,6 +5352,32 @@ function delLedger(id){
 }
 function saveLedger(){localStorage.setItem('fuelLedger',JSON.stringify(ledger));if(_currentUser)sbSaveAllLedger().catch(console.error);}
 
+// ══════════════════════════════════════════════════════════════════
+// LEDGER PERIOD
+// The three totals used to be all-time sums. Over years that is a number
+// nobody can act on — ₹2.3 lakh "given" says nothing about this month. Credit
+// given and the amount settled against it are flows and belong to a period.
+// What a customer owes is a position: it is always as of today, because a debt
+// from March is still a debt in August.
+//
+// Payments carry no date of their own — paid_back accumulates on the credit
+// row — so "settled" is measured against credit DATED in the period, and the
+// note under the boxes says so. Dating payments needs the payments child table
+// on the roadmap.
+// ══════════════════════════════════════════════════════════════════
+var LED_PERIOD='month';
+function _ledgerRange(p){
+  var n=new Date(), y=n.getFullYear(), m=n.getMonth();
+  if(p==='all')       return {from:'',to:'',label:'all time'};
+  if(p==='lastmonth') return {from:_isoLocal(new Date(y,m-1,1)),to:_isoLocal(new Date(y,m,0)),
+                              label:new Date(y,m-1,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'}).toLowerCase()};
+  if(p==='3m')        return {from:_isoLocal(new Date(y,m-2,1)),to:_isoLocal(n),label:'last 3 months'};
+  if(p==='year')      return {from:_isoLocal(new Date(y,0,1)),to:_isoLocal(n),label:String(y)};
+  return {from:_isoLocal(new Date(y,m,1)),to:_isoLocal(n),
+          label:n.toLocaleDateString('en-IN',{month:'long',year:'numeric'}).toLowerCase()};
+}
+function setLedgerPeriod(p){ LED_PERIOD=p; renderLedger(); }
+
 function renderLedger(){
   // Show customer list view
   document.getElementById('led_list_view').style.display='block';
@@ -5219,7 +5408,10 @@ function renderLedger(){
     c.entries.push(e);
   });
 
-  const names=Object.keys(customers);
+  // Whoever owes the most, first. Settled accounts sink to the bottom.
+  const _bal=n=>{const c=customers[n];
+    return (c.creditGiven-c.paid)-(c.advanceReceived-c.advanceUsed);};
+  const names=Object.keys(customers).sort((a,b)=>_bal(b)-_bal(a)||a.localeCompare(b));
   if(!names.length){
     nl.style.display='block';cards.style.display='none';
     document.getElementById('led_total_given').textContent='₹0';
@@ -5229,9 +5421,27 @@ function renderLedger(){
   }
   nl.style.display='none';cards.style.display='grid';
 
+  const _R=_ledgerRange(LED_PERIOD);
+  const _inPeriod=e=>(!_R.from||e.date>=_R.from)&&(!_R.to||e.date<=_R.to);
+  ['month','lastmonth','3m','year','all'].forEach(function(p){
+    var b=document.getElementById('lp_'+({month:'month',lastmonth:'lastmonth','3m':'3m',year:'year',all:'all'})[p]);
+    if(b)b.classList.toggle('active',LED_PERIOD===p);
+  });
+  const _pl=document.getElementById('led_period_lbl'); if(_pl)_pl.textContent=_R.label;
+  const _q=(document.getElementById('led_search')||{}).value||'';
+  const _hideSettled=!!(document.getElementById('led_hide_settled')||{}).checked;
+
   let totalGiven=0,totalPaid=0,totalOutstanding=0,totalAdvanceHeld=0;
+  let periodGiven=0,periodPaid=0,shown=0,hidden=0;
   names.forEach(name=>{
     const c=customers[name];
+    // Flows, scoped. Adjustments are money moving between two accounts, not
+    // credit given, so they are left out of the headline figure.
+    c.entries.forEach(function(e){
+      if(!_inPeriod(e))return;
+      if(e.kind==='adjust'||e.fuel==='ADJUST')return;
+      if((e.amount||0)>0){ periodGiven+=e.amount; periodPaid+=(e.paidBack||0); }
+    });
     // Net balance: positive = customer owes us; negative = customer has advance with us
     const creditOutstanding=c.creditGiven-c.paid;
     const advanceRemaining=c.advanceReceived-c.advanceUsed;
@@ -5252,6 +5462,12 @@ function renderLedger(){
       statusBadge='<span class="badge bg_">CLEARED</span>';
       balanceLabel='BALANCE'; balanceCls='var(--muted)'; balanceVal='₹0';
     }
+
+    // Over a few years most customers are settled and only clutter the page.
+    const _match=!_q||name.toLowerCase().indexOf(_q.toLowerCase())>=0;
+    if(!_match){ return; }
+    if(_hideSettled&&Math.abs(netBalance)<0.5){ hidden++; return; }
+    shown++;
 
     const card=document.createElement('div');
     card.className='card cust-card';
@@ -5303,14 +5519,33 @@ function renderLedger(){
     cards.appendChild(card);
   });
 
-  document.getElementById('led_total_given').textContent='₹'+totalGiven.toLocaleString('en-IN');
-  document.getElementById('led_total_paid').textContent='₹'+totalPaid.toLocaleString('en-IN');
-  // Outstanding now displayed as net: outstanding minus advance held
-  const outEl=document.getElementById('led_outstanding');
-  if(totalAdvanceHeld>0){
-    outEl.innerHTML=`₹${totalOutstanding.toLocaleString('en-IN')} <span style="font-size:11px;color:var(--green)">(advances: ₹${totalAdvanceHeld.toLocaleString('en-IN')})</span>`;
-  } else {
-    outEl.textContent='₹'+totalOutstanding.toLocaleString('en-IN');
+  const _r0=n=>'₹'+Math.round(n).toLocaleString('en-IN');
+  document.getElementById('led_total_given').textContent=_r0(periodGiven);
+  document.getElementById('led_total_paid').textContent=_r0(periodPaid);
+  document.getElementById('led_outstanding').textContent=_r0(totalOutstanding);
+  const advEl=document.getElementById('led_advance_held');
+  if(advEl)advEl.textContent=_r0(totalAdvanceHeld);
+
+  const note=document.getElementById('led_period_note');
+  if(note){
+    const pend=periodGiven-periodPaid;
+    note.innerHTML=
+      'Credit given and settled cover <b>'+_esc(_R.label)+'</b>'+
+      (_R.from?' ('+_R.from+' → '+_R.to+')':'')+
+      ' — of the '+_r0(periodGiven)+' given, '+_r0(pend)+' is still unpaid. '+
+      'Outstanding and advance held are positions as of today across every year, '+
+      'because an old debt does not stop being owed. '+
+      'All time given: '+_r0(totalGiven)+', settled: '+_r0(totalPaid)+'.';
+  }
+  const hn=document.getElementById('led_hidden_note');
+  if(hn){
+    hn.style.display=hidden?'block':'none';
+    hn.textContent=hidden+' settled customer'+(hidden!==1?'s':'')+' hidden — untick “hide settled” to see them.';
+  }
+  if(!shown&&names.length){
+    cards.style.display='none';
+    nl.style.display='block';
+    nl.textContent=hidden?'Every customer in this list is settled.':'No customer matches that search.';
   }
 }
 
@@ -7762,6 +7997,55 @@ function _salaryOn(staff,dateISO){
     cur=parseFloat(hist[i].from)||0;
   }
   return cur;
+}
+
+// Wages EARNED inside an arbitrary window, on exactly the rules the payroll
+// tab uses. The P&L used to charge wages PAID in the period, so a month whose
+// wages were settled late showed no wage cost at all and the one that paid two
+// months at once showed double. Cost belongs to the month the work was done.
+function _wagesEarned(from,to){
+  var out={earned:0,unmarked:0,staff:0,basis:''};
+  if(typeof staffList==='undefined'||!staffList.length)return out;
+  var cfg=(typeof payrollCfg==='function')?payrollCfg()
+          :{basis:'fixed30',both:'cap',unmarked:'ignore',half:0.5};
+  out.basis=cfg.basis;
+  var today=_isoLocal();
+  var lo=from||'0000-01-01';
+  var hi=to||today; if(hi>today)hi=today;    // never accrue days that have not happened
+  if(hi<lo)return out;
+  staffList.forEach(function(s){
+    var start=(s.joinedDate&&s.joinedDate>lo)?s.joinedDate:lo;
+    if(start>hi)return;
+    out.staff++;
+    var byDate={};
+    (typeof staffAttendance!=='undefined'?staffAttendance:[]).forEach(function(a){
+      if(a.staffId!==s.id||a.date<start||a.date>hi)return;
+      (byDate[a.date]=byDate[a.date]||[]).push(a.status);
+    });
+    var days=0, absent=0;
+    Object.keys(byDate).forEach(function(d){
+      var st=byDate[d];
+      var vals=st.map(function(x){return x==='present'?1:(x==='half'?cfg.half:0);});
+      if(st.indexOf('absent')>=0&&vals.every(function(v){return v===0;}))absent++;
+      days += (cfg.both==='sum') ? vals.reduce(function(a,b){return a+b;},0)
+                                 : Math.min(1,Math.max.apply(null,vals.concat([0])));
+    });
+    var elig=Math.round((new Date(hi+'T00:00:00')-new Date(start+'T00:00:00'))/86400000)+1;
+    var marked=Object.keys(byDate).length;
+    out.unmarked+=Math.max(0,elig-marked);
+    if(cfg.unmarked==='present')days+=Math.max(0,elig-marked);
+    var salary=(typeof _salaryOn==='function')?_salaryOn(s,hi):(parseFloat(s.monthlySalary)||0);
+    var dim=new Date(parseInt(hi.slice(0,4),10),parseInt(hi.slice(5,7),10),0).getDate();
+    var perDay=(cfg.basis==='calendar')?(salary/dim):(salary/30);
+    if(cfg.basis==='deduct'){
+      var full=(elig>=dim)?salary:(salary/dim)*elig;
+      out.earned+=Math.max(0,full-(salary/dim)*absent);
+    } else {
+      out.earned+=perDay*days;
+    }
+  });
+  out.earned=_r2(out.earned);
+  return out;
 }
 
 // One person, one month. Everything the report shows, and nothing hidden.
