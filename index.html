@@ -942,12 +942,13 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <div class="sec"><span class="dot dp"></span>LOOSE OIL (LITRES)</div>
       <div class="card">
         <div class="rg">
-          <div><label>OPENING (L)</label><input type="number" id="oil_prev" placeholder="0.00" step="0.01" oninput="calc()" onchange="_suggestLooseOpen()"></div>
-          <div><label>CLOSING (L)</label><input type="number" id="oil_cur" placeholder="0.00" step="0.01" oninput="calc()"></div>
+          <div><label>OPENING (L) — last shift's closing</label><input type="number" id="oil_prev" placeholder="0.00" step="0.01" oninput="calc()"></div>
+          <div><label>CLOSING (L) — measured at the end</label><input type="number" id="oil_cur" placeholder="0.00" step="0.01" oninput="calc()"></div>
         </div>
         <div class="frow"><span class="flabel">Rate (₹/L)</span><input type="number" id="oil_rate" oninput="queueSaveRates();calc()" onchange="saveRatesNow()"></div>
         <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin:2px 0 6px">
-          BOTTLES OPENED THIS SHIFT — whichever size you actually took off the shelf
+          BOTTLES OPENED DURING THIS SHIFT — every one you tipped in, however many times.
+          Add a row per size, or raise the count for the same bottle twice over.
         </div>
         <div id="loose_open_list"></div>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
@@ -955,6 +956,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
           <span id="oil_added" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)"></span>
         </div>
         <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin:-2px 0 6px 0" id="oil_src_hint"></div>
+        <div class="res"><span class="res-lbl">Available (opening + opened)</span><span class="res-val b" id="oil_avail">—</span></div>
         <div class="res"><span class="res-lbl">Sold (L)</span><span class="res-val b" id="oil_sold">—</span></div>
         <div class="res"><span class="res-lbl">Off stock</span><span class="res-val b" id="oil_units">—</span></div>
         <div id="oil_carry_hint" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);padding:4px 0 0;line-height:1.5"></div>
@@ -4008,7 +4010,13 @@ function calc(){
     hsdV = hsdT * v('hsd_rate');
   }
   const ps=Math.max(0,v('pack_prev')-v('pack_cur'));
-  const os=Math.max(0,v('oil_prev')-v('oil_cur'));
+  // A bottle gets opened when the jar runs dry, which is in the middle of a
+  // shift, twice or three times on a busy day — not tidily before it starts.
+  // So the litres available are the opening level PLUS everything tipped in,
+  // and only then less what is left. Opening is simply where the last shift
+  // finished; every bottle since is listed below it.
+  const _lAdd=(typeof _looseAdded==='function')?_looseAdded():{litres:0,bottles:0,items:[]};
+  const os=Math.max(0,v('oil_prev')+_lAdd.litres-v('oil_cur'));
   // Extra pack sizes (20ml/30ml/…) were counted in getCalcVals() but not here,
   // so the on-screen PACK VALUE and TOTAL RIGHT disagreed with the saved shift.
   let pv=ps*v('pack_rate');
@@ -4028,6 +4036,8 @@ function calc(){
   const _ou=document.getElementById('oil_units');
   if(_ou){
     const _add=_looseAdded();
+    const _av=document.getElementById('oil_avail');
+    if(_av)_av.textContent=(v('oil_prev')+_add.litres).toFixed(3)+' L';
     const _ae=document.getElementById('oil_added');
     if(_ae)_ae.textContent=_add.bottles
       ? _add.items.map(x=>x.qty+' × '+x.name).join(', ')+' = '+_add.litres.toFixed(3)+' L in'
@@ -4045,29 +4055,29 @@ function calc(){
             'From the next shift, opening minus this closing is what you tipped in.'
           : 'No earlier loose-oil reading yet.';
         _h.style.color='var(--muted)';
-      } else if(_openL<_pc-0.001){
+      } else if(Math.abs(_openL-_pc)<=0.02){
+        // Normal: the jar starts where the last shift left it.
+        const avail=_openL+_add.litres;
+        _h.textContent='Started with '+_pc.toFixed(2)+' L'+
+          (_add.bottles?' + '+_add.litres.toFixed(2)+' L opened during the shift ('+
+             _add.items.map(x=>x.qty+' × '+x.name).join(', ')+')':'')+
+          ' = '+avail.toFixed(2)+' L available, '+v('oil_cur').toFixed(2)+' L left.';
+        _h.style.color='var(--muted)';
+      } else if(_openL>_pc){
+        // Almost always the old habit: the bottle was added into the opening
+        // figure. Say what it should be, and offer to move it to where it now
+        // belongs, because typing it in both places sells the oil twice.
+        const gap=_openL-_pc;
+        _h.innerHTML='⚠ Opening '+_openL.toFixed(2)+' L is '+gap.toFixed(2)+
+          ' L above the last closing ('+_pc.toFixed(2)+' L). Opening is now just where the last '+
+          'shift finished — a bottle opened during the shift goes in the list above. '+
+          '<button class="btn btn-g" style="padding:2px 8px;font-size:10px;margin-left:4px" '+
+          'onclick="fixLooseOpening()">MOVE IT TO A BOTTLE</button>';
+        _h.style.color='var(--diesel)';
+      } else {
         _h.textContent='⚠ Opening '+_openL.toFixed(2)+' L is BELOW the last closing '+
           _pc.toFixed(2)+' L — '+(_pc-_openL).toFixed(2)+' L unaccounted.';
         _h.style.color='var(--red)';
-      } else {
-        // The level jumped, so something was tipped in. If no bottle is listed,
-        // the shelf will not be charged for it — say so before the shift is saved.
-        const added=_openL-_pc;
-        const gap=added-_add.litres;
-        if(Math.abs(gap)<=0.05){
-          _h.textContent='Last closing '+_pc.toFixed(2)+' L + '+_add.litres.toFixed(2)+
-            ' L tipped in = opening '+_openL.toFixed(2)+' L ✓';
-          _h.style.color='var(--green)';
-        } else if(gap>0.05){
-          _h.textContent='⚠ Opening is '+added.toFixed(2)+' L above the last closing but only '+
-            _add.litres.toFixed(2)+' L of bottles is listed. Add the '+gap.toFixed(2)+
-            ' L you tipped in, or the shelf count will not drop.';
-          _h.style.color='var(--diesel)';
-        } else {
-          _h.textContent='⚠ '+_add.litres.toFixed(2)+' L of bottles listed but the level only rose '+
-            added.toFixed(2)+' L. Check the reading — the shelf will still lose '+_add.bottles+' bottle(s).';
-          _h.style.color='var(--diesel)';
-        }
       }
     }
   }
@@ -4181,14 +4191,31 @@ function _looseAdded(){
   return out;
 }
 
-// Suggest the bottle that explains the jump, so the common case is one tap.
-function _suggestLooseOpen(){
+// The opening was typed the old way, with a bottle already folded into it.
+// Put the level back to the last closing and list the bottle instead.
+function fixLooseOpening(){
+  const prev=_lastLooseClose();
+  if(!prev){showToast('No earlier closing to go back to');return;}
+  const pc=parseFloat(prev.meters.oil_cur);
+  const gap=v('oil_prev')-pc;
+  if(!(gap>0.02)){showToast('Opening already matches the last closing');return;}
+  document.getElementById('oil_prev').value=pc;
+  _suggestLooseOpen(gap);
+  calc();
+  showToast('Opening set to '+pc.toFixed(2)+' L — check the bottle listed above');
+}
+
+// Suggest the bottle that covers a given number of litres, so the common case
+// is one tap. Called with the shortfall; falls back to the opening jump.
+function _suggestLooseOpen(litres){
   const wrap=document.getElementById('loose_open_list');
   if(!wrap||wrap.querySelector('.loose-row'))return;      // already answered
-  const prev=_lastLooseClose();
-  if(!prev)return;
-  const pc=parseFloat(prev.meters.oil_cur);
-  const added=v('oil_prev')-pc;
+  let added=parseFloat(litres);
+  if(!isFinite(added)){
+    const prev=_lastLooseClose();
+    if(!prev)return;
+    added=v('oil_prev')-parseFloat(prev.meters.oil_cur);
+  }
   if(!(added>0.05))return;
   const src=_looseSources();
   if(!src.length)return;
@@ -4490,7 +4517,8 @@ function getCalcVals(){
     hsdV = hsdT * v('hsd_rate');
   }
   const ps=Math.max(0,v('pack_prev')-v('pack_cur'));
-  const os=Math.max(0,v('oil_prev')-v('oil_cur'));
+  const looseAdded=_looseAdded();
+  const os=Math.max(0,v('oil_prev')+looseAdded.litres-v('oil_cur'));
   let pv=ps*v('pack_rate');
   let extraPackSold={};
   if(typeof packSizesConfig!=='undefined'){
@@ -4514,7 +4542,6 @@ function getCalcVals(){
   const leftTotal=gpay+paytm+cash+credit+exp;
   const rightTotal=msdV+hsdV+pv+ov+stRev+credBack;
   const _lastClose=_lastLooseClose();
-  const looseAdded=_looseAdded();
   const bottlesOpened=looseAdded.bottles;
   return {msdT,hsdT,msdV,hsdV,ps,os,pv,ov,stRev,gpay,paytm,cash,exp,credit,credBack,leftTotal,rightTotal,extraPackSold,
     bottlesOpened, looseOpened:looseAdded.items, looseCost:looseAdded.cost,
@@ -5671,7 +5698,27 @@ function _ledgerRange(p){
 }
 function setLedgerPeriod(p){ LED_PERIOD=p; renderLedger(); }
 
+// Is something on the ledger page half-finished? A background sync must not
+// wipe a form somebody is in the middle of typing into.
+function _ledgerBusy(){
+  const open=['ledger_form','ledger_form2','adj_panel','cust_bill_panel','cust_disc_panel']
+    .some(function(id){const e=document.getElementById(id);return e&&e.style.display==='block';});
+  if(open)return true;
+  const a=document.activeElement;
+  return !!(a&&(a.tagName==='INPUT'||a.tagName==='SELECT'||a.tagName==='TEXTAREA')&&
+            a.closest&&a.closest('#page-ledger'));
+}
+
 function renderLedger(){
+  // Sync runs on a timer and on every realtime push. It re-renders whatever
+  // page is open, and this function used to force the list view back on top —
+  // so reading a customer's account threw you out again a few seconds later,
+  // seemingly at random. If a customer is open, refresh THAT instead.
+  if(currentLedgerCustomer){
+    if(!_ledgerBusy())openLedgerDetail(currentLedgerCustomer);
+    return;
+  }
+  if(_ledgerBusy())return;
   // Show customer list view
   document.getElementById('led_list_view').style.display='block';
   document.getElementById('led_detail_view').style.display='none';
@@ -6026,6 +6073,7 @@ function saveEditLedger(id){
 }
 
 function closeLedgerDetail(){
+  // Cleared first, or renderLedger() below would just reopen the detail.
   currentLedgerCustomer=null;
   document.getElementById('led_detail_view').style.display='none';
   document.getElementById('led_list_view').style.display='block';
