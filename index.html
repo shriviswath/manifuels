@@ -5054,7 +5054,10 @@ function renderPL(from, to, shiftRecs){
     {cls:'revenue', lbl:'Revenue',     val:fmt(revenue),
      sub:`Fuel: ${fmt(revFuel)} • Oil: ${fmt(revOilPack)}${revStock>0?' • Stock: '+fmt(revStock):''}`},
     {cls:'cogs',    lbl:'Cost of Goods Sold', val:fuelUncosted?_NA:fmt(totalCOGS),
-     sub:`Fuel ${fmt(cogsFuel)} • Other ${fmt(cogsNonFuel)}`+
+     // Printing "Fuel ₹0.00" under a dash reads as "the fuel cost nothing",
+     // which is the opposite of what the dash means.
+     sub:(fuelUncosted?`Fuel cost unknown • Other ${fmt(cogsNonFuel)}`
+                      :`Fuel ${fmt(cogsFuel)} • Other ${fmt(cogsNonFuel)}`)+
          (cogsEstimated>0?` (${fmt(cogsExact)} costed, ${fmt(cogsEstimated)} estimated)`
           :(unpricedRev>0?` — ${fmt(unpricedRev)} of sales has no purchase price yet`:''))+
          ((testMSDL+testHSDL)>0?` • excludes ${(testMSDL+testHSDL).toFixed(1)}L returned from testing`:'')},
@@ -5065,11 +5068,12 @@ function renderPL(from, to, shiftRecs){
     ...(totalStaffCost>0?[
       {cls:'opex', lbl:'Staff Wages', val:'−'+fmt(totalStaffCost),
        sub:(wagesAccrued
-             ? `Earned by ${wages.staff} staff from the attendance register`+
+             ? (wages.onContract>0
+                 ? `${wages.onContract} of ${wages.staff} staff accrued on contract salary — their attendance is ${Math.round(100-100*wages.marked/Math.max(1,wages.eligible))}% unmarked`
+                 : `Earned by ${wages.staff} staff from the attendance register`)+
                (totalBonuses>0?` + ${fmt(totalBonuses)} bonus`:'')+
-               ` • ${fmt(totalSalaries)} of it paid so far`+
-               (wages.unmarked>0?` • ⚠ ${wages.unmarked} unmarked day(s), so understated`:'')
-             : `No attendance marked — using the ${fmt(totalSalaries)} actually paid`)},
+               ` • ${fmt(totalSalaries)} of it paid so far`
+             : `No staff on the register — using the ${fmt(totalSalaries)} actually paid`)},
     ]:[]),
     ...(totalCreditDiscounts>0?[
       {cls:'opex',  lbl:'Credit Discounts', val:'−'+fmt(totalCreditDiscounts),
@@ -5080,7 +5084,7 @@ function renderPL(from, to, shiftRecs){
      sub: fuelUncosted?'needs a costed fuel load'
                       :`After COGS, expenses, wages and discounts • margin ${_pc(netFinal,revenue)}`},
     {cls:'margin',  lbl:'Realized Fuel Margin', val:fuelUncosted?_NA:fmt(realizedFuelProfit),
-     sub: fuelUncosted ? `${_uncostedNote} has no landed cost on record`
+     sub: fuelUncosted ? `${_uncostedNote} — no landed cost on record`
        : `${soldMSDL.toFixed(0)}L MSD @ ${fmt(wacMSD)}/L + ${soldHSDL.toFixed(0)}L HSD @ ${fmt(wacHSD)}/L landed cost`},
   ];
 
@@ -5088,8 +5092,10 @@ function renderPL(from, to, shiftRecs){
   // used to sit in the same row as COGS and Gross Profit, so the eye read
   // "Purchases ₹7,81,574" as something being deducted above. It is not.
   const cashCards = [
+    ...(purchases>0?[
     {cls:'cogs', lbl:'Stock Bought (cash out)', val:fmt(purchases),
      sub:`${loadsInRange.length} fuel load${loadsInRange.length!==1?'s':''} • ${oilInRange.length} oil invoice${oilInRange.length!==1?'s':''} — paid for, sold later`},
+    ]:[]),
     ...(staffCashOut>0?[
       {cls:'cogs', lbl:'Paid to Staff (cash out)', val:fmt(staffCashOut),
        sub:`Salary ${fmt(totalSalaries)} − advance recovered ${fmt(totalAdvRecovered)} + advances ${fmt(totalAdvances)} + bonus ${fmt(totalBonuses)}`},
@@ -5123,7 +5129,10 @@ function renderPL(from, to, shiftRecs){
       _line('Revenue — goods sold, excluding testing fuel and credit repaid',fmt(revenue))+
       _line('Cost of those goods',fuelUncosted?'not known':fmt(totalCOGS),true)+
       _line('Running expenses',fmt(opex),true)+
-      (totalStaffCost>0?_line(wagesAccrued?'Wages earned this period':'Wages paid this period',fmt(totalStaffCost),true):'')+
+      (totalStaffCost>0?_line(
+        wagesAccrued?(wages.onContract>0?'Wages — contract salary, register largely blank':'Wages earned from attendance')
+                    :'Wages paid this period',
+        fmt(totalStaffCost),true):'')+
       (totalCreditDiscounts>0?_line('Credit discounts (estimated)',fmt(totalCreditDiscounts),true):'')+
       '<div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0 2px;font-family:\'Syne\',sans-serif;font-weight:800;font-size:14px">'+
         '<span>NET PROFIT</span><span style="color:'+
@@ -5132,6 +5141,14 @@ function renderPL(from, to, shiftRecs){
       (totalDrawings>0?'<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--muted);margin-top:6px">'+
         'Owner drawings of '+fmt(totalDrawings)+' come out of that profit — they are not deducted before it.</div>':'')+
     '</div>';
+
+  const wageWarn = (wages && wages.onContract>0)
+    ? '<div class="pl-warn" style="border-color:var(--blue);background:rgba(77,166,255,.08)">ℹ '+
+      '<b>Wages are on contract salary for '+wages.onContract+' of '+wages.staff+' staff.</b> '+
+      'Their attendance is '+Math.round(100-100*wages.marked/Math.max(1,wages.eligible))+'% unmarked, so the '+
+      'register cannot say what they worked and the full salary is charged instead. Mark attendance daily '+
+      'under <b>Staff Register → Attendance</b> and this switches to the days actually worked.</div>'
+    : '';
 
   const warn = fuelUncosted
     ? '<div class="pl-warn">⚠ <b>These figures exclude the cost of the fuel.</b> '+
@@ -5142,7 +5159,7 @@ function renderPL(from, to, shiftRecs){
     : '';
 
   document.getElementById('pl_cards').innerHTML =
-    warn+
+    warn+wageWarn+
     '<div class="pl-band"><div class="pl-band-t">TRADING — what the business earned</div>'+
       '<div class="pl-band-grid">'+_cardHtml(tradingCards)+'</div></div>'+
     recon+
@@ -8004,7 +8021,7 @@ function _salaryOn(staff,dateISO){
 // wages were settled late showed no wage cost at all and the one that paid two
 // months at once showed double. Cost belongs to the month the work was done.
 function _wagesEarned(from,to){
-  var out={earned:0,unmarked:0,staff:0,basis:''};
+  var out={earned:0,unmarked:0,staff:0,basis:'',onContract:0,marked:0,eligible:0};
   if(typeof staffList==='undefined'||!staffList.length)return out;
   var cfg=(typeof payrollCfg==='function')?payrollCfg()
           :{basis:'fixed30',both:'cap',unmarked:'ignore',half:0.5};
@@ -8037,7 +8054,17 @@ function _wagesEarned(from,to){
     var salary=(typeof _salaryOn==='function')?_salaryOn(s,hi):(parseFloat(s.monthlySalary)||0);
     var dim=new Date(parseInt(hi.slice(0,4),10),parseInt(hi.slice(5,7),10),0).getDate();
     var perDay=(cfg.basis==='calendar')?(salary/dim):(salary/30);
-    if(cfg.basis==='deduct'){
+    out.marked+=marked; out.eligible+=elig;
+
+    // A monthly-salaried operator is owed their salary unless somebody records
+    // that they did not turn up. Accruing only from ticks meant a register
+    // nobody filled in reported four staff costing ₹629 for a month, which
+    // then flatters net profit by very nearly a full payroll. Where the
+    // register covers most of the period the register wins; where it is
+    // largely blank the contract wins, and the card says which was used.
+    var covered = elig>0 ? (marked/elig) : 1;
+    if(cfg.basis==='deduct' || covered<0.5){
+      if(covered<0.5 && cfg.basis!=='deduct') out.onContract++;
       var full=(elig>=dim)?salary:(salary/dim)*elig;
       out.earned+=Math.max(0,full-(salary/dim)*absent);
     } else {
