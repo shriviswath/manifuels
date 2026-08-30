@@ -2136,31 +2136,51 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">Cost/L: <span style="color:var(--text)" id="fl_p_cost_per_l">&#8377;0</span></span>
       </div>
       <div id="fl_confirm_box" style="display:none;background:rgba(255,176,32,.08);border:1px solid var(--diesel);border-radius:6px;padding:12px;margin-bottom:12px">
-        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:10px;letter-spacing:2px;color:var(--diesel);margin-bottom:8px">&#9888; CONFIRM BEFORE SAVING</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:10px;letter-spacing:2px;color:var(--diesel);margin-bottom:8px">&#9888; NOTHING IS SAVED YET — CHECK THIS, THEN PRESS CONFIRM &amp; SAVE</div>
         <div id="fl_confirm_summary" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text);line-height:1.8"></div>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="save-btn" onclick="submitFuelLoad()">&#10003; SAVE LOAD</button>
+        <button class="save-btn" id="fl_submit_btn" onclick="submitFuelLoad()">REVIEW &#8594;</button>
         <button class="btn btn-g" onclick="fl_cancelConfirm()">CANCEL / EDIT</button>
       </div>
     </div>
   </div><!-- Opening Stock Card -->
   <div class="card" style="margin-bottom:16px;border-color:rgba(0,212,160,.3)">
-    <div class="card-head">🔧 SET OPENING STOCK — Start from a known volume (enter once)</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:end">
+    <div class="card-head" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <span>🔧 OPENING STOCK — what is in the tank, and what it cost (enter once)</span>
+      <span style="display:flex;align-items:center;gap:8px">
+        <span id="opening_lock_badge" class="badge bg_" style="white-space:nowrap">✎ EDITABLE</span>
+        <button class="btn btn-g" id="opening_lock_btn" style="padding:4px 12px;font-size:10px" onclick="toggleOpeningLock()">🔒 LOCK</button>
+      </span>
+    </div>
+    <div class="fgrid" style="margin-bottom:8px">
       <div>
-        <div class="flabel" style="margin-bottom:4px;color:var(--petrol)">MSD OPENING VOLUME (L)</div>
-        <input type="number" id="msd_opening" placeholder="e.g. 12500.000" step="0.001" inputmode="decimal" oninput="calcOpeningStock()" onchange="saveOpeningNow()" style="width:100%">
-        <div style="font-size:10px;color:var(--muted);margin-top:3px">Current volume of petrol in tank right now</div>
+        <div class="flabel" style="color:var(--petrol)">MSD OPENING VOLUME (L)</div>
+        <input type="number" id="msd_opening" placeholder="e.g. 12500.000" step="0.001" inputmode="decimal" oninput="calcOpeningStock()" onchange="saveOpeningNow()">
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">Petrol in the tank right now</div>
       </div>
       <div>
-        <div class="flabel" style="margin-bottom:4px;color:var(--diesel)">HSD OPENING VOLUME (L)</div>
-        <input type="number" id="hsd_opening" placeholder="e.g. 8000.000" step="0.001" inputmode="decimal" oninput="calcOpeningStock()" onchange="saveOpeningNow()" style="width:100%">
-        <div style="font-size:10px;color:var(--muted);margin-top:3px">Current volume of diesel in tank right now</div>
+        <div class="flabel" style="color:var(--petrol)">MSD LANDED COST (₹/L)</div>
+        <input type="number" id="msd_opening_cost" placeholder="e.g. 97.70" step="0.01" inputmode="decimal" oninput="calcOpeningStock()" onchange="saveOpeningNow()">
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">What that petrol cost you, per litre</div>
       </div>
-      <div style="text-align:center;padding:8px">
-        <div class="chip" id="opening_chip" style="font-size:11px;display:inline-block">Not set</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:6px">Synced to all devices</div>
+      <div>
+        <div class="flabel" style="color:var(--diesel)">HSD OPENING VOLUME (L)</div>
+        <input type="number" id="hsd_opening" placeholder="e.g. 8000.000" step="0.001" inputmode="decimal" oninput="calcOpeningStock()" onchange="saveOpeningNow()">
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">Diesel in the tank right now</div>
+      </div>
+      <div>
+        <div class="flabel" style="color:var(--diesel)">HSD LANDED COST (₹/L)</div>
+        <input type="number" id="hsd_opening_cost" placeholder="e.g. 90.41" step="0.01" inputmode="decimal" oninput="calcOpeningStock()" onchange="saveOpeningNow()">
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">What that diesel cost you, per litre</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div class="chip" id="opening_chip" style="font-size:11px">Not set</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);line-height:1.6;flex:1;min-width:220px">
+        The landed cost is the bill for the fuel already in the tank — basic price, VAT and lorry,
+        divided by the litres. It costs those litres until they are sold, and blends with every
+        tanker after it. Without it the first load you enter has to price fuel it never delivered.
       </div>
     </div>
   </div>
@@ -2808,7 +2828,12 @@ function _deviceConfig(){
     orderCfg:    g('orderCfg'),
     looseOilCfg: g('looseOilCfg'),
     payrollCfg:  g('payrollCfg'),
-    bizProfile:  (typeof bizProfile!=='undefined') ? bizProfile : g('bizProfile')
+    bizProfile:  (typeof bizProfile!=='undefined') ? bizProfile : g('bizProfile'),
+    // Cost basis of the stock that was in the tank at the start, and whether
+    // it is locked. Both belong to the station, not to one phone.
+    openingCost: {msd:parseFloat(localStorage.getItem('fuelOpeningCostMSD'))||0,
+                  hsd:parseFloat(localStorage.getItem('fuelOpeningCostHSD'))||0},
+    openingLocked: localStorage.getItem('fuelOpeningLocked')==='1'
   };
 }
 function _applyDeviceConfig(cfg){
@@ -2830,6 +2855,16 @@ function _applyDeviceConfig(cfg){
   if(cfg.payrollCfg)  localStorage.setItem('payrollCfg', JSON.stringify(cfg.payrollCfg));
   // Invoice header and numbering: a customer should not get two differently
   // headed bills depending on which phone printed them.
+  if(cfg.openingCost){
+    if(cfg.openingCost.msd!=null)localStorage.setItem('fuelOpeningCostMSD',cfg.openingCost.msd);
+    if(cfg.openingCost.hsd!=null)localStorage.setItem('fuelOpeningCostHSD',cfg.openingCost.hsd);
+    const _mc=document.getElementById('msd_opening_cost');if(_mc)_mc.value=cfg.openingCost.msd||'';
+    const _hc=document.getElementById('hsd_opening_cost');if(_hc)_hc.value=cfg.openingCost.hsd||'';
+  }
+  if(cfg.openingLocked!=null){
+    localStorage.setItem('fuelOpeningLocked',cfg.openingLocked?'1':'0');
+    if(typeof applyOpeningLock==='function')applyOpeningLock();
+  }
   if(cfg.bizProfile){
     localStorage.setItem('bizProfile', JSON.stringify(cfg.bizProfile));
     if(typeof bizProfile!=='undefined') bizProfile=Object.assign({},BIZ_DEFAULT,cfg.bizProfile);
@@ -2860,7 +2895,14 @@ const _msdOp=localStorage.getItem('fuelOpeningMSD');
 const _hsdOp=localStorage.getItem('fuelOpeningHSD');
 if(_msdOp){document.getElementById('msd_opening').value=_msdOp;fuelOpeningMSD=parseFloat(_msdOp);}
 if(_hsdOp){document.getElementById('hsd_opening').value=_hsdOp;fuelOpeningHSD=parseFloat(_hsdOp);}
-if(_msdOp||_hsdOp){document.getElementById('opening_chip').textContent=`MSD: ${parseFloat(_msdOp||0).toFixed(3)}L | HSD: ${parseFloat(_hsdOp||0).toFixed(3)}L`;}
+const _msdC=localStorage.getItem('fuelOpeningCostMSD');
+const _hsdC=localStorage.getItem('fuelOpeningCostHSD');
+if(_msdC&&parseFloat(_msdC)>0)document.getElementById('msd_opening_cost').value=_msdC;
+if(_hsdC&&parseFloat(_hsdC)>0)document.getElementById('hsd_opening_cost').value=_hsdC;
+if(_msdOp||_hsdOp){document.getElementById('opening_chip').textContent=
+  `MSD ${parseFloat(_msdOp||0).toFixed(0)}L${_msdC>0?' @ ₹'+parseFloat(_msdC).toFixed(2):' (no cost)'} | `+
+  `HSD ${parseFloat(_hsdOp||0).toFixed(0)}L${_hsdC>0?' @ ₹'+parseFloat(_hsdC).toFixed(2):' (no cost)'}`;}
+setTimeout(function(){if(typeof applyOpeningLock==='function')applyOpeningLock();},50);
 renderMasterStock();renderStockSales();addCredit();addCredBack();
 
 function setDateTime(){
@@ -3141,6 +3183,13 @@ function _recRevenue(r){
 function _fuelWAC(type, upto){
   const loads=(typeof fuelLoads!=='undefined'?fuelLoads:JSON.parse(localStorage.getItem('fuelLoads')||'[]'));
   let vol=0,cost=0;
+  // The stock that was already in the tank is a lot like any other: its litres
+  // and its bill go into the same weighted average, so the fuel sold before the
+  // first tanker is costed at what it actually cost.
+  const _oc=(typeof openingCost==='function')?openingCost(type):0;
+  const _ov=(type==='MSD'?(typeof fuelOpeningMSD!=='undefined'?fuelOpeningMSD:0)
+                        :(typeof fuelOpeningHSD!=='undefined'?fuelOpeningHSD:0))||0;
+  if(_oc>0&&_ov>0){vol+=_ov;cost+=_ov*_oc;}
   loads.forEach(function(l){
     if(l.type!==type)return;
     if(upto && String(l.date||'') > upto)return;
@@ -5457,8 +5506,10 @@ function renderPL(from, to, shiftRecs){
     ? '<div class="pl-warn">⚠ <b>These figures exclude the cost of the fuel.</b> '+
       _uncostedNote+' was sold in this period with no purchase cost on record on or before '+
       (to||'today')+'. Enter the tanker under <b>Fuel Loads</b> — or if it is already entered '+
-      'on another phone, open <b>Sync Health</b> from the user menu. Gross and net stay blank '+
-      'until then: revenue with no cost against it is not profit.</div>'
+      'on another phone, open <b>Sync Health</b> from the user menu. If it is fuel that was '+
+      'already in the tank before you started using the app, set its landed cost under '+
+      '<b>Fuel Loads &rarr; OPENING STOCK</b> instead. Gross and net stay blank until then: '+
+      'revenue with no cost against it is not profit.</div>'
     : '';
 
   document.getElementById('pl_cards').innerHTML =
@@ -7177,15 +7228,72 @@ function renderAdvChart(a){
 // on one phone was invisible everywhere and was reverted by the next sync,
 // which pulls app_settings.opening_msd back into the box.
 // The `if(msd||hsd)` guard also meant setting a tank to 0 did nothing at all.
+// The fuel already in the tank was bought on a bill too. Without its price the
+// first tanker entered has to stand in for fuel it never delivered, and every
+// litre sold before that load is costed at the wrong rate — silently, and
+// permanently, because nothing later corrects it.
+function openingCost(type){
+  const v=parseFloat(localStorage.getItem(type==='MSD'?'fuelOpeningCostMSD':'fuelOpeningCostHSD'));
+  return isFinite(v)&&v>0?v:0;
+}
+function openingLocked(){ return localStorage.getItem('fuelOpeningLocked')==='1'; }
+
+function applyOpeningLock(){
+  const locked=openingLocked();
+  ['msd_opening','hsd_opening','msd_opening_cost','hsd_opening_cost'].forEach(function(id){
+    const e=document.getElementById(id);
+    if(!e)return;
+    e.disabled=locked;
+    e.style.opacity=locked?'.55':'';
+    e.title=locked?'Locked. An owner can unlock it.':'';
+  });
+  const b=document.getElementById('opening_lock_badge');
+  if(b){
+    b.textContent=locked?'🔒 LOCKED':'✎ EDITABLE';
+    b.className='badge '+(locked?'br_':'bg_');
+  }
+  const btn=document.getElementById('opening_lock_btn');
+  if(btn)btn.innerHTML=locked?'🔓 UNLOCK':'🔒 LOCK';
+}
+
+function toggleOpeningLock(){
+  const locked=openingLocked();
+  if(locked){
+    // Unlocking changes the cost basis of every litre sold before the first
+    // tanker, so it is owner-only and it goes in the log.
+    if(typeof _isOwner!=='undefined' && !_isOwner){
+      showToast('🔒 Only an owner can unlock the opening stock');return;
+    }
+    if(!confirm('Unlock the opening stock?\n\nThe volume is the baseline every tank figure counts from, '+
+      'and the landed cost prices every litre sold before your first tanker. '+
+      'Changing either moves past figures. This is recorded in the activity log.'))return;
+    localStorage.setItem('fuelOpeningLocked','0');
+    if(typeof logActivity==='function')logActivity('opening_unlock','settings','opening','Opening stock unlocked for editing');
+    showToast('Unlocked — lock it again once corrected');
+  } else {
+    localStorage.setItem('fuelOpeningLocked','1');
+    if(typeof logActivity==='function')logActivity('opening_lock','settings','opening',
+      'Locked at MSD '+fuelOpeningMSD+'L @ ₹'+openingCost('MSD')+'/L, HSD '+fuelOpeningHSD+'L @ ₹'+openingCost('HSD')+'/L');
+    showToast('Locked. An owner can unlock it if it needs correcting.');
+  }
+  applyOpeningLock();
+  queueSettingsSave();
+}
+
 function calcOpeningStock(){
+  if(openingLocked())return;                 // belt and braces: the inputs are disabled too
   const msd=parseFloat(document.getElementById('msd_opening')?.value)||0;
   const hsd=parseFloat(document.getElementById('hsd_opening')?.value)||0;
+  const cm =parseFloat(document.getElementById('msd_opening_cost')?.value)||0;
+  const ch =parseFloat(document.getElementById('hsd_opening_cost')?.value)||0;
   fuelOpeningMSD=msd;fuelOpeningHSD=hsd;
   localStorage.setItem('fuelOpeningMSD',msd);
   localStorage.setItem('fuelOpeningHSD',hsd);
+  localStorage.setItem('fuelOpeningCostMSD',cm);
+  localStorage.setItem('fuelOpeningCostHSD',ch);
   const chip=document.getElementById('opening_chip');
   if(chip)chip.textContent=(msd||hsd)
-    ? `MSD opening: ${msd.toFixed(3)}L | HSD opening: ${hsd.toFixed(3)}L`
+    ? `MSD ${msd.toFixed(0)}L${cm?' @ ₹'+cm.toFixed(2):' (no cost)'} | HSD ${hsd.toFixed(0)}L${ch?' @ ₹'+ch.toFixed(2):' (no cost)'}`
     : 'Not set';
   queueSettingsSave();   // oninput fires per keystroke — debounced like rates
 }
@@ -7279,7 +7387,12 @@ function submitFuelLoad(){
   var fmt   = function(n){return '₹'+n.toLocaleString('en-IN',{minimumFractionDigits:2});};
 
   if(stage==='1'){
-    if(sb){sb.textContent='STAGE 2 — CONFIRM';sb.style.background='rgba(255,176,32,.2)';sb.style.color='var(--diesel)';sb.dataset.stage='2';}
+    if(sb){sb.textContent='STAGE 2 — NOT SAVED YET';sb.style.background='rgba(255,176,32,.2)';sb.style.color='var(--diesel)';sb.dataset.stage='2';}
+    // The first press only reviews. Leaving the button reading "SAVE LOAD"
+    // made that indistinguishable from a save that silently failed — which is
+    // exactly how a tanker went missing.
+    var _b=document.getElementById('fl_submit_btn');
+    if(_b){_b.innerHTML='&#10003; CONFIRM &amp; SAVE';_b.style.background='var(--diesel)';}
     var cb=document.getElementById('fl_confirm_box');
     var cs=document.getElementById('fl_confirm_summary');
     if(cb)cb.style.display='block';
@@ -7289,7 +7402,7 @@ function submitFuelLoad(){
       'Basic: <b>'+fmt(basicAmt)+'</b> + TN VAT: <b>'+fmt(tnVatAmt)+'</b> + LST: <b>'+fmt(lstAmt)+'</b> = Bill: <b>'+fmt(billTotal)+'</b><br>'+
       'Lorry: <b>'+fmt(lorryRent)+'</b> &nbsp;| Total Cost: <b>'+fmt(totalCost)+'</b><br>'+
       'Revenue: <b>'+fmt(revenue)+'</b> &nbsp;| Profit: <b style="color:'+(profit>=0?'var(--green)':'var(--red)')+'">'+fmt(profit)+'</b>';
-    showToast('Review above — click SAVE LOAD again to confirm');
+    showToast('Not saved yet — check the summary, then press CONFIRM & SAVE');
     return;
   }
 
@@ -7376,9 +7489,7 @@ function editFuelLoad(id){
   set('fl_lorry_rent', l.lorryRent);
   set('fl_sell', l.sell);
   set('fl_update_rate','no');   // editing history should not move today's pump rate
-  var sb=document.getElementById('fl_stage_badge');
-  if(sb){sb.dataset.stage='1';sb.textContent='EDITING — '+l.inv;
-    sb.style.background='rgba(255,176,32,.2)';sb.style.color='var(--diesel)';}
+  fl_setStage(1,'EDITING — '+l.inv);
   var cb=document.getElementById('fl_confirm_box');if(cb)cb.style.display='none';
   if(typeof flShowTab==='function')flShowTab('entry');
   if(typeof fl_calc==='function')fl_calc();
@@ -10573,6 +10684,23 @@ async function loadAllFromSupabase(silent) {
 }
 
 
+// Both stage indicators in one place, so the badge and the button can never
+// disagree about whether this load has been saved.
+function fl_setStage(n,label){
+  var sb=document.getElementById('fl_stage_badge');
+  var b=document.getElementById('fl_submit_btn');
+  if(sb){
+    sb.dataset.stage=String(n);
+    sb.textContent=label||(n===2?'STAGE 2 — NOT SAVED YET':'STAGE 1 — ENTRY');
+    sb.style.background=n===2?'rgba(255,176,32,.2)':'rgba(77,166,255,.15)';
+    sb.style.color=n===2?'var(--diesel)':'var(--blue)';
+  }
+  if(b){
+    b.innerHTML=n===2?'&#10003; CONFIRM &amp; SAVE':'REVIEW &#8594;';
+    b.style.background=n===2?'var(--diesel)':'';
+  }
+}
+
 function fl_resetForm(){
   _flEditingId=null;
   var d=document.getElementById('fl_date');if(d)d.value=_isoLocal();
@@ -10580,9 +10708,7 @@ function fl_resetForm(){
    'fl_vol_kl','fl_basic_price','fl_tn_vat','fl_lorry_rent','fl_sell'
   ].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   var lp=document.getElementById('fl_lst_pct');if(lp)lp.value='13';
-  var sb=document.getElementById('fl_stage_badge');
-  if(sb){sb.dataset.stage='1';sb.textContent='STAGE 1 — ENTRY';
-    sb.style.background='rgba(77,166,255,.15)';sb.style.color='var(--blue)';}
+  fl_setStage(1);
   var cb=document.getElementById('fl_confirm_box');if(cb)cb.style.display='none';
   if(typeof fl_calc==='function')fl_calc();
 }
@@ -10590,8 +10716,7 @@ function fl_resetForm(){
 function fl_cancelConfirm(){
   var sb=document.getElementById('fl_stage_badge');
   if(sb&&sb.dataset.stage==='2'){
-    sb.dataset.stage='1';sb.textContent='STAGE 1 — ENTRY';
-    sb.style.background='rgba(77,166,255,.15)';sb.style.color='var(--blue)';
+    fl_setStage(1);
     var cb=document.getElementById('fl_confirm_box');if(cb)cb.style.display='none';
   } else {
     if(typeof flShowTab==='function')flShowTab('history');
