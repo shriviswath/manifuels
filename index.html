@@ -942,16 +942,22 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <div class="sec"><span class="dot dp"></span>LOOSE OIL (LITRES)</div>
       <div class="card">
         <div class="rg">
-          <div><label>OPENING (L)</label><input type="number" id="oil_prev" placeholder="0.00" step="0.01" oninput="calc()"></div>
+          <div><label>OPENING (L)</label><input type="number" id="oil_prev" placeholder="0.00" step="0.01" oninput="calc()" onchange="_suggestLooseOpen()"></div>
           <div><label>CLOSING (L)</label><input type="number" id="oil_cur" placeholder="0.00" step="0.01" oninput="calc()"></div>
         </div>
         <div class="frow"><span class="flabel">Rate (₹/L)</span><input type="number" id="oil_rate" oninput="queueSaveRates();calc()" onchange="saveRatesNow()"></div>
-        <div class="frow"><span class="flabel">Drawn from</span>
-          <select id="oil_src_item" onchange="saveLooseOilCfg()" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-family:'JetBrains Mono',monospace;font-size:12px"></select></div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin:2px 0 6px">
+          BOTTLES OPENED THIS SHIFT — whichever size you actually took off the shelf
+        </div>
+        <div id="loose_open_list"></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+          <button class="add-btn" onclick="addLooseOpen()">＋ Add bottle</button>
+          <span id="oil_added" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)"></span>
+        </div>
         <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin:-2px 0 6px 0" id="oil_src_hint"></div>
-        <div class="frow"><span class="flabel">Litres per unit</span><input type="number" id="oil_src_lpu" step="0.001" placeholder="1.000" oninput="saveLooseOilCfg()"></div>
         <div class="res"><span class="res-lbl">Sold (L)</span><span class="res-val b" id="oil_sold">—</span></div>
-        <div class="res"><span class="res-lbl">Stock deducted</span><span class="res-val b" id="oil_units">—</span></div>
+        <div class="res"><span class="res-lbl">Off stock</span><span class="res-val b" id="oil_units">—</span></div>
+        <div id="oil_carry_hint" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);padding:4px 0 0;line-height:1.5"></div>
         <div class="res"><span class="res-lbl">Oil Value</span><span class="res-val b" id="oil_val">—</span></div>
       </div>
       <div class="sec"><span class="dot dd"></span>CREDIT CUSTOMERS</div>
@@ -1198,10 +1204,11 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
   </div>
   <div class="card">
     <table class="stock-tbl" style="width:100%">
-      <thead><tr><th>ITEM NAME</th><th>CATEGORY</th><th>QTY IN STOCK</th><th>RATE (₹)</th><th>UNIT</th><th title="Can be drawn as loose oil">LOOSE</th><th>STATUS</th><th>VALUE</th><th></th></tr></thead>
+      <thead><tr><th>ITEM NAME</th><th>CATEGORY</th><th>QTY IN STOCK</th><th>RATE (₹)</th><th>UNIT</th><th title="Can be drawn as loose oil">LOOSE</th><th title="Litres in one bottle or can — used when it is opened for loose sale">L / UNIT</th><th>STATUS</th><th>VALUE</th><th></th></tr></thead>
       <tbody id="master_stock"></tbody>
     </table>
   </div>
+  <div id="stk_frac_note" style="display:none;margin-top:12px;padding:10px 12px;background:rgba(255,176,32,.08);border:1px solid var(--diesel);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text);line-height:1.7"></div>
   <div class="sum-grid" style="margin-top:12px">
     <div class="sbox"><div class="sb-t">Total Stock Value</div><div class="sb-v" style="color:var(--petrol)" id="stk_val">₹0</div></div>
     <div class="sbox"><div class="sb-t">Items Listed</div><div class="sb-v" style="color:var(--blue)" id="stk_cnt">0</div></div>
@@ -1259,6 +1266,11 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <button class="btn btn-g" style="padding:5px 10px;font-size:10px" onclick="setCompareToPrevPeriod()">PREVIOUS PERIOD</button>
       <button class="btn btn-g" style="padding:5px 10px;font-size:10px" onclick="setCompareToLastYear()">SAME PERIOD LAST YEAR</button>
     </div>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:11px;letter-spacing:1px;color:var(--text)"
+      title="Off by default: food is already in shift expenses and settlement here is irregular, so an accrued salary double-counts.">
+      <input type="checkbox" id="plWages" onchange="toggleWagesInPL()">
+      👥 DEDUCT STAFF WAGES
+    </label>
     <button id="cmpFilterTagBtn" onclick="toggleTagFilter()" style="margin-left:auto;font-family:'Syne',sans-serif;font-size:10px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:5px 10px;border-radius:3px;cursor:pointer;font-weight:700;letter-spacing:1px">🏷 FILTER BY TAG</button>
     <select id="cmpTagFilter" onchange="genReport()" style="display:none;padding:5px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px">
       <option value="">All shifts</option>
@@ -2900,6 +2912,8 @@ function showPage(p){
   if(p==='stock')renderMasterStock();
   if(p==='ledger')renderLedger();
   if(p==='report'){
+    const _pw=document.getElementById('plWages');
+    if(_pw)_pw.checked=localStorage.getItem('plIncludeWages')==='1';
     const rf=document.getElementById('rep_from');
     if(rf && !rf.value && typeof setReportRange==='function') setReportRange('month');
   }
@@ -3179,8 +3193,40 @@ function _looseOilCfg(){
   return {
     stockId: c.stockId?String(c.stockId):'',
     litresPerUnit: (parseFloat(c.litresPerUnit)||1),
-    allowed: Array.isArray(c.allowed)?c.allowed.map(String):[]
+    allowed: Array.isArray(c.allowed)?c.allowed.map(String):[],
+    // A 1 L bottle and a 0.5 L bottle are different items on the shelf and both
+    // get drawn from, depending on what is in stock. One global litres-per-unit
+    // could only ever be right for one of them.
+    sizes: (c.sizes&&typeof c.sizes==='object')?c.sizes:{}
   };
+}
+
+// Bottle size for a stock item: what was set on the Oil Stock page, else the
+// size printed in its own name — "2T (0.5L)" is already telling us.
+function _looseSize(item){
+  if(!item)return 0;
+  var cfg=_looseOilCfg(), set=parseFloat(cfg.sizes[String(item.id)]);
+  if(isFinite(set)&&set>0)return set;
+  var m=String(item.name||'').match(/(\d+(?:\.\d+)?)\s*(?:L|LTR|LITRE)\b/i);
+  if(m&&parseFloat(m[1])>0)return parseFloat(m[1]);
+  if(String(item.id)===cfg.stockId&&cfg.litresPerUnit>0)return cfg.litresPerUnit;
+  return 0;
+}
+function setLooseSize(id,val){
+  var cfg=_looseOilCfg(), v=parseFloat(val);
+  cfg.sizes[String(id)]=(isFinite(v)&&v>0)?v:0;
+  localStorage.setItem('looseOilCfg',JSON.stringify(
+    {stockId:cfg.stockId,litresPerUnit:cfg.litresPerUnit,allowed:cfg.allowed,sizes:cfg.sizes}));
+  if(_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(function(){});
+  if(typeof renderLooseOpenRows==='function')renderLooseOpenRows();
+  calc();
+}
+// Every item ticked LOOSE, with the size of one bottle.
+function _looseSources(){
+  return stock.filter(function(x){return _looseAllowed(x.id);})
+              .map(function(x){return {id:String(x.id),name:x.name,unit:x.unit||'unit',
+                                       size:_looseSize(x),qty:x.qty};})
+              .filter(function(x){return x.size>0;});
 }
 // Which stock items may be drawn as loose oil. Distilled water and battery acid
 // are in the same register and were one mis-tap away from becoming the COGS
@@ -3197,10 +3243,40 @@ function toggleLooseAllowed(id,on){
           if(cfg.stockId===s)cfg.stockId='';   // it was the live source — unlink it
         }
   localStorage.setItem('looseOilCfg',JSON.stringify(
-    {stockId:cfg.stockId,litresPerUnit:cfg.litresPerUnit,allowed:a}));
+    {stockId:cfg.stockId,litresPerUnit:cfg.litresPerUnit,allowed:a,sizes:cfg.sizes}));
   if(_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(function(){});
   if(typeof renderLooseOilCfg==='function')renderLooseOilCfg();
   calc();
+}
+// ── LOOSE OIL COMES OFF THE SHELF IN WHOLE BOTTLES ────────────────────────
+// Stock was being reduced by litres SOLD ÷ litres per bottle, which is why the
+// register showed 17.7 bottles. Nothing is ever half on a shelf. What actually
+// happens: the jar runs down to 0.1 L, somebody opens a 0.5 L bottle and the
+// next opening reads 0.6 L. So the bottle count is the litres ADDED between one
+// shift's closing and the next shift's opening — not the litres sold.
+//
+// Litres sold still drive revenue and COGS, because that part is genuinely
+// fractional: you sell 200 ml out of an open bottle.
+function _bottlesOpened(openL, prevCloseL, lpu){
+  if(!(lpu>0))lpu=1;
+  // No earlier reading at all — the first shift ever, or the first since this
+  // was set up. Whatever is in the open bottle was already in hand; charging
+  // the shelf for it would take out stock that was taken out long ago.
+  if(prevCloseL==null||!isFinite(prevCloseL))return 0;
+  const added=(parseFloat(openL)||0)-prevCloseL;
+  if(!(added>0))return 0;
+  // Half a bottle poured in still means a bottle was opened, so round up — but
+  // with 5% slack, or a measuring error of a few millilitres would book one.
+  return Math.max(0, Math.ceil(added/lpu - 0.05));
+}
+// Closing level of the last saved shift, so "how much was added" is answerable.
+function _lastLooseClose(){
+  const d=document.getElementById('shiftDate')?.value||'';
+  const prior=records.filter(r=>r.meters&&r.meters.oil_cur!=null&&
+      (r.date<d||(r.date===d&&r.shift!==shift)))
+    .sort((a,b)=>String(b.date).localeCompare(String(a.date))||
+      (b.shift==='night'?1:-1)-(a.shift==='night'?1:-1));
+  return prior.length?prior[0]:null;
 }
 function _looseOilUnits(litres){
   const cfg=_looseOilCfg();
@@ -3248,8 +3324,15 @@ function _recNonFuelCOGS(r){
   });
   if(packQtyUnpriced>0&&packQty>0) unpricedRev+=(r.pv||0)*(packQtyUnpriced/packQty);
 
-  // loose oil
-  if(lcost>0) cost+=lcost*(r.os||0); else unpricedRev+=(r.ov||0);
+  // loose oil — priced off the bottles that were actually opened, so a shift
+  // drawn from 1 L cans is not costed at the 0.5 L bottle's rate per litre.
+  let _lc=lcost;
+  if(Array.isArray(r.looseOpened)&&r.looseOpened.length){
+    const litres=r.looseOpened.reduce((s2,o)=>s2+(o.qty||0)*(o.size||0),0);
+    const spend =r.looseOpened.reduce((s2,o)=>s2+(o.qty||0)*(uc[String(o.id)]||0),0);
+    if(litres>0&&spend>0)_lc=spend/litres;
+  }
+  if(_lc>0) cost+=_lc*(r.os||0); else unpricedRev+=(r.ov||0);
 
   return {cost:cost, unpricedRev:unpricedRev};
 }
@@ -3755,6 +3838,14 @@ function carryForwardMeters(silent){
     const el=document.getElementById(k+'_prev');
     if(el&&isFinite(val)&&val>0&&(silent?!el.value:true)){el.value=val;n++;}
   });
+  // Loose oil too: the jar starts where it was left. Whatever bottle gets
+  // opened is then added on top, and that difference is the stock movement.
+  const _lp=_lastLooseClose();
+  if(_lp){
+    const _lv=parseFloat(_lp.meters.oil_cur);
+    const _le=document.getElementById('oil_prev');
+    if(_le&&isFinite(_lv)&&(silent?!_le.value:true)){_le.value=_lv;n++;}
+  }
   if(n){calc(); if(!silent)showToast('✓ Opening readings carried from '+prev.id);}
   else if(!silent)showToast('Opening readings already filled');
 }
@@ -3936,10 +4027,49 @@ function calc(){
   setEl('oil_sold',os.toFixed(2)+' L','b');setEl('oil_val',fmt(ov),'b');
   const _ou=document.getElementById('oil_units');
   if(_ou){
-    const _cfg=_looseOilCfg();
-    const _src=_cfg.stockId?stock.find(function(x){return String(x.id)===_cfg.stockId;}):null;
-    _ou.textContent=_src?(_looseOilUnits(os).toFixed(3)+' × '+(_src.unit||'unit')):'not linked';
-    _ou.className='res-val'+(_src?' b':'');
+    const _add=_looseAdded();
+    const _ae=document.getElementById('oil_added');
+    if(_ae)_ae.textContent=_add.bottles
+      ? _add.items.map(x=>x.qty+' × '+x.name).join(', ')+' = '+_add.litres.toFixed(3)+' L in'
+      : 'nothing taken off the shelf this shift';
+    _ou.textContent=_add.bottles?(_add.bottles+' bottle(s)'):'—';
+    _ou.className='res-val'+(_add.bottles?' b':'');
+    const _prev=_lastLooseClose();
+    const _pc=_prev?parseFloat(_prev.meters.oil_cur):null;
+    const _openL=v('oil_prev');
+    const _h=document.getElementById('oil_carry_hint');
+    if(_h){
+      if(!_prev){
+        _h.textContent=_openL>0
+          ? 'First loose-oil reading — the '+_openL+' L in hand is treated as already issued. '+
+            'From the next shift, opening minus this closing is what you tipped in.'
+          : 'No earlier loose-oil reading yet.';
+        _h.style.color='var(--muted)';
+      } else if(_openL<_pc-0.001){
+        _h.textContent='⚠ Opening '+_openL.toFixed(2)+' L is BELOW the last closing '+
+          _pc.toFixed(2)+' L — '+(_pc-_openL).toFixed(2)+' L unaccounted.';
+        _h.style.color='var(--red)';
+      } else {
+        // The level jumped, so something was tipped in. If no bottle is listed,
+        // the shelf will not be charged for it — say so before the shift is saved.
+        const added=_openL-_pc;
+        const gap=added-_add.litres;
+        if(Math.abs(gap)<=0.05){
+          _h.textContent='Last closing '+_pc.toFixed(2)+' L + '+_add.litres.toFixed(2)+
+            ' L tipped in = opening '+_openL.toFixed(2)+' L ✓';
+          _h.style.color='var(--green)';
+        } else if(gap>0.05){
+          _h.textContent='⚠ Opening is '+added.toFixed(2)+' L above the last closing but only '+
+            _add.litres.toFixed(2)+' L of bottles is listed. Add the '+gap.toFixed(2)+
+            ' L you tipped in, or the shelf count will not drop.';
+          _h.style.color='var(--diesel)';
+        } else {
+          _h.textContent='⚠ '+_add.litres.toFixed(2)+' L of bottles listed but the level only rose '+
+            added.toFixed(2)+' L. Check the reading — the shelf will still lose '+_add.bottles+' bottle(s).';
+          _h.style.color='var(--diesel)';
+        }
+      }
+    }
   }
   _syncTestingFuel();
   const gpay=v('p_gpay'),paytm=v('p_paytm'),cash=v('p_cash');
@@ -3969,36 +4099,114 @@ function calc(){
   document.getElementById('r_credback').textContent=fmt(credBack);
 }
 
+// ══════════════════════════════════════════════════════════════════
+// LOOSE OIL — which bottle came off the shelf
+//
+// Opening is typed the way it is measured: the level in hand at the start of
+// the shift, INCLUDING whatever was tipped in. So litres sold stays
+// opening − closing. What the app cannot infer is WHICH bottle was opened,
+// because 1 L and 0.5 L are both on the shelf and either may be used. That is
+// entered here, and it is the only thing that moves the shelf count.
+// ══════════════════════════════════════════════════════════════════
+var _looseRowSeq=0;
+
 function renderLooseOilCfg(){
-  const sel=document.getElementById('oil_src_item');
-  if(!sel)return;
-  const cfg=_looseOilCfg();
-  // The linked item stays visible even if it was later unticked, so the config
-  // can never end up pointing at a row that is not in the list.
-  const list=stock.filter(function(x){
-    return _looseAllowed(x.id)||String(x.id)===cfg.stockId;
-  });
-  sel.innerHTML='<option value="">— not linked to stock —</option>'+
-    list.map(function(x){return '<option value="'+x.id+'">'+_esc(x.name)+' ('+_esc(x.unit||'unit')+')</option>';}).join('');
-  sel.value=cfg.stockId||'';
-  const lpu=document.getElementById('oil_src_lpu');
-  if(lpu&&!lpu.value)lpu.value=cfg.litresPerUnit||1;
   const hint=document.getElementById('oil_src_hint');
-  if(hint)hint.textContent=cfg.allowed.length
-    ? list.length+' item(s) marked as loose-oil sources in Stock'
-    : 'Tick "LOOSE" in Oil Stock to limit this list';
+  const src=_looseSources();
+  if(hint){
+    hint.textContent = !_looseOilCfg().allowed.length
+      ? 'Tick “LOOSE” against the bottles you draw from, on the Oil Stock page.'
+      : (src.length
+          ? src.length+' source(s): '+src.map(x=>x.name+' ('+x.size+' L)').join(', ')
+          : 'Ticked as loose, but no bottle size set — add “L / UNIT” on the Oil Stock page.');
+  }
+  renderLooseOpenRows();
 }
-function saveLooseOilCfg(){
-  const sel=document.getElementById('oil_src_item');
-  const lpuEl=document.getElementById('oil_src_lpu');
-  const lpu=parseFloat(lpuEl&&lpuEl.value)||1;
-  const cur=_looseOilCfg();
-  localStorage.setItem('looseOilCfg',JSON.stringify({
-    stockId:sel?sel.value:'', litresPerUnit:lpu>0?lpu:1, allowed:cur.allowed
-  }));
-  if(_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(function(){});
+
+function renderLooseOpenRows(){
+  const wrap=document.getElementById('loose_open_list');
+  if(!wrap)return;
+  const src=_looseSources();
+  wrap.querySelectorAll('.loose-row').forEach(function(row){
+    const sel=row.querySelector('.loose-item');
+    const keep=sel.value;
+    sel.innerHTML=src.map(x=>'<option value="'+x.id+'">'+_esc(x.name)+' — '+x.size+' L</option>').join('');
+    if(keep)sel.value=keep;
+  });
+}
+
+function addLooseOpen(id,qty){
+  const wrap=document.getElementById('loose_open_list');
+  if(!wrap)return;
+  const src=_looseSources();
+  if(!src.length){showToast('Tick a bottle as LOOSE in Oil Stock first, with its litres');return;}
+  const rid=++_looseRowSeq;
+  const d=document.createElement('div');
+  d.className='loose-row';
+  d.id='lo_'+rid;
+  d.style.cssText='display:grid;grid-template-columns:1fr 64px 24px;gap:6px;margin-bottom:6px;align-items:center';
+  d.innerHTML=
+    '<select class="loose-item" onchange="calc()" style="width:100%;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-family:\'JetBrains Mono\',monospace;font-size:12px">'+
+      src.map(x=>'<option value="'+x.id+'">'+_esc(x.name)+' — '+x.size+' L</option>').join('')+
+    '</select>'+
+    '<input type="number" class="loose-qty" min="1" step="1" value="'+(qty||1)+'" oninput="calc()" style="width:100%">'+
+    '<button class="rm-btn" onclick="document.getElementById(\'lo_'+rid+'\').remove();calc()">✕</button>';
+  wrap.appendChild(d);
+  if(id)d.querySelector('.loose-item').value=String(id);
   calc();
 }
+
+// What was opened this shift: whole bottles, per item, with their litres.
+function _looseAdded(){
+  const out={litres:0,bottles:0,items:[],cost:0};
+  const src=_looseSources();
+  const byId={}; src.forEach(x=>byId[x.id]=x);
+  // calc() runs once at boot, before `let oilReg` has been initialised, and
+  // _stockUnitCost() reads it. Touching a `let` before its declaration throws,
+  // and that threw during page load. Cost is optional here — the litres and the
+  // shelf count are not — so it degrades instead of taking the page down.
+  let uc={};
+  try{ uc=(typeof _stockUnitCost==='function')?_stockUnitCost():{}; }catch(e){}
+  document.querySelectorAll('#loose_open_list .loose-row').forEach(function(row){
+    const id=row.querySelector('.loose-item').value;
+    const qty=Math.max(0,Math.round(parseFloat(row.querySelector('.loose-qty').value)||0));
+    const it=byId[id];
+    if(!it||!qty)return;
+    out.litres+=qty*it.size;
+    out.bottles+=qty;
+    out.cost+=qty*(uc[id]||0);
+    out.items.push({id:id,name:it.name,qty:qty,size:it.size,unit:it.unit});
+  });
+  out.litres=Math.round(out.litres*1000)/1000;
+  return out;
+}
+
+// Suggest the bottle that explains the jump, so the common case is one tap.
+function _suggestLooseOpen(){
+  const wrap=document.getElementById('loose_open_list');
+  if(!wrap||wrap.querySelector('.loose-row'))return;      // already answered
+  const prev=_lastLooseClose();
+  if(!prev)return;
+  const pc=parseFloat(prev.meters.oil_cur);
+  const added=v('oil_prev')-pc;
+  if(!(added>0.05))return;
+  const src=_looseSources();
+  if(!src.length)return;
+  // whichever bottle divides the jump most cleanly
+  let best=null;
+  src.forEach(function(x){
+    const n=Math.round(added/x.size);
+    if(n<1)return;
+    const err=Math.abs(added-n*x.size);
+    // A 1.0 L jump fits "2 × 0.5 L" and "1 × 1 L" equally. Neither is knowable,
+    // so prefer the fewest bottles and leave it editable — it is a suggestion.
+    if(!best||err<best.err-0.0001||(Math.abs(err-best.err)<=0.0001&&n<best.qty))
+      best={id:x.id,qty:n,err:err};
+  });
+  if(best&&best.err<=0.06)addLooseOpen(best.id,best.qty);
+}
+
+function saveLooseOilCfg(){ calc(); }
 
 function renderStockSales(){
   const tb=document.getElementById('ss_body');tb.innerHTML='';
@@ -4041,11 +4249,31 @@ function renderMasterStock(){
       <td><input type="number" value="${item.rate}" onchange="updStock(${item.id},'rate',this.value)" style="width:70px"></td>
       <td><input type="text" value="${item.unit}" onchange="updStock(${item.id},'unit',this.value)" style="width:60px"></td>
       <td style="text-align:center"><input type="checkbox" ${_la.indexOf(String(item.id))>=0?'checked':''} onchange="toggleLooseAllowed(${item.id},this.checked)" style="width:16px;height:16px;accent-color:var(--petrol)"></td>
+      <td>${_la.indexOf(String(item.id))>=0
+            ? `<input type="number" step="0.01" min="0" value="${_looseSize(item)||''}" placeholder="0.5"
+                 onchange="setLooseSize(${item.id},this.value)" style="width:62px" title="Litres in one ${_esc(item.unit||'unit')}">`
+            : '<span style="color:var(--dim)">—</span>'}</td>
       <td><span class="spill ${sc}">${st}</span></td>
       <td style="color:var(--petrol)">${fmt(val)}</td>
       <td><button class="rm-btn" onclick="delStock(${item.id})">✕</button></td>`;
     tb.appendChild(tr);
   });
+  // Anything left fractional came from the old proportional deduction. Offer to
+  // put it right rather than leaving a count nobody can check against a shelf.
+  const _frac=stock.filter(x=>Math.abs((x.qty||0)-Math.round(x.qty||0))>0.001);
+  const _fb=document.getElementById('stk_frac_note');
+  if(_fb){
+    if(_frac.length){
+      _fb.style.display='block';
+      _fb.innerHTML='⚠ '+_frac.length+' item'+(_frac.length!==1?'s have':' has')+
+        ' a part-count: '+_frac.slice(0,4).map(x=>_esc(x.name)+' ('+x.qty+')').join(', ')+
+        (_frac.length>4?'…':'')+
+        '. These came from the old loose-oil deduction, which took litres off a bottle count. '+
+        '<button class="btn btn-g" style="padding:3px 10px;font-size:10px;margin-left:6px" '+
+        'onclick="roundStockCounts()">ROUND TO WHOLE</button> '+
+        '— or set each one to what is actually on the shelf.';
+    } else { _fb.style.display='none'; }
+  }
   document.getElementById('stk_val').textContent=fmt(tv);
   document.getElementById('stk_cnt').textContent=stock.length;
   document.getElementById('stk_low').textContent=low;
@@ -4064,7 +4292,11 @@ function _pushStockItem(item){
 }
 function updStock(id,f,val){
   const item=stock.find(x=>x.id===id);if(!item)return;
-  item[f]=(f==='qty'||f==='rate')?parseFloat(val)||0:val;
+  // A shelf count is a count. Fractions only ever got in through the old
+  // loose-oil deduction, and "17.7 bottles" cannot be verified against a shelf.
+  item[f]=(f==='qty') ? Math.max(0,Math.round(parseFloat(val)||0))
+        : (f==='rate') ? (parseFloat(val)||0)
+        : val;
   saveStockLS();_pushStockItem(item);
   renderMasterStock();renderStockSales();
 }
@@ -4087,6 +4319,20 @@ function delStock(id){
   renderMasterStock();renderStockSales();
   if(typeof renderLooseOilCfg==='function')renderLooseOilCfg();
 }
+function roundStockCounts(){
+  const frac=stock.filter(x=>Math.abs((x.qty||0)-Math.round(x.qty||0))>0.001);
+  if(!frac.length){showToast('Every count is already whole');return;}
+  if(!confirm('Round '+frac.length+' part-count(s) to the nearest whole number?\n\n'+
+    frac.map(x=>'• '+x.name+': '+x.qty+' → '+Math.round(x.qty)).join('\n')+
+    '\n\nCount the shelf afterwards and correct anything this gets wrong.'))return;
+  frac.forEach(function(x){ x.qty=Math.max(0,Math.round(x.qty)); _pushStockItem(x); });
+  saveStockLS();
+  if(typeof logActivity==='function')
+    logActivity('stock_round','stock',null,frac.length+' part-count(s) rounded to whole');
+  renderMasterStock();renderStockSales();
+  showToast('Rounded '+frac.length+' count(s) — verify against the shelf');
+}
+
 function saveStockLS(){localStorage.setItem('fuelStock',JSON.stringify(stock));if(_currentUser)sbSaveAllStock().catch(console.error);}
 
 function addCredBack(){
@@ -4267,7 +4513,11 @@ function getCalcVals(){
   document.querySelectorAll('.credback-amt').forEach(el=>credBack+=parseFloat(el.value)||0);
   const leftTotal=gpay+paytm+cash+credit+exp;
   const rightTotal=msdV+hsdV+pv+ov+stRev+credBack;
+  const _lastClose=_lastLooseClose();
+  const looseAdded=_looseAdded();
+  const bottlesOpened=looseAdded.bottles;
   return {msdT,hsdT,msdV,hsdV,ps,os,pv,ov,stRev,gpay,paytm,cash,exp,credit,credBack,leftTotal,rightTotal,extraPackSold,
+    bottlesOpened, looseOpened:looseAdded.items, looseCost:looseAdded.cost,
     testMSDL:_tf.msdL,testHSDL:_tf.hsdL,
     bal:leftTotal-rightTotal,
     etmsd:v('e_tmsd'),ethsd:v('e_thsd'),etoil:v('e_toil'),eitems:v('e_items'),etea:v('e_tea'),echit:v('e_chit'),eother:v('e_other')};
@@ -4364,23 +4614,15 @@ function _doSaveShift(){
   // If you want 20ml separate - enter via stock table. Otherwise skip.
   // (kept as comment - enable if 20ml is tracked separately in pack_prev/cur)
 
-  // ── Deduct loose oil from its source stock item ──
-  // Litres sold ÷ litres per unit = units to take off the shelf. Falls back to
-  // the old 2T Oil (1L) guess only while no source has been configured.
-  if(c.os > 0){
-    const _cfg=_looseOilCfg();
-    let _src = _cfg.stockId ? stock.find(x=>String(x.id)===_cfg.stockId) : null;
-    if(!_src && !_cfg.stockId){
-      _src = stock.find(x =>
-        x.name.toLowerCase().includes('2t oil') ||
-        (x.name.toLowerCase().includes('2t') && x.name.toLowerCase().includes('1l'))
-      );
-    }
-    if(_src){
-      const _units=_looseOilUnits(c.os);
-      _src.qty = Math.round(Math.max(0, _src.qty - _units) * 1000) / 1000;
-    }
-  }
+  // ── Deduct loose oil from its source stock item, in WHOLE BOTTLES ──
+  // A bottle leaves the shelf when it is opened, not gradually as the oil is
+  // sold. Opening level minus the last closing level is what was poured in.
+  // Each bottle listed comes off its OWN item. A 1 L taken from the 1 L shelf
+  // must not be charged to the 0.5 L shelf just because that one was configured.
+  (c.looseOpened||[]).forEach(function(o){
+    const _src=stock.find(x=>String(x.id)===String(o.id));
+    if(_src)_src.qty=Math.max(0,Math.round(_src.qty)-Math.round(o.qty||0));
+  });
 
   saveStockLS();
   // Auto-add credit customers from shift entry into the credit ledger
@@ -4461,11 +4703,15 @@ function _doSaveShift(){
     extraPackSold:c.extraPackSold||{},
     stockSold:_stockSold,
     testMSDL:c.testMSDL||0,testHSDL:c.testHSDL||0,
-    meters:{msd1_prev:v('msd1_prev'),msd1_cur:v('msd1_cur'),
+    // oil_prev / oil_cur ride in `meters` so the next shift can work out how
+    // much was added without a schema change — the column is already jsonb.
+    meters:{oil_prev:v('oil_prev'),oil_cur:v('oil_cur'),
+            msd1_prev:v('msd1_prev'),msd1_cur:v('msd1_cur'),
             msd2_prev:v('msd2_prev'),msd2_cur:v('msd2_cur'),
             hsd1_prev:v('hsd1_prev'),hsd1_cur:v('hsd1_cur'),
             hsd2_prev:v('hsd2_prev'),hsd2_cur:v('hsd2_cur')},
-    looseOilUnits:_r2(_looseOilUnits(c.os)),
+    looseOilUnits:c.bottlesOpened||0,   // whole bottles, so the reversal on delete is whole too
+    looseOpened:c.looseOpened||[],      // which item, how many — needed to reverse and to cost it
     notes:_clean(document.getElementById('notes').value),
     tag:_clean((document.getElementById('shiftTag')?.value||'').trim()),
     savedAt:new Date().toISOString()
@@ -4493,6 +4739,7 @@ function _doSaveShift(){
       if(b)b.value='';
     });
   }
+  const _lol=document.getElementById('loose_open_list'); if(_lol)_lol.innerHTML='';
   document.getElementById('cred_list').innerHTML='';
   document.getElementById('credback_list').innerHTML='';
   creditCount=0;credbackCount=0;
@@ -4557,7 +4804,9 @@ function delRec(id){
   const lines=[];
   if(rec.stockSold&&rec.stockSold.length)lines.push(rec.stockSold.length+' stock line(s) returned to inventory');
   if(rec.ps)lines.push(rec.ps+' pack(s) returned');
-  if(rec.os)lines.push(rec.os+' L loose oil returned');
+  if(Array.isArray(rec.looseOpened)&&rec.looseOpened.length)
+    lines.push(rec.looseOpened.map(o=>o.qty+' × '+o.name).join(', ')+' returned to stock');
+  else if(rec.looseOilUnits)lines.push(rec.looseOilUnits+' loose-oil bottle(s) returned to stock');
   if(ledgerRows.length)lines.push(ledgerRows.length+' credit entry(ies) removed');
   if(settled.length)lines.push('⚠ '+settled.length+' of those already has a payment against it and will NOT be removed');
   if(lines.length&&!confirm('Deleting '+id+' will also:\n\n• '+lines.join('\n• ')+'\n\nContinue?'))return;
@@ -4573,16 +4822,18 @@ function delRec(id){
       (x.name.toLowerCase().includes('pouch')||x.name.toLowerCase().includes('pack')));
     if(pouch40)pouch40.qty=Math.round((pouch40.qty+rec.ps)*1000)/1000;
   }
-  // 3. put loose oil back, in stock units
-  if(rec.os>0){
+  // 3. put loose oil back — each bottle onto the shelf it came off
+  if(Array.isArray(rec.looseOpened)&&rec.looseOpened.length){
+    rec.looseOpened.forEach(function(o){
+      const src=stock.find(x=>String(x.id)===String(o.id));
+      if(src)src.qty=Math.max(0,Math.round(src.qty)+Math.round(o.qty||0));
+    });
+  } else if(rec.os>0&&rec.looseOilUnits>0){
+    // Saved before the per-item detail existed: the configured source is the
+    // best that record can tell us.
     const cfg=_looseOilCfg();
-    let src=cfg.stockId?stock.find(x=>String(x.id)===cfg.stockId):null;
-    if(!src&&!cfg.stockId)src=stock.find(x=>x.name.toLowerCase().includes('2t oil')||
-      (x.name.toLowerCase().includes('2t')&&x.name.toLowerCase().includes('1l')));
-    if(src){
-      const units=(rec.looseOilUnits!=null)?rec.looseOilUnits:_looseOilUnits(rec.os);
-      src.qty=Math.round((src.qty+units)*1000)/1000;
-    }
+    const src=cfg.stockId?stock.find(x=>String(x.id)===cfg.stockId):null;
+    if(src)src.qty=Math.max(0,Math.round(src.qty)+Math.round(rec.looseOilUnits));
   }
   if(rec.stockSold||rec.ps||rec.os)saveStockLS();
 
@@ -4655,6 +4906,12 @@ function setCompareToLastYear(){
   document.getElementById('cmp_from').value=_isoLocal(fromD);
   document.getElementById('cmp_to').value=_isoLocal(toD);
   if(document.getElementById('cmpEnable').checked)genReport();
+}
+
+function toggleWagesInPL(){
+  const on=document.getElementById('plWages').checked;
+  localStorage.setItem('plIncludeWages',on?'1':'0');
+  genReport();
 }
 
 function toggleTagFilter(){
@@ -5022,9 +5279,22 @@ function renderPL(from, to, shiftRecs){
   const totalStaffCost=(wagesAccrued?wages.earned:totalSalaries)+totalBonuses;
   // Owner drawings are an appropriation of profit, not an expense. They are
   // reported below the profit line as cash taken out.
-  const netAfterAll=netProfitAfterDisc-totalStaffCost;
-  const cashAfterDrawings=netAfterAll-totalDrawings;
+  // Wages are deliberately OUT of the profit sum unless asked for. Here the
+  // settlement is irregular and partly in kind — food given on a bad day is
+  // already in the shift expenses, staff draw money mid-month, and the balance
+  // is squared up later. Accruing a salary on top of that double-counts the
+  // food and reports a wage cost in months nothing was settled. The cash
+  // actually handed over is shown below the profit line instead, where it is a
+  // fact rather than an estimate.
+  const includeWages = localStorage.getItem('plIncludeWages')==='1';
+  const wageDeduction = includeWages ? totalStaffCost : 0;
+  // Declared before it is used — `const` is not hoisted, and referencing it a
+  // line early threw, which took the whole P&L render down with it.
   const staffCashOut=totalSalaries-totalAdvRecovered+totalAdvances+totalBonuses;
+  const netAfterAll=netProfitAfterDisc-wageDeduction;
+  // When wages are not a profit deduction, the money handed over is still gone
+  // out of the drawer, so it comes off the cash figure instead.
+  const cashAfterDrawings=netAfterAll-totalDrawings-(includeWages?0:staffCashOut);
 
   // ── IS THE COST OF THE FUEL EVEN KNOWN? ───────────────────────────────
   // With no load recorded on or before the period end, the weighted-average
@@ -5065,7 +5335,7 @@ function renderPL(from, to, shiftRecs){
      sub: fuelUncosted?'needs a costed fuel load':`Revenue less COGS • margin ${_pc(grossProfit,revenue)}`},
     {cls:'opex',    lbl:'Running Expenses', val:'−'+fmt(opex),
      sub:`From ${shiftRecs.length} shift${shiftRecs.length!==1?'s':''}, testing fuel excluded`},
-    ...(totalStaffCost>0?[
+    ...((includeWages&&totalStaffCost>0)?[
       {cls:'opex', lbl:'Staff Wages', val:'−'+fmt(totalStaffCost),
        sub:(wagesAccrued
              ? (wages.onContract>0
@@ -5082,7 +5352,9 @@ function renderPL(from, to, shiftRecs){
     {cls: fuelUncosted?'cogs':(netFinal>=0?'net-pos':'net-neg'), lbl:'NET PROFIT',
      val: fuelUncosted?_NA:fmt(netFinal),
      sub: fuelUncosted?'needs a costed fuel load'
-                      :`After COGS, expenses, wages and discounts • margin ${_pc(netFinal,revenue)}`},
+                      :`After COGS, expenses${includeWages?', wages':''}${totalCreditDiscounts>0?' and discounts':''}`+
+                       ` • margin ${_pc(netFinal,revenue)}`+
+                       (includeWages?'':' • wages not deducted')},
     {cls:'margin',  lbl:'Realized Fuel Margin', val:fuelUncosted?_NA:fmt(realizedFuelProfit),
      sub: fuelUncosted ? `${_uncostedNote} — no landed cost on record`
        : `${soldMSDL.toFixed(0)}L MSD @ ${fmt(wacMSD)}/L + ${soldHSDL.toFixed(0)}L HSD @ ${fmt(wacHSD)}/L landed cost`},
@@ -5106,7 +5378,8 @@ function renderPL(from, to, shiftRecs){
     ]:[]),
     ...((totalDrawings>0&&!fuelUncosted)?[
       {cls: cashAfterDrawings>=0?'net-pos':'net-neg', lbl:'Left After Drawings', val:fmt(cashAfterDrawings),
-       sub:`Net profit less the ${fmt(totalDrawings)} taken by the owners`},
+       sub:`Net profit less ${fmt(totalDrawings)} taken by the owners`+
+           (includeWages?'':` and ${fmt(staffCashOut)} paid to staff`)},
     ]:[]),
   ];
 
@@ -5129,7 +5402,7 @@ function renderPL(from, to, shiftRecs){
       _line('Revenue — goods sold, excluding testing fuel and credit repaid',fmt(revenue))+
       _line('Cost of those goods',fuelUncosted?'not known':fmt(totalCOGS),true)+
       _line('Running expenses',fmt(opex),true)+
-      (totalStaffCost>0?_line(
+      ((includeWages&&totalStaffCost>0)?_line(
         wagesAccrued?(wages.onContract>0?'Wages — contract salary, register largely blank':'Wages earned from attendance')
                     :'Wages paid this period',
         fmt(totalStaffCost),true):'')+
@@ -5138,11 +5411,14 @@ function renderPL(from, to, shiftRecs){
         '<span>NET PROFIT</span><span style="color:'+
         (fuelUncosted?'var(--diesel)':(netFinal>=0?'var(--green)':'var(--red)'))+'">'+
         (fuelUncosted?'—':fmt(netFinal))+'</span></div>'+
+      ((!includeWages&&staffCashOut>0)?'<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--muted);margin-top:6px">'+
+        'Wages are not deducted above. '+fmt(staffCashOut)+' was handed to staff in this period — see CASH MOVEMENT. '+
+        'Food and tea given to them is already inside running expenses. Tick “deduct staff wages” to include a wage cost here.</div>':'')+
       (totalDrawings>0?'<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--muted);margin-top:6px">'+
         'Owner drawings of '+fmt(totalDrawings)+' come out of that profit — they are not deducted before it.</div>':'')+
     '</div>';
 
-  const wageWarn = (wages && wages.onContract>0)
+  const wageWarn = (includeWages && wages && wages.onContract>0)
     ? '<div class="pl-warn" style="border-color:var(--blue);background:rgba(77,166,255,.08)">ℹ '+
       '<b>Wages are on contract salary for '+wages.onContract+' of '+wages.staff+' staff.</b> '+
       'Their attendance is '+Math.round(100-100*wages.marked/Math.max(1,wages.eligible))+'% unmarked, so the '+
