@@ -10730,14 +10730,8 @@ async function loadAllFromSupabase(silent) {
     try { await sbLoadDrawings(); } catch(e){ console.warn('Drawings not loaded:',e); }
     try { await sbLoadNotes(); } catch(e){ console.warn('Notes not loaded:',e); }
 
-    // Re-render everything after sync
-    renderMasterStock();
-    renderStockSales();
-    renderHistory();
-    renderLedger();
-    renderOilReg();
-    renderFuelLoads();
-    if(typeof renderPackReg==='function')renderPackReg();
+    // Re-render everything after sync — unless somebody is mid-entry.
+    if(typeof _rerenderAfterSync==='function')_rerenderAfterSync();
     if(!silent) showToast('✓ Data synced!');
     _lastSyncTime = Date.now();
     updateSyncLabel();
@@ -11072,6 +11066,53 @@ function stopRealtimeSync(){
   }
 }
 
+// ══════════════════════════════════════════════════════════════════
+// NEVER REDRAW UNDER SOMEBODY'S HANDS
+// renderMasterStock() and renderStockSales() rebuild their tables with
+// innerHTML, which destroys and recreates every <input> inside them. A sync
+// runs every five minutes and on every realtime push from the other phones, so
+// typing a stock quantity meant the box could be replaced mid-number: focus
+// gone, the field back to its stored "0", and the rest of the keystrokes
+// landing after it — type 420, end up with 0420.
+// ══════════════════════════════════════════════════════════════════
+var _pendingRerender=false;
+
+function _uiEditing(){
+  const a=document.activeElement;
+  if(!a)return false;
+  const t=a.tagName;
+  return t==='INPUT'||t==='SELECT'||t==='TEXTAREA'||a.isContentEditable===true;
+}
+
+function _rerenderAll(){
+  if(typeof renderMasterStock==='function')renderMasterStock();
+  if(typeof renderStockSales==='function') renderStockSales();
+  if(typeof renderHistory==='function')    renderHistory();
+  if(typeof renderLedger==='function')     renderLedger();
+  if(typeof renderOilReg==='function')     renderOilReg();
+  if(typeof renderFuelLoads==='function')  renderFuelLoads();
+  if(typeof renderPackReg==='function')    renderPackReg();
+}
+
+// Hold the redraw until the field is left. The data is already merged into
+// localStorage by this point — only the drawing waits.
+function _rerenderAfterSync(){
+  if(_uiEditing()){ _pendingRerender=true; return; }
+  _pendingRerender=false;
+  _rerenderAll();
+}
+
+document.addEventListener('focusout',function(){
+  if(!_pendingRerender)return;
+  // A short wait, because tabbing between two boxes fires focusout before the
+  // next focusin and would otherwise redraw between them.
+  setTimeout(function(){
+    if(!_pendingRerender||_uiEditing())return;
+    _pendingRerender=false;
+    _rerenderAll();
+  },300);
+},true);
+
 // ── Silent sync — no toast, just pulls and updates ──
 async function silentSync(){
   if(_syncInProgress || !_currentUser || !_supa) return;
@@ -11086,7 +11127,10 @@ async function silentSync(){
     updateSyncLabel();
 
     // Re-render the currently active page after sync
-    var activePage = document.querySelector('.page.active');
+    var activePage = (typeof _uiEditing==='function' && _uiEditing())
+      ? null                                  // they are typing — leave the page alone
+      : document.querySelector('.page.active');
+    if(typeof _uiEditing==='function' && _uiEditing())_pendingRerender=true;
     if(activePage){
       var pid = activePage.id ? activePage.id.replace('page-','') : '';
       if(pid==='entry'   && typeof renderDashboard==='function')  renderDashboard();
