@@ -903,6 +903,14 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <div class="frow"><span class="flabel">Tea / Food (₹)</span><input type="number" id="e_tea" placeholder="0" oninput="calc()"></div>
         <div class="frow"><span class="flabel">Chit Fund (₹)</span><input type="number" id="e_chit" placeholder="0" oninput="calc()"></div>
         <div class="frow"><span class="flabel">Other (₹)</span><input type="number" id="e_other" placeholder="0" oninput="calc()"></div>
+        <div class="frow" style="border-top:1px solid var(--border);margin-top:6px;padding-top:8px">
+          <span class="flabel" style="color:var(--purple)">Cash handed over (₹)</span>
+          <input type="number" id="e_handover" placeholder="0" oninput="calc()"></div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin:-2px 0 4px;line-height:1.6">
+          Money taken out of the drawer before the count &mdash; collected in hand for the
+          night, or moved to the safe. It balances the shift like an expense but is
+          <b>not</b> one: nothing was bought, so it never touches profit.
+        </div>
         <div class="total-row"><span class="total-lbl">TOTAL EXPENSES</span><span class="total-val" style="color:var(--red)" id="total_exp">₹0</span></div>
       </div>
     </div>
@@ -3099,7 +3107,8 @@ function renderWeeklyPL(){
     // was invisible to it.
     const tv=recs.reduce((s,r)=>s+
       ((r.msdT?(r.msdV/r.msdT)*(r.testMSDL||0):0)+
-       (r.hsdT?(r.hsdV/r.hsdT)*(r.testHSDL||0):0)),0);   // testing, both sides
+       (r.hsdT?(r.hsdV/r.hsdT)*(r.testHSDL||0):0)+
+       (r.etoil||0)),0);   // testing fuel and the hydrometer draw, both sides
     const revenue=Math.max(0,recs.reduce((s,r)=>s+_recRevenue(r),0)-tv);
     const exp=Math.max(0,recs.reduce((s,r)=>s+(r.exp||0),0)-tv);
     const msdAvg=_fuelWAC('MSD'), hsdAvg=_fuelWAC('HSD');
@@ -4183,7 +4192,9 @@ function calc(){
   _syncTestingFuel();
   const gpay=v('p_gpay'),paytm=v('p_paytm'),cash=v('p_cash');
   const exp=v('e_tmsd')+v('e_thsd')+v('e_toil')+v('e_items')+v('e_tea')+v('e_chit')+v('e_other');
-  document.getElementById('total_exp').textContent=fmt(exp);
+  // Shown with the expenses so the left column of the tally reads correctly,
+  // while staying out of `exp` everywhere it matters.
+  document.getElementById('total_exp').textContent=fmt(exp+v('e_handover'));
   let credit=0;
   document.querySelectorAll('.cred-amt').forEach(el=>credit+=parseFloat(el.value)||0);
   document.getElementById('total_credit').textContent=fmt(credit);
@@ -4638,11 +4649,16 @@ function getCalcVals(){
   document.querySelectorAll('.ss-qty').forEach(el=>stRev+=(parseFloat(el.value)||0)*parseFloat(el.dataset.rate||0));
   let credBack=0;
   document.querySelectorAll('.credback-amt').forEach(el=>credBack+=parseFloat(el.value)||0);
-  const leftTotal=gpay+paytm+cash+credit+exp;
+  // Cash taken out of the drawer belongs on the left, because the drawer is
+  // short by exactly that much. It is deliberately NOT part of `exp`, so the
+  // P&L can never mistake it for an operating cost — which is what happened
+  // when it was entered under "Other": ₹5–10k of profit disappeared per shift.
+  const handover=v('e_handover');
+  const leftTotal=gpay+paytm+cash+credit+exp+handover;
   const rightTotal=msdV+hsdV+pv+ov+stRev+credBack;
   const _lastClose=_lastLooseClose();
   const bottlesOpened=looseAdded.bottles;
-  return {msdT,hsdT,msdV,hsdV,ps,os,pv,ov,stRev,gpay,paytm,cash,exp,credit,credBack,leftTotal,rightTotal,extraPackSold,
+  return {msdT,hsdT,msdV,hsdV,ps,os,pv,ov,stRev,gpay,paytm,cash,exp,handover,credit,credBack,leftTotal,rightTotal,extraPackSold,
     bottlesOpened, looseOpened:looseAdded.items, looseCost:looseAdded.cost,
     testMSDL:_tf.msdL,testHSDL:_tf.hsdL,
     bal:leftTotal-rightTotal,
@@ -4825,7 +4841,8 @@ function _doSaveShift(){
     pv:_r2(c.pv),ov:_r2(c.ov),stRev:_r2(c.stRev),
     rightTotal:_r2(c.rightTotal),leftTotal:_r2(c.leftTotal),
     gpay:_r2(c.gpay),paytm:_r2(c.paytm),cash:_r2(c.cash),
-    exp:_r2(c.exp),credit:_r2(c.credit),credBack:_r2(c.credBack),bal:_r2(c.bal),
+    exp:_r2(c.exp),handover:_r2(c.handover||0),
+    credit:_r2(c.credit),credBack:_r2(c.credBack),bal:_r2(c.bal),
     extraPackSold:c.extraPackSold||{},
     stockSold:_stockSold,
     testMSDL:c.testMSDL||0,testHSDL:c.testHSDL||0,
@@ -4854,7 +4871,7 @@ function _doSaveShift(){
   'msd_before_l','msd_rate1','msd_after_l','msd_rate2',
   'hsd_before_l','hsd_rate1','hsd_after_l','hsd_rate2',
    'p_gpay','p_paytm','p_cash',
-   'e_tmsd','e_thsd','t_msd_l','t_hsd_l','e_toil','e_items','e_tea','e_chit','e_other','notes','shiftTag'
+   'e_tmsd','e_thsd','t_msd_l','t_hsd_l','e_toil','e_items','e_tea','e_chit','e_other','e_handover','notes','shiftTag'
   ].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   // Reset extra pack-size inputs (20ml/30ml etc)
   if(typeof packSizesConfig!=='undefined'){
@@ -5062,7 +5079,8 @@ function _summarizeRecs(recs){
   // to both made a price rise look like flat trade.
   const tv=recs.reduce((s,r)=>s+
     ((r.msdT?(r.msdV/r.msdT)*(r.testMSDL||0):0)+
-     (r.hsdT?(r.hsdV/r.hsdT)*(r.testHSDL||0):0)),0);
+     (r.hsdT?(r.hsdV/r.hsdT)*(r.testHSDL||0):0)+
+     (r.etoil||0)),0);   // testing fuel and the hydrometer draw
   const msdAvg=_fuelWAC('MSD'), hsdAvg=_fuelWAC('HSD');
   const totalMSDL=Math.max(0,recs.reduce((s,r)=>s+(r.msdT||0)-(r.testMSDL||0),0));
   const totalHSDL=Math.max(0,recs.reduce((s,r)=>s+(r.hsdT||0)-(r.testHSDL||0),0));
@@ -5278,7 +5296,12 @@ function renderPL(from, to, shiftRecs){
   const testHSDL   = shiftRecs.reduce((s,r)=>s+(r.testHSDL||0),0);
   const testValMSD = shiftRecs.reduce((s,r)=>s+_testVal(r,'MSD'),0);
   const testValHSD = shiftRecs.reduce((s,r)=>s+_testVal(r,'HSD'),0);
-  const testValue  = testValMSD + testValHSD;
+  // The hydrometer draw is fuel too, and it also goes back in the tank. It is
+  // entered in rupees rather than litres, so it comes out of both sides — but
+  // its litres cannot be identified, so COGS still carries them. Capturing it
+  // in litres like the other two would remove that last overstatement.
+  const testHydro  = shiftRecs.reduce((s,r)=>s+(r.etoil||0),0);
+  const testValue  = testValMSD + testValHSD + testHydro;
 
   // ── REVENUE: value of goods sold. Credit repayments and testing excluded. ──
   const revenueGross = shiftRecs.reduce((s,r)=>s+_recRevenue(r),0);
@@ -5306,6 +5329,9 @@ function renderPL(from, to, shiftRecs){
   // bought on the 30th is sold over the following week — so it no longer drives
   // the profit line, it is reported on its own.
   const purchases = fuelCOGS + oilCOGS;
+
+  // Cash taken out of the drawer. Balances a shift, buys nothing.
+  const handoverTotal = shiftRecs.reduce((s,r)=>s+(r.handover||0),0);
 
   // ── OPERATING EXPENSES: shift expenses in period ──
   // The testing lines inside r.exp mirror the revenue removed above. Taking
@@ -5460,7 +5486,9 @@ function renderPL(from, to, shiftRecs){
     {cls: fuelUncosted?'cogs':'gross', lbl:'Gross Profit', val:fuelUncosted?_NA:fmt(grossProfit),
      sub: fuelUncosted?'needs a costed fuel load':`Revenue less COGS • margin ${_pc(grossProfit,revenue)}`},
     {cls:'opex',    lbl:'Running Expenses', val:'−'+fmt(opex),
-     sub:`From ${shiftRecs.length} shift${shiftRecs.length!==1?'s':''}, testing fuel excluded`},
+     sub:`From ${shiftRecs.length} shift${shiftRecs.length!==1?'s':''}`+
+         (testValue>0?` • ${fmt(testValue)} of testing fuel removed — it went back in the tank`:'')+
+         (handoverTotal>0?` • ${fmt(handoverTotal)} handed over is below the line`:'')},
     ...((includeWages&&totalStaffCost>0)?[
       {cls:'opex', lbl:'Staff Wages', val:'−'+fmt(totalStaffCost),
        sub:(wagesAccrued
@@ -5493,6 +5521,10 @@ function renderPL(from, to, shiftRecs){
     ...(purchases>0?[
     {cls:'cogs', lbl:'Stock Bought (cash out)', val:fmt(purchases),
      sub:`${loadsInRange.length} fuel load${loadsInRange.length!==1?'s':''} • ${oilInRange.length} oil invoice${oilInRange.length!==1?'s':''} — paid for, sold later`},
+    ]:[]),
+    ...(handoverTotal>0?[
+      {cls:'opex', lbl:'Cash Handed Over', val:fmt(handoverTotal),
+       sub:'Taken from the drawer during the shift — moved, not spent'},
     ]:[]),
     ...(staffCashOut>0?[
       {cls:'cogs', lbl:'Paid to Staff (cash out)', val:fmt(staffCashOut),
