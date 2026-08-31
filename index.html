@@ -2810,7 +2810,20 @@ function saveRates(){
 // write per keystroke — the same failure mode that produced the rate-history
 // row explosion.
 var _settingsSaveTimer=null;
+// Everything on this card writes to app_settings, which the server then echoes
+// back through realtime. If our own write has not landed yet — debounced,
+// queued, or rejected because a column is missing — the pull returns the OLD
+// values and puts them straight back into the boxes. That is the field going
+// blank while it is being typed into.
+var _settingsDirty=false;
+function _outboxHas(table){
+  try{ return _outboxRead().some(function(j){return j.table===table;}); }catch(e){ return false; }
+}
+// Are there settings on this device the server has not confirmed?
+function _settingsUnsent(){ return _settingsDirty || _outboxHas('app_settings'); }
+
 function queueSettingsSave(){
+  _settingsDirty=true;
   clearTimeout(_settingsSaveTimer);
   _settingsSaveTimer=setTimeout(function(){
     if(_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(console.error);
@@ -2833,11 +2846,47 @@ function _deviceConfig(){
     // it is locked. Both belong to the station, not to one phone.
     openingCost: {msd:parseFloat(localStorage.getItem('fuelOpeningCostMSD'))||0,
                   hsd:parseFloat(localStorage.getItem('fuelOpeningCostHSD'))||0},
-    openingLocked: localStorage.getItem('fuelOpeningLocked')==='1'
+    openingLocked: localStorage.getItem('fuelOpeningLocked')==='1',
+    // Stamped so a device that has been offline cannot push a month-old
+    // config over a fresh one just by syncing later.
+    savedAt: new Date().toISOString()
   };
 }
+// Never overwrite a box somebody is typing in.
+//
+// The loop that caused it: type a digit → calcOpeningStock() → queueSettingsSave()
+// → the row is written → Supabase realtime reports app_settings changed → this
+// device syncs → _applyDeviceConfig writes the value it saved 1.2 s ago back
+// into the field, discarding everything typed since. From the shop floor it
+// looks like the box empties itself while you type.
+//
+// Applies to any field fed from synced settings: opening volumes, landed costs
+// and the four rate boxes.
+var _lastTypedAt={};
+document.addEventListener('input',function(e){
+  if(e.target&&e.target.id)_lastTypedAt[e.target.id]=Date.now();
+},true);
+
+function _setInputIfIdle(id,val){
+  const e=document.getElementById(id);
+  if(!e)return;
+  if(document.activeElement===e)return;              // they are in it right now
+  // On a phone the field can lose focus to the keyboard closing or a scroll
+  // while the number is still half-entered, so recent typing counts as busy.
+  if(Date.now()-(_lastTypedAt[id]||0)<4000)return;
+  const next=(val==null||val==='')?'':String(val);
+  if(e.value===next)return;                          // nothing to change
+  e.value=next;
+}
+
 function _applyDeviceConfig(cfg){
   if(!cfg) return;
+  const mine=localStorage.getItem('mf_cfg_savedAt')||'';
+  if(cfg.savedAt && mine && String(cfg.savedAt) < mine){
+    console.warn('Ignoring an older settings config ('+cfg.savedAt+' < '+mine+')');
+    return;
+  }
+  if(cfg.savedAt)localStorage.setItem('mf_cfg_savedAt',cfg.savedAt);
   if(cfg.packSizes && Array.isArray(cfg.packSizes)){
     // Key is 'packSizes' — the one savePackSizesConfig() writes and the one
     // read at boot. Writing 'packSizesConfig' here meant pack sizes pulled
@@ -2858,8 +2907,8 @@ function _applyDeviceConfig(cfg){
   if(cfg.openingCost){
     if(cfg.openingCost.msd!=null)localStorage.setItem('fuelOpeningCostMSD',cfg.openingCost.msd);
     if(cfg.openingCost.hsd!=null)localStorage.setItem('fuelOpeningCostHSD',cfg.openingCost.hsd);
-    const _mc=document.getElementById('msd_opening_cost');if(_mc)_mc.value=cfg.openingCost.msd||'';
-    const _hc=document.getElementById('hsd_opening_cost');if(_hc)_hc.value=cfg.openingCost.hsd||'';
+    _setInputIfIdle('msd_opening_cost',cfg.openingCost.msd||'');
+    _setInputIfIdle('hsd_opening_cost',cfg.openingCost.hsd||'');
   }
   if(cfg.openingLocked!=null){
     localStorage.setItem('fuelOpeningLocked',cfg.openingLocked?'1':'0');
@@ -2874,18 +2923,15 @@ function _applyDeviceConfig(cfg){
 }
 
 function loadRates(){
-  const saved=JSON.parse(localStorage.getItem('fuelRates')||'null');
-  if(saved){
-    document.getElementById('msd_rate').value=saved.msd||'101.76';
-    document.getElementById('hsd_rate').value=saved.hsd||'93.11';
-    document.getElementById('pack_rate').value=saved.pack||'40';
-    document.getElementById('oil_rate').value=saved.oil||'250';
-  } else {
-    document.getElementById('msd_rate').value='101.76';
-    document.getElementById('hsd_rate').value='93.11';
-    document.getElementById('pack_rate').value='40';
-    document.getElementById('oil_rate').value='250';
-  }
+  // Called after every settings pull, so it has the same problem: a rate typed
+  // here while a sync lands would be reset mid-keystroke.
+  const saved=JSON.parse(localStorage.getItem('fuelRates')||'null')||{};
+  const set=(typeof _setInputIfIdle==='function')?_setInputIfIdle
+           :function(id,v){const e=document.getElementById(id);if(e)e.value=v;};
+  set('msd_rate', saved.msd||'101.76');
+  set('hsd_rate', saved.hsd||'93.11');
+  set('pack_rate',saved.pack||'40');
+  set('oil_rate', saved.oil||'250');
 }
 loadRates();
 // Render extra pack sizes (20ml/30ml etc) if any are enabled
@@ -7284,8 +7330,18 @@ function calcOpeningStock(){
   if(openingLocked())return;                 // belt and braces: the inputs are disabled too
   const msd=parseFloat(document.getElementById('msd_opening')?.value)||0;
   const hsd=parseFloat(document.getElementById('hsd_opening')?.value)||0;
-  const cm =parseFloat(document.getElementById('msd_opening_cost')?.value)||0;
-  const ch =parseFloat(document.getElementById('hsd_opening_cost')?.value)||0;
+  // "9." and "." parse to 9 and NaN mid-keystroke. Writing those to storage
+  // and syncing them is how a cost briefly became 0 and then came back wrong.
+  const _num=function(id){
+    const raw=(document.getElementById(id)?.value||'').trim();
+    if(raw===''||raw==='.'||raw==='-'||/[.]$/.test(raw))return null;   // still typing
+    const n=parseFloat(raw);
+    return isFinite(n)?n:null;
+  };
+  const _cmRaw=_num('msd_opening_cost'), _chRaw=_num('hsd_opening_cost');
+  const cm = _cmRaw!=null?_cmRaw:(parseFloat(localStorage.getItem('fuelOpeningCostMSD'))||0);
+  const ch = _chRaw!=null?_chRaw:(parseFloat(localStorage.getItem('fuelOpeningCostHSD'))||0);
+  localStorage.setItem('mf_cfg_savedAt',new Date().toISOString());
   fuelOpeningMSD=msd;fuelOpeningHSD=hsd;
   localStorage.setItem('fuelOpeningMSD',msd);
   localStorage.setItem('fuelOpeningHSD',hsd);
@@ -7298,6 +7354,8 @@ function calcOpeningStock(){
   queueSettingsSave();   // oninput fires per keystroke — debounced like rates
 }
 function saveOpeningNow(){
+  _settingsDirty=true;
+  localStorage.setItem('mf_cfg_savedAt',new Date().toISOString());
   clearTimeout(_settingsSaveTimer);
   if(_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(console.error);
 }
@@ -10371,6 +10429,9 @@ async function sbSaveSettings() {
     opening_hsd: fuelOpeningHSD || 0,
     config: _deviceConfig()
   });
+  // _sbUpsert parks a rejected row in the outbox rather than throwing, so
+  // "clean" means clean only if nothing is waiting there.
+  if(!_outboxHas('app_settings'))_settingsDirty=false;
   } catch(e){ console.error('Save settings failed:',e.message); }
 }
 
@@ -10645,12 +10706,16 @@ async function loadAllFromSupabase(silent) {
       if(typeof renderDip==='function')renderDip();
     }
 
-    if (setRes.data) {
+    if (setRes.data && _settingsUnsent()) {
+      // Ours are newer and not yet acknowledged. Applying the server copy here
+      // is what wipes a half-typed rate or landed cost.
+      console.warn('Settings pull skipped — this device has unsent changes');
+    } else if (setRes.data) {
       const s = setRes.data;
       if (s.rates) { localStorage.setItem('fuelRates', JSON.stringify(s.rates)); loadRates(); }
-      if (s.opening_msd != null) { fuelOpeningMSD = s.opening_msd; localStorage.setItem('fuelOpeningMSD', s.opening_msd); const el=document.getElementById('msd_opening');if(el)el.value=s.opening_msd; }
+      if (s.opening_msd != null) { fuelOpeningMSD = s.opening_msd; localStorage.setItem('fuelOpeningMSD', s.opening_msd); _setInputIfIdle('msd_opening', s.opening_msd); }
       if (s.config) _applyDeviceConfig(s.config);
-      if (s.opening_hsd != null) { fuelOpeningHSD = s.opening_hsd; localStorage.setItem('fuelOpeningHSD', s.opening_hsd); const el=document.getElementById('hsd_opening');if(el)el.value=s.opening_hsd; }
+      if (s.opening_hsd != null) { fuelOpeningHSD = s.opening_hsd; localStorage.setItem('fuelOpeningHSD', s.opening_hsd); _setInputIfIdle('hsd_opening', s.opening_hsd); }
     } else if (!setRes.error) {
       // No settings row on the server yet. Seed it from this device rather
       // than waiting for someone to touch a rate, or opening volumes and tank
