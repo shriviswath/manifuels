@@ -2864,7 +2864,11 @@ function _deviceConfig(){
 // and the four rate boxes.
 var _lastTypedAt={};
 document.addEventListener('input',function(e){
-  if(e.target&&e.target.id)_lastTypedAt[e.target.id]=Date.now();
+  if(!e.target)return;
+  if(e.target.id)_lastTypedAt[e.target.id]=Date.now();
+  // Table cells are generated without ids, so keying only on id meant typing
+  // in a stock quantity was invisible to every "are they busy?" check.
+  _lastTypedAt.__any=Date.now();
 },true);
 
 function _setInputIfIdle(id,val){
@@ -6045,7 +6049,7 @@ function openLedgerDetail(name){
     const tr=document.createElement('tr');
     tr.id='ledger_tr_'+e.id;
     tr.innerHTML=`<td>${e.date} ${typeBadge}</td>
-      <td><span class="badge b${e.shift==='morning'?'m':'n'}">${e.shift.toUpperCase()}</span></td>
+      <td><span class="badge b${e.shift==='morning'?'m':'n'}">${_esc(String(e.shift||'—').toUpperCase())}</span></td>
       <td>${e.fuel}</td>
       ${amtCell}
       ${paidCell}
@@ -10609,6 +10613,13 @@ async function sbLoadActivityLog(limit) {
 async function loadAllFromSupabase(silent) {
   if (!_currentUser) return;
   if (!SUPABASE_URL || !SUPABASE_URL.startsWith('https://')) { if(!silent) showToast('Supabase not configured'); return; }
+  // `supabase` is a CDN global. On a cold offline start, or if the CDN is
+  // blocked, it is simply not there — and this ran inside a timer, so the
+  // ReferenceError was uncaught and killed the rest of the sync silently.
+  if (typeof supabase === 'undefined') {
+    console.warn('Supabase library not loaded — working from this device only');
+    return;
+  }
   if (!_supa) _supa = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   if(!silent) showToast('⟳ Syncing data...');
 
@@ -11125,7 +11136,19 @@ function _uiEditing(){
   const a=document.activeElement;
   if(!a)return false;
   const t=a.tagName;
-  return t==='INPUT'||t==='SELECT'||t==='TEXTAREA'||a.isContentEditable===true;
+  if(!(t==='INPUT'||t==='SELECT'||t==='TEXTAREA'||a.isContentEditable===true))return false;
+  // Only fields inside something a redraw would actually replace matter. A
+  // meter box on the shift entry page is never rebuilt, so blocking on it
+  // would freeze the whole app's refresh for as long as the cursor sat there.
+  const inRebuilt = a.closest && a.closest(
+    '#stock_sales,#master_stock,#page-ledger,#page-history,#page-oilreg,#page-fuelload,#page-notes,#page-drawings,#page-staff');
+  if(!inRebuilt)return false;
+  // And only if they are actually typing. A page that focuses its first input
+  // on open would otherwise defer every redraw indefinitely. Twenty seconds is
+  // long enough to finish a number, short enough that the screen cannot go
+  // stale for a whole shift.
+  const last = a.id ? (_lastTypedAt[a.id]||0) : (_lastTypedAt.__any||0);
+  return Date.now()-last < 20000;
 }
 
 function _rerenderAll(){
