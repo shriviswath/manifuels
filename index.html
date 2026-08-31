@@ -2778,7 +2778,7 @@ function saveRates(){
       const hist=JSON.parse(localStorage.getItem('rateHistory')||'[]');
       changed.forEach(k=>{
         hist.unshift({
-          id:Date.now()+Math.random(),
+          id:_newId(),   // fractional ids are what broke the ledger sync
           date:_isoLocal(),
           datetime:new Date().toISOString(),
           fuel:k.toUpperCase(),
@@ -6284,7 +6284,7 @@ function submitOilInvoice(){
     }
   });
   if(!items.length){showToast('Add at least one item with qty');return;}
-  const invoice={id:Date.now(),date,inv,company,items,totalCost,totalSell,profit:totalSell-totalCost,
+  const invoice={id:_newId(),date,inv,company,items,totalCost,totalSell,profit:totalSell-totalCost,
     amountDue:totalCost,amountPaid:0};
   oilReg.unshift(invoice);
   localStorage.setItem('oilReg',JSON.stringify(oilReg));
@@ -6473,7 +6473,7 @@ function submitPackEntry(){
   const cost=parseFloat(document.getElementById('pr_cost').value)||0;
   const notes=_clean(document.getElementById('pr_notes').value.trim());
   if(!qty){showToast('Enter packs received');return;}
-  const entry={id:Date.now(),size,date,supplier,qty,cost,totalCost:qty*cost,notes};
+  const entry={id:_newId(),size,date,supplier,qty,cost,totalCost:qty*cost,notes};
   packReg.unshift(entry);
   savePackReg();renderPackReg();togglePackRegForm();
   if(_currentUser&&typeof sbSavePackEntry==='function')sbSavePackEntry(entry).catch(console.error);
@@ -7465,7 +7465,7 @@ function submitFuelLoad(){
   }
 
   var load={
-    id:Date.now(), date:date, inv:inv, supplier:supplier,
+    id:_newId(), date:date, inv:inv, supplier:supplier,
     driver:driver, lorry:lorryNo, transport:transport, type:type,
     vol:volL, volKL:volKL,
     basicPrice:basic, tnVat:tnVat, lstPct:lstPct, lorryRent:lorryRent,
@@ -9213,7 +9213,7 @@ function submitPayment(){
   }
   if(!staffId||!amt){showToast('Select staff and enter amount');return;}
   const pay={
-    id:Date.now(),staffId,date,type,amount:amt,notes,
+    id:_newId(),staffId,date,type,amount:amt,notes,
     advanceDeducted:deduct,
     createdBy:_currentUser?_currentUser.username:''
   };
@@ -9354,6 +9354,32 @@ async function sbSaveStaff(s){
     });
   }catch(e){console.error('Save staff failed:',e.message);}
 }
+// Attendance is keyed by staff + date + shift, not by id, so the id-based
+// tombstones and merge cannot see it. Its own pair, on the natural key.
+function _attKey(a){ return String(a.staffId)+'|'+a.date+'|'+a.shift; }
+
+function _mergeAttendance(local, remote){
+  const out={}, localOnly=[];
+  (local||[]).forEach(function(x){ if(x)out[_attKey(x)]={row:x,fromLocal:true}; });
+  (remote||[]).forEach(function(r){
+    if(!r)return;
+    const k=_attKey(r);
+    if(_tombHas('staff_attendance',k)){
+      // Cleared here, still there on the server: ask again rather than let the
+      // mark come back the next time somebody opens the page.
+      if(typeof sbDeleteAttendance==='function')
+        sbDeleteAttendance(r.staffId,r.date,r.shift);
+      return;
+    }
+    out[k]={row:r,fromLocal:false};   // no timestamp on the row: server wins
+  });
+  const merged=Object.keys(out).map(function(k){
+    if(out[k].fromLocal)localOnly.push(out[k].row);
+    return out[k].row;
+  });
+  return {merged:merged,localOnly:localOnly};
+}
+
 async function sbSaveAttendance(a){
   if(!_currentUser)return;   // no _supa: _sbUpsert queues it
   try{
@@ -9367,6 +9393,7 @@ async function sbSaveAttendance(a){
 // generic single-column delete cannot express it.
 async function sbDeleteAttendance(staffId,date,shift){
   if(!_currentUser)return;
+  _tombAdd('staff_attendance', String(staffId)+'|'+date+'|'+shift);
   const where={user_id:_currentUser.id, staff_id:staffId, date:date, shift:shift};
   if(!_supa||(typeof navigator!=='undefined'&&navigator.onLine===false)){
     _outboxQueue('staff_attendance','deleteWhere',where,null,'offline'); return;
@@ -9422,34 +9449,45 @@ async function sbLoadStaffAll(){
   try{
     const sR=await _supa.from('staff').select('*').eq('user_id',_currentUser.id);
     if(sR.error){console.warn('staff read rejected:',sR.error.message);return;}
-    if(sR.data&&sR.data.length){
-      sR.data=_dropDeleted('staff',sR.data);
-      staffList=sR.data.map(r=>({
+    if(sR.data){
+      // Replacing the array threw away anything added on this phone that had
+      // not reached the server yet — a new staff member entered offline was
+      // gone by the next sync. Same fault the shifts and ledger already fixed.
+      const remoteStaff=_dropDeleted('staff',sR.data).map(r=>({
         id:Number(r.id),name:r.name,role:r.role,phone:r.phone,
         monthlySalary:r.monthly_salary,joinedDate:r.joined_date,
         notes:r.notes,active:r.active,
         salaryHistory:r.salary_history||[]
       }));
-      saveStaffLS();
+      const mS=_mergeById(staffList,remoteStaff);
+      staffList=mS.merged; saveStaffLS();
+      for(const s of mS.localOnly){ try{ await sbSaveStaff(s); }catch(e){} }
     }
-    const aR=await _supa.from('staff_attendance').select('*').eq('user_id',_currentUser.id).order('date',{ascending:false}).limit(2000);
-    if(aR.data&&aR.data.length){
-      staffAttendance=aR.data.map(r=>({
+    // 2000 was under a year for four staff on two shifts. Older marks were
+    // dropped by the server AND wiped locally, taking the payroll with them.
+    const aR=await _supa.from('staff_attendance').select('*').eq('user_id',_currentUser.id).order('date',{ascending:false}).limit(8000);
+    if(aR.error){console.warn('staff_attendance read rejected:',aR.error.message);}
+    else if(aR.data){
+      const remoteAtt=aR.data.map(r=>({
         id:Number(r.id),staffId:Number(r.staff_id),date:r.date,
         shift:r.shift,status:r.status,notes:r.notes
       }));
-      saveAttLS();
+      const mA=_mergeAttendance(staffAttendance,remoteAtt);
+      staffAttendance=mA.merged; saveAttLS();
+      for(const a of mA.localOnly){ try{ await sbSaveAttendance(a); }catch(e){} }
     }
-    const pR=await _supa.from('staff_payments').select('*').eq('user_id',_currentUser.id).order('date',{ascending:false}).limit(1000);
-    if(pR.data&&pR.data.length){
-      pR.data=_dropDeleted('staff_payments',pR.data);
-      staffPayments=pR.data.map(r=>({
+    const pR=await _supa.from('staff_payments').select('*').eq('user_id',_currentUser.id).order('date',{ascending:false}).limit(2000);
+    if(pR.error){console.warn('staff_payments read rejected:',pR.error.message);}
+    else if(pR.data){
+      const remotePay=_dropDeleted('staff_payments',pR.data).map(r=>({
         id:Number(r.id),staffId:Number(r.staff_id),date:r.date,
         type:r.type,amount:r.amount,notes:r.notes,
         advanceDeducted:r.advance_deducted||0,
         createdBy:r.created_by
       }));
-      savePayLS();
+      const mP=_mergeById(staffPayments,remotePay);
+      staffPayments=mP.merged; savePayLS();
+      for(const p of mP.localOnly){ try{ await sbSavePayment(p); }catch(e){} }
     }
   }catch(e){console.warn('Staff sync failed (tables may not exist yet):',e.message);}
 }
@@ -10055,7 +10093,13 @@ function _tombRead(){
 function _tombWrite(t){
   try{ localStorage.setItem(MF_TOMB_KEY, JSON.stringify(t)); }catch(e){}
 }
-function _tombKey(id){ return String(Math.round(parseFloat(id))||id); }
+function _tombKey(id){
+  // Attendance uses "staffId|date|shift", which parseFloat would truncate to
+  // the staff id and tombstone every mark that person ever had.
+  const s=String(id);
+  if(!/^-?\d+(\.\d+)?$/.test(s))return s;
+  return String(Math.round(parseFloat(s))||s);
+}
 function _tombAdd(table,id){
   var t=_tombRead();
   if(!t[table])t[table]={};
