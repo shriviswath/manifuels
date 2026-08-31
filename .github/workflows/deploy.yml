@@ -19,7 +19,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The app is served straight from the repo with no build step, so this is the
+  # only gate between a bad commit and four phones running it at the pump.
+  test:
+    uses: ./.github/workflows/test.yml
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     environment:
       name: github-pages
