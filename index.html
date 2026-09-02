@@ -1566,6 +1566,11 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <div><div class="flabel" style="margin-bottom:4px">COMPANY / SUPPLIER</div>
           <input type="text" id="or_company" placeholder="Supplier name"></div>
       </div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin:2px 0 8px;line-height:1.6">
+        Put every line of the supplier's bill here &mdash; bottles and sachet packs together.
+        Pack lines write themselves into the pack register below, and a selling price
+        entered on any line becomes the price the shift entry charges.
+      </div>
       <div id="or_items_list"></div>
       <button class="add-btn" onclick="addOilRegItem()" style="margin-bottom:10px">&#65291; Add Item</button>
       <div style="display:flex;gap:8px;margin-top:6px">
@@ -1590,74 +1595,22 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
   <!-- ════ PACK PURCHASE REGISTER (multi-size) ════ -->
   <div style="margin-top:24px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px">
-      <div class="sec" style="margin:0;border:none"><span class="dot" style="background:var(--petrol)"></span>PACK OIL — PURCHASE REGISTER</div>
-      <button class="btn btn-g" onclick="togglePackRegForm()">&#65291; ADD ENTRY</button>
+      <div class="sec" style="margin:0;border:none"><span class="dot" style="background:var(--petrol)"></span>PACK OIL — STOCK &amp; USAGE</div>
+
     </div>
 
     <!-- Add Entry Form -->
-    <div id="pack_reg_form" style="display:none;margin-bottom:14px">
-      <div class="card" style="border-color:var(--petrol);max-width:720px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div class="card-head" style="color:var(--petrol);margin:0">NEW PACK PURCHASE</div>
-          <button onclick="togglePackSizeManager()" type="button"
-            style="font-family:'Syne',sans-serif;font-size:9px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:4px 10px;border-radius:3px;cursor:pointer;font-weight:700;letter-spacing:1px">⚙ MANAGE SIZES</button>
-        </div>
-
-        <!-- Row 1: size + date -->
-        <div style="display:grid;grid-template-columns:140px 1fr;gap:10px;margin-bottom:10px">
-          <div>
-            <div class="flabel" style="margin-bottom:4px">PACK SIZE</div>
-            <select id="pr_size" onchange="onPackSizeChange()"
-              style="width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;height:38px">
-              <!-- Filled dynamically by populatePackSizeDropdown() -->
-            </select>
-          </div>
-          <div>
-            <div class="flabel" style="margin-bottom:4px">DATE</div>
-            <input type="date" id="pr_date" class="date-inp" style="width:100%;height:38px">
-          </div>
-        </div>
-
-        <!-- Custom size inline (shown only when user picks "+ New size") -->
-        <div id="pr_custom_size_row" style="display:none;margin-bottom:10px;padding:10px;background:rgba(0,212,160,.05);border:1px solid rgba(0,212,160,.25);border-radius:6px">
-          <div class="flabel" style="margin-bottom:6px;color:var(--petrol)">ENTER NEW PACK SIZE</div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input type="number" id="pr_custom_size" placeholder="e.g. 50" min="1" max="500"
-              style="width:90px;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;height:36px">
-            <span style="font-size:11px;color:var(--muted)">ml</span>
-            <span style="font-size:10px;color:var(--muted);margin-left:8px">This size will be added permanently and become available in shift entry too.</span>
-          </div>
-        </div>
-
-        <!-- Row 2: supplier + qty + cost -->
-        <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;margin-bottom:10px">
-          <div>
-            <div class="flabel" style="margin-bottom:4px">SUPPLIER</div>
-            <input type="text" id="pr_supplier" placeholder="Supplier name" style="width:100%;height:38px">
-          </div>
-          <div>
-            <div class="flabel" style="margin-bottom:4px">PACKS RECEIVED</div>
-            <input type="number" id="pr_qty" placeholder="0" min="0" style="width:100%;height:38px">
-          </div>
-          <div>
-            <div class="flabel" style="margin-bottom:4px">COST / PACK (&#8377;)</div>
-            <input type="number" id="pr_cost" placeholder="0.00" step="0.01" min="0" style="width:100%;height:38px">
-          </div>
-        </div>
-
-        <!-- Notes -->
-        <div style="margin-bottom:10px">
-          <div class="flabel" style="margin-bottom:4px">NOTES (optional)</div>
-          <input type="text" id="pr_notes" placeholder="e.g. batch no, brand" style="width:100%;height:38px">
-        </div>
-
-        <div id="pr_preview" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--petrol);margin-bottom:10px;min-height:18px"></div>
-
-        <div style="display:flex;gap:8px">
-          <button class="save-btn" onclick="submitPackEntry()">&#10003; SAVE</button>
-          <button class="btn btn-g" onclick="togglePackRegForm()">CANCEL</button>
-        </div>
+    <!-- Pack purchases arrive on the supplier's bill with the bottles, so they
+         are entered as lines on the invoice above. A second form here meant one
+         piece of paper typed twice, into two registers that could then disagree. -->
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:var(--s2);border:1px solid var(--border);border-radius:6px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);line-height:1.6;flex:1;min-width:220px">
+        Packs are entered on the supplier's bill &mdash; open <b>&#65291; NEW INVOICE</b> above and add a
+        line with a <b>sachet pack</b> size. What arrives, what it cost and what it sells for
+        all come from there, and this section shows what is left.
       </div>
+      <button onclick="togglePackSizeManager()" type="button"
+        style="font-family:'Syne',sans-serif;font-size:9px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:5px 12px;border-radius:3px;cursor:pointer;font-weight:700;letter-spacing:1px;white-space:nowrap">&#9881; MANAGE SIZES</button>
     </div>
 
     <!-- Per-size summary cards (rendered dynamically) -->
@@ -6262,18 +6215,66 @@ function toggleOilRegForm(){
     addOilRegItem();
   }
 }
+// Every pack size in play: the 40 ml default plus anything configured.
+function _packSizeList(){
+  const sizes=[40];
+  (typeof packSizesConfig!=='undefined'?packSizesConfig:[]).forEach(function(p){
+    if(p&&p.size&&sizes.indexOf(p.size)<0)sizes.push(p.size);
+  });
+  return sizes.sort(function(a,b){return a-b;});
+}
+
+// Selling price on an invoice line is the price the pump will charge. Writing
+// it into the invoice and leaving the shift entry on last month's rate is how
+// the two drift apart, so it is pushed everywhere the rate is read.
+function _applySellRate(target,sell){
+  if(!(sell>0))return null;
+  if(typeof target==='object'&&target){          // a stock item
+    target.rate=sell;
+    return target.name;
+  }
+  const size=parseInt(target,10);                // a pack size
+  if(!size)return null;
+  if(size===40){
+    // There is no global `rates` object — every caller reads it out of
+    // localStorage when it needs it, so this has to do the same.
+    let r={};
+    try{ r=JSON.parse(localStorage.getItem('fuelRates')||'{}')||{}; }catch(e){ r={}; }
+    r.pack=sell;
+    localStorage.setItem('fuelRates',JSON.stringify(r));
+    if(typeof queueSettingsSave==='function')queueSettingsSave();
+  }
+  const cfg=(typeof packSizesConfig!=='undefined')?packSizesConfig.find(p=>p.size===size):null;
+  if(cfg){cfg.rate=sell;savePackSizesConfig();}
+  else if(size!==40&&typeof packSizesConfig!=='undefined'){
+    packSizesConfig.push({size:size,enabled:true,rate:sell});
+    packSizesConfig.sort((a,b)=>a.size-b.size);
+    savePackSizesConfig();
+  }
+  return size+'ml pack';
+}
+
 function addOilRegItem(){
   orItemCount++;
   const id=orItemCount;
-  // Build stock options
-  const opts=stock.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  // Packs arrive on the same supplier bill as the bottles, so they belong in
+  // the same invoice. Keeping a separate register meant typing one bill twice
+  // and reconciling two totals that were never meant to differ.
+  const opts=
+    '<optgroup label="Oil &amp; counter stock">'+
+      stock.map(s=>`<option value="${s.id}">${_esc(s.name)}</option>`).join('')+
+      '<option value="__new__">+ New item</option>'+
+    '</optgroup>'+
+    '<optgroup label="Sachet packs (qty in packs)">'+
+      _packSizeList().map(sz=>`<option value="pack:${sz}">${sz} ml pack</option>`).join('')+
+    '</optgroup>';
   const div=document.createElement('div');
   div.id='or_item_'+id;
   div.style.cssText='display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:8px';
   div.innerHTML=`
     <div><div class="flabel" style="margin-bottom:3px">STOCK ITEM</div>
       <select id="or_stock_${id}" style="width:100%;padding:5px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px">
-        ${opts}<option value="__new__">+ New item</option>
+        ${opts}
       </select></div>
     <div><div class="flabel" style="margin-bottom:3px">QTY</div>
       <input type="number" id="or_qty_${id}" placeholder="0" oninput="calcOrRow(${id})"></div>
@@ -6300,6 +6301,8 @@ function submitOilInvoice(){
   const company=_clean(document.getElementById('or_company').value.trim());
   if(!inv||!company){showToast('Fill Invoice No. and Supplier');return;}
   const items=[];
+  const packRows=[];        // pack lines, written to the pack register below
+  const rateChanges=[];     // what had its selling price moved by this bill
   let totalCost=0,totalSell=0;
   document.querySelectorAll('[id^="or_item_"]').forEach(row=>{
     const rowId=row.id.split('_')[2];
@@ -6308,14 +6311,26 @@ function submitOilInvoice(){
     const buy=parseFloat(document.getElementById('or_buy_'+rowId)?.value)||0;
     const sell=parseFloat(document.getElementById('or_sell_'+rowId)?.value)||0;
     if(qty>0){
-      const stockItem=stock.find(s=>s.id==stockId);
-      const name=stockItem?stockItem.name:(stockId==='__new__'?'Unknown':stockId);
-      items.push({stockId,name,qty,buy,sell,profit:(sell-buy)*qty});
-      totalCost+=buy*qty;totalSell+=sell*qty;
-      // Update stock qty and selling rate
-      if(stockItem){
-        stockItem.qty+=qty;
-        if(sell>0)stockItem.rate=sell; // update selling price
+      if(String(stockId).indexOf('pack:')===0){
+        // A pack line. The packs' own register is what the shift entry counts
+        // against, so the bill writes an entry there rather than a second one
+        // being typed by hand from the same piece of paper.
+        const size=parseInt(String(stockId).split(':')[1],10)||40;
+        items.push({stockId,name:size+'ml pack',qty,buy,sell,profit:(sell-buy)*qty,packSize:size});
+        totalCost+=buy*qty;totalSell+=sell*qty;
+        packRows.push({size:size,qty:qty,cost:buy});
+        const changed=_applySellRate(String(size),sell);
+        if(changed)rateChanges.push(changed);
+      } else {
+        const stockItem=stock.find(s=>s.id==stockId);
+        const name=stockItem?stockItem.name:(stockId==='__new__'?'Unknown':stockId);
+        items.push({stockId,name,qty,buy,sell,profit:(sell-buy)*qty});
+        totalCost+=buy*qty;totalSell+=sell*qty;
+        if(stockItem){
+          stockItem.qty=Math.max(0,Math.round(stockItem.qty)+Math.round(qty));
+          const changed=_applySellRate(stockItem,sell);
+          if(changed)rateChanges.push(changed);
+        }
       }
     }
   });
@@ -6325,9 +6340,28 @@ function submitOilInvoice(){
   oilReg.unshift(invoice);
   localStorage.setItem('oilReg',JSON.stringify(oilReg));
   if(_currentUser)sbSaveOilInvoice(invoice).catch(console.error);
+
+  // Pack lines become register entries carrying the invoice id, so deleting
+  // the bill takes them with it rather than leaving orphan stock.
+  packRows.forEach(function(p){
+    const entry={id:_newId(),size:p.size,date:date,supplier:company,
+                 qty:p.qty,cost:p.cost,totalCost:p.qty*p.cost,
+                 notes:'Invoice '+inv, invId:invoice.id};
+    packReg.unshift(entry);
+    if(_currentUser&&typeof sbSavePackEntry==='function')sbSavePackEntry(entry).catch(console.error);
+  });
+  if(packRows.length){savePackReg();if(typeof renderPackReg==='function')renderPackReg();}
+
   saveStockLS();renderMasterStock();renderStockSales();
+  if(typeof loadRates==='function')loadRates();     // the shift entry picks the new prices up
   toggleOilRegForm();renderOilReg();
-  showToast('Invoice saved & stock updated!');
+  if(typeof logActivity==='function')
+    logActivity('add_oil_inv','oil_invoice',invoice.id,
+      inv+' — '+items.length+' line(s), '+fmt(totalCost)+
+      (packRows.length?' incl. '+packRows.length+' pack line(s)':''));
+  showToast(rateChanges.length
+    ? 'Invoice saved • selling price updated for '+rateChanges.join(', ')
+    : 'Invoice saved & stock updated');
 }
 function payInvoice(id){
   const inv=oilReg.find(x=>x.id===id);if(!inv)return;
@@ -6346,14 +6380,28 @@ function delInvoice(id){
   if(inv&&inv.items&&inv.items.length){
     // Reverse: subtract the qty that was added when invoice was saved
     inv.items.forEach(function(item){
+      if(String(item.stockId).indexOf('pack:')===0)return;   // handled below
       const stockItem=stock.find(s=>s.id==item.stockId);
       if(stockItem&&item.qty>0){
-        stockItem.qty=Math.max(0, stockItem.qty - item.qty);
+        stockItem.qty=Math.max(0, Math.round(stockItem.qty) - Math.round(item.qty));
       }
     });
     saveStockLS();
     renderMasterStock();
     renderStockSales();
+  }
+  // Pack entries written by this bill go with it, or the packs stay on the
+  // books after the invoice that brought them has gone.
+  if(typeof packReg!=='undefined'){
+    const orphans=packReg.filter(p=>p.invId===id);
+    if(orphans.length){
+      packReg=packReg.filter(p=>p.invId!==id);
+      savePackReg();
+      orphans.forEach(function(p){
+        if(_currentUser&&typeof _sbRemove==='function')_sbRemove('pack_register',p.id,'id');
+      });
+      if(typeof renderPackReg==='function')renderPackReg();
+    }
   }
   oilReg=oilReg.filter(x=>x.id!==id);
   localStorage.setItem('oilReg',JSON.stringify(oilReg));
@@ -6456,8 +6504,19 @@ function onPackSizeChange(){
   }
 }
 
+// The standalone pack form is gone: packs are lines on the oil invoice. These
+// two are kept so an old cached page, or anything still calling them, gets a
+// clear redirect rather than a silent failure on a missing element.
 function togglePackRegForm(){
   const f=document.getElementById('pack_reg_form');
+  if(!f){
+    showToast('Packs go on the supplier bill — use ＋ NEW INVOICE above');
+    if(typeof toggleOilRegForm==='function'){
+      const orf=document.getElementById('oilreg_form');
+      if(orf&&orf.style.display==='none')toggleOilRegForm();
+    }
+    return;
+  }
   f.style.display=f.style.display==='none'?'block':'none';
   if(f.style.display==='block'){
     populatePackSizeDropdown();
@@ -6482,6 +6541,10 @@ function updatePackPreview(){
 }
 
 function submitPackEntry(){
+  if(!document.getElementById('pr_size')){
+    showToast('Add the packs as a line on the invoice instead');
+    return;
+  }
   let size;
   const sizeVal=document.getElementById('pr_size').value;
   if(sizeVal==='__new__'){
