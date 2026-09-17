@@ -1,107 +1,128 @@
-# ManiFuels ⛽
+# Database
 
-Shift accounting, stock and credit management for **Mani Fuels**, Karamadai.
+Postgres on Supabase. Migrations are plain SQL, applied in numeric order through
+**Supabase → SQL Editor**.
 
-**Live:** https://shriviswath.github.io/manifuels
+Every file is idempotent — `create table if not exists`, `add column if not
+exists`, guarded `do $$` blocks. Running one twice is a no-op, so it is safe to
+paste the whole set if you are unsure what has already been applied.
 
-> Install on mobile: open in Chrome → **Add to Home Screen**
-> Install on desktop: open in Chrome → install icon in the address bar
+## Order
 
----
+Or just run `db/apply_all.sql`, which is 001–013 concatenated and regenerated
+whenever a migration is added. Note the path: the `apply_all.sql` at the
+repository root is a dead stub that only ever held 001–003.
 
-## Repository layout
+| File | What it does | Status |
+|---|---|---|
+| `001_reconcile.sql` | Columns the v2.1 client needs, plus two repairs | Apply |
+| `002_dip_readings.sql` | Physical dip readings and stock variation | Apply |
+| `003_realtime.sql` | `REPLICA IDENTITY FULL` **and** publication membership | Apply |
+| `004_grants.sql` | Restores the anon grants `stock_items` lost | Apply |
+| `005_settings_config.sql` | `app_settings.config` — pack sizes, tank config, loose-oil source | Apply |
+| `006_staff_salary_history.sql` | `staff.salary_history` — dated salary revisions | Apply |
+| `007_settings_carryover.sql` | Copies opening tank volumes off the dead `settings` table | Apply — **back up first** |
+| `008_one_station.sql` | Re-keys every row to one station id | Apply — **back up first** |
+| `009_updated_at.sql` | Timestamps so merges resolve to the newer row | Apply |
+| `010_ensure_tables.sql` | Creates whatever the hand-built base schema is missing | Apply |
+| `011_drawings_owner.sql` | `owner_drawings.owner` — who took the money, not who typed it | Apply |
+| `012_billing.sql` | `customer_profiles.billing` — bill-to block for invoices | Apply |
+| `013_soft_deletes.sql` | `deleted_at`, so a delete reaches other devices | Apply |
+| `099_rls_and_auth.sql.pending` | RLS, Supabase Auth, `station_id` | **Do not apply yet** — see below |
+
+### Why `004` exists
+
+`stock_items` started returning 401 to the anon key — the grant was revoked or
+RLS re-enabled on that table alone, after the base schema ran. `004` re-asserts
+the access model across every table and grants the sequences too.
+
+Be clear about what that means: the anon key, which is published in `index.html`
+at a public URL, can read and write everything. That is the model this schema
+already uses; `004` restores it rather than choosing it. `006` is the fix.
+
+### Why `013` exists
+
+A delete only ever reached the device that made it. The client keeps deleted
+ids in its own `localStorage`, so every *other* device pulls, does not see the
+row, keeps the copy it already has, and pushes it back up on its next save —
+which is why a deleted row reappears a few minutes later. `013` adds
+`deleted_at` so the removal travels, and makes a mistaken delete recoverable
+for the first time.
+
+The client falls back to the old hard delete if the column is absent, so
+deploy order does not matter. Until this is applied, deletes keep failing to
+reach other devices.
+
+### Why `005` exists
+
+Pack sizes, tank capacity and the loose-oil source lived only in each device's
+`localStorage`, and all three change how a shift is calculated — two phones with
+different settings produced different numbers from identical meter readings.
+They now travel in `app_settings.config`.
+
+## The base schema is not in here
+
+It was created by a SQL Editor snippet called *ManiFuels Multi-Tenant Schema*
+and lives only in the Supabase dashboard. These migrations deliberately do not
+recreate it — they assume it exists and add to it. If you ever rebuild from
+scratch, export that snippet into `000_base.sql` first.
+
+## Two things the base schema got wrong
+
+**Two settings tables.** Both `settings` and `app_settings` exist, with
+identical columns. The client uses `app_settings`, so that is the live one and
+`settings` is dead weight left over from the original schema — which is also why
+the old `manifuels_realtime.sql` was pointing realtime at a table nothing writes
+to. `001` ends with a commented block to check which one holds your current
+rates, copy them across if needed, and drop the other. Deliberately not
+automated: that table is the only place your fuel rates live.
+
+**`staff_attendance`.** It is `BIGSERIAL` with `UNIQUE(staff_id, date, shift)`,
+but the client sent no `id` and upserted `onConflict: 'id'`, which can never
+match. Re-marking a day violated the unique index. Fixed on the client (conflict
+on the natural key) and `001` makes sure that index exists under a resolvable
+name.
+
+## Why realtime was silently doing nothing
+
+`REPLICA IDENTITY FULL` is only half of it. A table also has to be a member of
+the `supabase_realtime` publication, and neither of the old snippets ever did
+that — so realtime has never actually delivered anything. `003` does both, and
+skips missing tables instead of aborting the whole transaction.
+
+If it reports `cannot publish <table> from SQL`, add those tables through
+**Database → Replication** in the dashboard instead. Some projects restrict
+publication changes.
+
+## Why 099 is staged, not applied
+
+It is a coordinated cutover, not a migration you can run on its own:
+
+* It moves authentication to Supabase Auth. The client still authenticates
+  against the `users` table, so applying the RLS policies first would break
+  every request immediately.
+* It introduces `station_id`. Today `user_id` is the username, and every query
+  filters on it — which means the four owners each see only the rows they
+  personally entered. There are four sets of books, not one station's. Fixing
+  this changes every query in the client at the same time.
+
+Rename it to `099_rls_and_auth.sql` and apply it in the same release as the
+client change. Take a backup first (`Actions → Nightly database backup → Run
+workflow`).
+
+## Backups
+
+The free plan has no automated backups. `.github/workflows/backup.yml` runs
+`pg_dump` nightly at 02:00 IST and keeps 90 days of artifacts. It needs one
+secret:
 
 ```
-├── index.html                  the entire app: markup, styles, logic
-├── sw.js                       service worker — offline shell
-├── manifest.json               PWA manifest
-├── favicon.ico  icon-*.png     app icons
-├── .github/workflows/
-│   ├── deploy.yml              push to main → GitHub Pages
-│   └── backup.yml              nightly pg_dump + free-tier keep-alive
-├── db/
-│   ├── README.md               how and when to apply each migration
-│   ├── 001_schema.sql          base tables
-│   ├── 002_dip_readings.sql   dip readings + variation
-│   ├── 003_realtime.sql       replica identity + publication
-│   ├── 004_ledger_shift_link.sql
-│   ├── 005_realtime.sql        replica identity + publication
-│   └── 006_rls_and_auth.sql.pending   staged — read db/README.md
-└── docs/
-    ├── ARCHITECTURE.md         how the data model actually works
-    └── ROADMAP.md              what is left, and what it costs
+SUPABASE_DB_URL = postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
 ```
 
----
+Use the **session** pooler on port 5432. The transaction pooler on 6543 cannot
+run `pg_dump`.
 
-## What the app does
-
-| Screen | Purpose |
-|---|---|
-| **Dashboard** | Revenue, cash position, credit outstanding, supplier dues, alerts |
-| **Shift Entry** | Nozzle readings, pack and loose oil, counter stock, collections, credit |
-| **Tally** | Cash over/short against the value of what was sold |
-| **Dip & Variation** | Physical tank dip vs book stock — the loss detector |
-| **History** | Past shifts, with reversal on delete |
-| **Reports / P&L** | Revenue, COGS on goods *sold*, gross and net profit |
-| **Oil Stock / Register** | Counter stock and purchase invoices |
-| **Fuel Loads** | Tanker billing, landed cost per litre, supplier dues |
-| **Credit Ledger** | Customer-wise credit, advances, statements |
-| **Staff Register** | Attendance, salary, advances |
-| **Owner Drawings** | Withdrawals, reported below the profit line |
-| **Activity Log** | Audit trail |
-
----
-
-## Architecture in one paragraph
-
-A single HTML file, no build step. Data lives in `localStorage` first and syncs
-to Supabase Postgres. Writes go through an outbox: if the network is down or the
-server rejects a row, the change is parked in `localStorage` and retried
-automatically — the header shows an **"n unsent"** chip while anything is
-waiting. Reads merge by id instead of replacing, so a shift entered offline is
-never destroyed by the next sync. Realtime pushes changes between devices;
-polling is a 5-minute fallback, not the primary mechanism.
-
-See `docs/ARCHITECTURE.md` for the parts that are easy to get wrong.
-
----
-
-## Deploying
-
-```bash
-git add .
-git commit -m "your change"
-git push          # live in ~60 seconds
-```
-
-`deploy.yml` checks that `index.html`, `sw.js`, `manifest.json` and the icons
-all exist and that the manifest is valid JSON before publishing.
-
-**After a deploy**, the service worker serves the new `index.html` on the next
-load (network-first for the shell). If a device seems stuck on an old version,
-close every tab of the app and reopen it.
-
----
-
-## Database setup
-
-Paste `db/apply_all.sql` into the Supabase SQL editor and run it. It is
-idempotent, runs as one transaction, and does not recreate your existing
-tables — it only adds the columns v2.1 needs and repairs the realtime setup.
-
-Then set the repo secret `SUPABASE_DB_URL` so nightly backups run. Details in
-`db/README.md`.
-
----
-
-## Cost
-
-Everything currently runs at **₹0**: GitHub Pages, GitHub Actions and the
-Supabase free plan. The limit that matters is **5 GB/month of egress** — which
-is why sync polling is 5 minutes and not 30 seconds. See `docs/ROADMAP.md` for
-what would justify paying, and when.
-
----
-
-*Private repository — Mani Fuels internal operations tool.*
+That workflow also keeps the project alive — a free Supabase project auto-pauses
+after seven days with no API traffic, and a paused project means the app cannot
+sync until someone resumes it from the dashboard.
