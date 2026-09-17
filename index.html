@@ -3087,31 +3087,15 @@ function renderWeeklyPL(){
   const recsThis=records.filter(r=>inRange(r.date,startThis,today));
   const recsLast=records.filter(r=>inRange(r.date,startLast,endLast));
 
-  // Calculate components for both periods
-  function calc(recs){
-    // Measured against what the pump actually took that week — msdV — not
-    // today's board rate. Using the current rate on historical litres reported
-    // last month's profit at this month's price, and a mid-shift price change
-    // was invisible to it.
-    const tv=recs.reduce((s,r)=>s+
-      ((r.msdT?(r.msdV/r.msdT)*(r.testMSDL||0):0)+
-       (r.hsdT?(r.hsdV/r.hsdT)*(r.testHSDL||0):0)+
-       (r.etoil||0)),0);   // testing fuel and the hydrometer draw, both sides
-    const revenue=Math.max(0,recs.reduce((s,r)=>s+_recRevenue(r),0)-tv);
-    const exp=Math.max(0,recs.reduce((s,r)=>s+(r.exp||0),0)-tv);
-    const msdAvg=_fuelWAC('MSD'), hsdAvg=_fuelWAC('HSD');
-    const totalMSDL=Math.max(0,recs.reduce((s,r)=>s+(r.msdT||0)-(r.testMSDL||0),0));
-    const totalHSDL=Math.max(0,recs.reduce((s,r)=>s+(r.hsdT||0)-(r.testHSDL||0),0));
-    const fuelTake=recs.reduce((s,r)=>s+(r.msdV||0)+(r.hsdV||0),0)-tv;
-    const realizedFuel=fuelTake-(totalMSDL*msdAvg+totalHSDL*hsdAvg);
-    const profit=realizedFuel-exp;
-    // No load costed = no cost per litre = no profit figure. Saying so beats
-    // printing revenue and calling it profit.
-    const costKnown=!((totalMSDL>0&&msdAvg<=0)||(totalHSDL>0&&hsdAvg<=0));
-    return {revenue,exp,profit,costKnown,msdL:totalMSDL,hsdL:totalHSDL,shifts:recs.length};
-  }
-
-  const tw=calc(recsThis), lw=calc(recsLast);
+  // One engine for both periods, each costed at its OWN period end — costing
+  // last week's litres at an average that includes this week's tankers made
+  // last week's profit drift every time a load was recorded.
+  const _tw=_plCore(recsThis, iso(startThis), iso(today));
+  const _lw=_plCore(recsLast, iso(startLast), iso(endLast));
+  const shape=c=>({revenue:c.revenue, profit:c.netProfit, costKnown:!c.fuelUncosted,
+                   margin:c.netMarginPct, msdL:c.soldMSDL, hsdL:c.soldHSDL,
+                   shifts:c.shifts});
+  const tw=shape(_tw), lw=shape(_lw);
   const profitDelta=tw.profit-lw.profit;
   const revDelta=tw.revenue-lw.revenue;
   const pct=(a,b)=>b===0?(a>0?100:0):((a-b)/Math.abs(b))*100;
@@ -3127,7 +3111,7 @@ function renderWeeklyPL(){
       <div style="padding:14px;background:rgba(61,220,132,.05);border:1px solid rgba(61,220,132,.2);border-radius:8px">
         <div style="font-family:'Syne',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px">PROFIT THIS WEEK</div>
         <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:800;color:${_known?(tw.profit>=0?'var(--green)':'var(--red)'):'var(--muted)'}">${_known?fmt(tw.profit):'—'}</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:4px">${_known?('Last week: '+fmt(lw.profit)):'No fuel load costed yet — record a tanker'}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">${_known?('Last week: '+fmt(lw.profit)+' &nbsp;·&nbsp; margin '+tw.margin.toFixed(2)+'% vs '+lw.margin.toFixed(2)+'%'):'No fuel load costed yet — record a tanker'}</div>
       </div>
       <div style="padding:14px;background:rgba(${profitDelta>=0?'61,220,132':'255,77,106'},.05);border:1px solid ${cls};border-radius:8px">
         <div style="font-family:'Syne',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px">CHANGE vs LAST WEEK</div>
@@ -3143,7 +3127,7 @@ function renderWeeklyPL(){
         <div style="font-family:'Syne',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px">VOLUMES THIS WEEK</div>
         <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--petrol);font-weight:700">MSD: ${tw.msdL.toFixed(0)}L</div>
         <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--diesel);font-weight:700">HSD: ${tw.hsdL.toFixed(0)}L</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:4px">${tw.shifts} shifts logged</div>
+        <div style="font-size:10px;color:${tw.shifts<12?'var(--diesel)':'var(--muted)'};margin-top:4px">${tw.shifts} shifts logged${tw.shifts<12?' — expected ~14':''}</div>
       </div>
     </div>
   `;
@@ -3451,18 +3435,20 @@ function _stockCostRatio(){
 
 function renderDashKPIs(){
   const today=_todayISO();
-  const weekAgo=_daysAgo(7);
+  // date>=_daysAgo(7) is EIGHT days inclusive, so this tile disagreed with
+  // the weekly P&L widget and the 7d report range, both of which use six.
+  const weekAgo=_daysAgo(6);
   const todayRecs = records.filter(r=>r.date===today);
   const weekRecs  = records.filter(r=>r.date>=weekAgo);
-  const prevWeekRecs = records.filter(r=>r.date>=_daysAgo(14)&&r.date<weekAgo);
+  const prevWeekRecs = records.filter(r=>r.date>=_daysAgo(13)&&r.date<weekAgo);
 
-  const todayRev = todayRecs.reduce((s,r)=>s+_recRevenue(r),0);
+  const todayRev = _plCore(todayRecs, today, today).revenue;
   const todayMSD = todayRecs.reduce((s,r)=>s+(r.msdT||0),0);
   const todayHSD = todayRecs.reduce((s,r)=>s+(r.hsdT||0),0);
   const todayBal = todayRecs.reduce((s,r)=>s+(r.bal||0),0);
 
-  const weekRev = weekRecs.reduce((s,r)=>s+_recRevenue(r),0);
-  const prevWeekRev = prevWeekRecs.reduce((s,r)=>s+_recRevenue(r),0);
+  const weekRev = _plCore(weekRecs, weekAgo, today).revenue;
+  const prevWeekRev = _plCore(prevWeekRecs, _daysAgo(13), _daysAgo(7)).revenue;
   const weekChange = prevWeekRev>0 ? ((weekRev-prevWeekRev)/prevWeekRev*100) : 0;
 
   // Credit outstanding
@@ -5261,11 +5247,20 @@ function _formatRange(from,to){
   return `${f} → ${t}`;
 }
 
-function renderPL(from, to, shiftRecs){
-  const section=document.getElementById('pl_section');
-  if(!shiftRecs||!shiftRecs.length){section.style.display='none';return;}
-  section.style.display='block';
-  document.getElementById('pl_period').textContent=_formatRange(from,to);
+// ══════════════════════════════════════════════════════════════════
+// P&L CORE
+// One engine, two callers: the dashboard widget and the Reports page. They
+// used to carry separate formulas and disagreed by design — the widget booked
+// oil and pack revenue at the top and none of its margin at the bottom, so a
+// good week on lubricants made the profit tile look worse. Everything that
+// decides a rupee of profit lives here now; the callers only format it.
+//
+// `to` is the period END and it matters: costing litres at a weighted average
+// that includes tankers bought after the period made last week's profit move
+// every time a load was recorded.
+// ══════════════════════════════════════════════════════════════════
+function _plCore(recs, from, to){
+  recs = recs || [];
 
   // ── TESTING FUEL ──────────────────────────────────────────────────────
   // The test measure is drawn through the nozzle and poured straight back. The
@@ -5280,63 +5275,71 @@ function renderPL(from, to, shiftRecs){
     const vl=(f==='MSD')?(r.msdV||0):(r.hsdV||0);
     return lt>0?(vl/lt)*L:0;   // that shift's own rate, so a mid-shift price change is respected
   };
-  const testMSDL   = shiftRecs.reduce((s,r)=>s+(r.testMSDL||0),0);
-  const testHSDL   = shiftRecs.reduce((s,r)=>s+(r.testHSDL||0),0);
-  const testValMSD = shiftRecs.reduce((s,r)=>s+_testVal(r,'MSD'),0);
-  const testValHSD = shiftRecs.reduce((s,r)=>s+_testVal(r,'HSD'),0);
+  const testMSDL   = recs.reduce((s,r)=>s+(r.testMSDL||0),0);
+  const testHSDL   = recs.reduce((s,r)=>s+(r.testHSDL||0),0);
+  const testValMSD = recs.reduce((s,r)=>s+_testVal(r,'MSD'),0);
+  const testValHSD = recs.reduce((s,r)=>s+_testVal(r,'HSD'),0);
   // The hydrometer draw is fuel too, and it also goes back in the tank. It is
-  // entered in rupees rather than litres, so it comes out of both sides — but
-  // its litres cannot be identified, so COGS still carries them. Capturing it
-  // in litres like the other two would remove that last overstatement.
-  const testHydro  = shiftRecs.reduce((s,r)=>s+(r.etoil||0),0);
+  // entered in rupees rather than litres, so its litres cannot be read off the
+  // form — but they can be recovered: the rupees were metered at that shift's
+  // own pump rate, so rupees ÷ rate gives the litres back. Which fuel it came
+  // from is not recorded either, so the draw is split across MSD and HSD by
+  // that shift's fuel revenue mix. The residual error is the price difference
+  // between the two fuels on a few litres — cents, against the whole tank the
+  // old code was over-costing.
+  const testHydro  = recs.reduce((s,r)=>s+(r.etoil||0),0);
+  let hydMSDL=0, hydHSDL=0;
+  recs.forEach(function(r){
+    const hv=r.etoil||0; if(hv<=0)return;
+    const mv=r.msdV||0, dv=r.hsdV||0, tot=mv+dv; if(tot<=0)return;
+    const mRate=(r.msdT>0)?(mv/r.msdT):0;
+    const dRate=(r.hsdT>0)?(dv/r.hsdT):0;
+    if(mRate>0)hydMSDL+=(hv*(mv/tot))/mRate;
+    if(dRate>0)hydHSDL+=(hv*(dv/tot))/dRate;
+  });
   const testValue  = testValMSD + testValHSD + testHydro;
 
   // ── REVENUE: value of goods sold. Credit repayments and testing excluded. ──
-  const revenueGross = shiftRecs.reduce((s,r)=>s+_recRevenue(r),0);
+  const revenueGross = recs.reduce((s,r)=>s+_recRevenue(r),0);
   const revenue = Math.max(0, revenueGross - testValue);
-  // Break down where revenue came from:
-  const revFuel = shiftRecs.reduce((s,r)=>s+(r.msdV||0)+(r.hsdV||0),0) - testValue;
-  const revOilPack = shiftRecs.reduce((s,r)=>s+(r.pv||0)+(r.ov||0),0);
-  const revStock = shiftRecs.reduce((s,r)=>s+(r.stRev||0),0);
+  const revFuel = recs.reduce((s,r)=>s+(r.msdV||0)+(r.hsdV||0),0) - testValue;
+  const revOilPack = recs.reduce((s,r)=>s+(r.pv||0)+(r.ov||0),0);
+  const revStock = recs.reduce((s,r)=>s+(r.stRev||0),0);
 
-  // ── COGS: cost of fuel loaded + oil invoices received in the same date range ──
-  // Fuel loads
+  // ── PURCHASES in the window. Cash spent on stock, NOT cost of goods sold —
+  // a tanker bought on the 30th is sold over the following week — so it is
+  // reported on its own and never drives the profit line.
   const fuelLoadsData = (typeof fuelLoads!=='undefined') ? fuelLoads : JSON.parse(localStorage.getItem('fuelLoads')||'[]');
   const loadsInRange = fuelLoadsData.filter(l=>(!from||l.date>=from)&&(!to||l.date<=to));
   const fuelCOGS = loadsInRange.reduce((s,l)=>s+(l.totalCost||l.total_cost||0),0);
   const fuelRevEstimate = loadsInRange.reduce((s,l)=>s+(l.revenue||0),0);
   const fuelProfitFromLoads = loadsInRange.reduce((s,l)=>s+(l.profit||0),0);
 
-  // Oil register invoices
   const oilRegData = (typeof oilReg!=='undefined') ? oilReg : JSON.parse(localStorage.getItem('oilReg')||'[]');
   const oilInRange = oilRegData.filter(o=>(!from||o.date>=from)&&(!to||o.date<=to));
   const oilCOGS = oilInRange.reduce((s,o)=>s+(o.totalCost||o.total_cost||0),0);
   const oilProfit = oilInRange.reduce((s,o)=>s+(o.profit||0),0);
-
-  // Cash spent on stock this period. This is NOT cost of goods sold — a tanker
-  // bought on the 30th is sold over the following week — so it no longer drives
-  // the profit line, it is reported on its own.
   const purchases = fuelCOGS + oilCOGS;
 
   // Cash taken out of the drawer. Balances a shift, buys nothing.
-  const handoverTotal = shiftRecs.reduce((s,r)=>s+(r.handover||0),0);
+  const handoverTotal = recs.reduce((s,r)=>s+(r.handover||0),0);
 
-  // ── OPERATING EXPENSES: shift expenses in period ──
+  // ── OPERATING EXPENSES ──
   // The testing lines inside r.exp mirror the revenue removed above. Taking
   // both out leaves net profit unchanged and stops gross margin being
   // flattered by fuel that was never sold.
-  const opexGross = shiftRecs.reduce((s,r)=>s+(r.exp||0),0);
+  const opexGross = recs.reduce((s,r)=>s+(r.exp||0),0);
   const opex = Math.max(0, opexGross - testValue);
 
   // ── COGS: cost of what was actually SOLD ──
-  const totalMSDL = shiftRecs.reduce((s,r)=>s+(r.msdT||0),0);
-  const totalHSDL = shiftRecs.reduce((s,r)=>s+(r.hsdT||0),0);
-  const sumMSDV   = shiftRecs.reduce((s,r)=>s+(r.msdV||0),0);
-  const sumHSDV   = shiftRecs.reduce((s,r)=>s+(r.hsdV||0),0);
-  // Fuel: litres sold × weighted-average landed cost per litre at period end.
+  const totalMSDL = recs.reduce((s,r)=>s+(r.msdT||0),0);
+  const totalHSDL = recs.reduce((s,r)=>s+(r.hsdT||0),0);
+  const sumMSDV   = recs.reduce((s,r)=>s+(r.msdV||0),0);
+  const sumHSDV   = recs.reduce((s,r)=>s+(r.hsdV||0),0);
+  // Litres sold × weighted-average landed cost per litre AS AT THE PERIOD END.
   const wacMSD = _fuelWAC('MSD', to), wacHSD = _fuelWAC('HSD', to);
-  const soldMSDL = Math.max(0, totalMSDL - testMSDL);
-  const soldHSDL = Math.max(0, totalHSDL - testHSDL);
+  const soldMSDL = Math.max(0, totalMSDL - testMSDL - hydMSDL);
+  const soldHSDL = Math.max(0, totalHSDL - testHSDL - hydHSDL);
   const cogsFuel = soldMSDL*wacMSD + soldHSDL*wacHSD;
   // Oil / packs / counter stock: records hold only a rupee total per shift, so
   // cost is estimated from the buy:sell ratio of all oil invoices. Returns 0
@@ -5346,7 +5349,7 @@ function renderPL(from, to, shiftRecs){
   // shift the shortfall onto oil and counter stock.
   const nonFuelRev = Math.max(0, revenueGross - sumMSDV - sumHSDV);
   let cogsExact=0, unpricedRev=0;
-  shiftRecs.forEach(function(r){
+  recs.forEach(function(r){
     const q=_recNonFuelCOGS(r);
     cogsExact+=q.cost; unpricedRev+=q.unpricedRev;
   });
@@ -5357,7 +5360,7 @@ function renderPL(from, to, shiftRecs){
 
   // Fuel was sold but no load has ever been costed, so there is no cost per
   // litre to subtract. Reporting revenue minus nothing as "profit" is worse
-  // than reporting nothing: the screenshot said 100% margin on ₹91,367.
+  // than reporting nothing.
   const fuelUncosted = (totalMSDL>0&&wacMSD<=0)||(totalHSDL>0&&wacHSD<=0);
   const grossProfit = revenue - totalCOGS;
   const netProfit = grossProfit - opex;
@@ -5367,6 +5370,50 @@ function renderPL(from, to, shiftRecs){
   // litres cost. Negative is real information, so it is not clamped at zero.
   const realizedFuelProfit = (sumMSDV - testValMSD - soldMSDL*wacMSD) +
                              (sumHSDV - testValHSD - soldHSDL*wacHSD);
+
+  return {
+    testMSDL:testMSDL, testHSDL:testHSDL, testValMSD:testValMSD, testValHSD:testValHSD,
+    testHydro:testHydro, testValue:testValue, hydMSDL:hydMSDL, hydHSDL:hydHSDL,
+    revenueGross:revenueGross, revenue:revenue, revFuel:revFuel,
+    revOilPack:revOilPack, revStock:revStock,
+    fuelLoadsData:fuelLoadsData, loadsInRange:loadsInRange, fuelCOGS:fuelCOGS,
+    fuelRevEstimate:fuelRevEstimate, fuelProfitFromLoads:fuelProfitFromLoads,
+    oilRegData:oilRegData, oilInRange:oilInRange, oilCOGS:oilCOGS, oilProfit:oilProfit,
+    purchases:purchases, handoverTotal:handoverTotal,
+    opexGross:opexGross, opex:opex,
+    totalMSDL:totalMSDL, totalHSDL:totalHSDL, sumMSDV:sumMSDV, sumHSDV:sumHSDV,
+    wacMSD:wacMSD, wacHSD:wacHSD, soldMSDL:soldMSDL, soldHSDL:soldHSDL,
+    cogsFuel:cogsFuel, costRatio:costRatio, nonFuelRev:nonFuelRev,
+    cogsExact:cogsExact, unpricedRev:unpricedRev, cogsEstimated:cogsEstimated,
+    cogsNonFuel:cogsNonFuel, totalCOGS:totalCOGS,
+    fuelUncosted:fuelUncosted, grossProfit:grossProfit, netProfit:netProfit,
+    grossMarginPct:grossMarginPct, netMarginPct:netMarginPct,
+    realizedFuelProfit:realizedFuelProfit, shifts:recs.length
+  };
+}
+
+function renderPL(from, to, shiftRecs){
+  const section=document.getElementById('pl_section');
+  if(!shiftRecs||!shiftRecs.length){section.style.display='none';return;}
+  section.style.display='block';
+  document.getElementById('pl_period').textContent=_formatRange(from,to);
+
+  // Every figure below comes from the shared engine, so this page and the
+  // dashboard widget can never drift apart again.
+  const _pl = _plCore(shiftRecs, from, to);
+  const testMSDL=_pl.testMSDL, testHSDL=_pl.testHSDL, testValue=_pl.testValue;
+  const revenue=_pl.revenue, revFuel=_pl.revFuel, revOilPack=_pl.revOilPack, revStock=_pl.revStock;
+  const loadsInRange=_pl.loadsInRange, oilInRange=_pl.oilInRange, oilProfit=_pl.oilProfit;
+  const purchases=_pl.purchases, handoverTotal=_pl.handoverTotal, opex=_pl.opex;
+  const totalMSDL=_pl.totalMSDL, totalHSDL=_pl.totalHSDL;
+  const wacMSD=_pl.wacMSD, wacHSD=_pl.wacHSD;
+  const soldMSDL=_pl.soldMSDL, soldHSDL=_pl.soldHSDL;
+  const cogsFuel=_pl.cogsFuel, nonFuelRev=_pl.nonFuelRev, unpricedRev=_pl.unpricedRev;
+  const cogsExact=_pl.cogsExact, cogsEstimated=_pl.cogsEstimated, cogsNonFuel=_pl.cogsNonFuel;
+  const totalCOGS=_pl.totalCOGS, fuelUncosted=_pl.fuelUncosted;
+  const grossProfit=_pl.grossProfit, netProfit=_pl.netProfit;
+  const grossMarginPct=_pl.grossMarginPct, netMarginPct=_pl.netMarginPct;
+  const realizedFuelProfit=_pl.realizedFuelProfit;
 
   // ── CREDIT CUSTOMER DISCOUNT DEDUCTION (P&L only) ──
   // For each credit customer with a fixed ₹/L discount, estimate total discount given
