@@ -189,16 +189,17 @@ input::placeholder{color:var(--dim)}
    shrink simply grows past its 280px track and spills over the next column —
    which is exactly what the ledger was doing. min-width:0 lets the track win,
    and the button row wraps instead of pushing. */
-#customer_cards{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))!important;align-items:start}
-.cust-card{min-width:0;overflow:hidden;display:flex;flex-direction:column;gap:10px}
+#customer_cards{grid-template-columns:repeat(auto-fill,minmax(265px,1fr))!important;align-items:stretch}
+.cust-card{min-width:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;height:100%}
 .cust-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
-.cust-name{font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:var(--text);line-height:1.25;overflow-wrap:anywhere;min-width:0}
-.cust-head .badge{flex:0 0 auto;white-space:nowrap}
+.cust-name{font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:var(--text);line-height:1.3;overflow-wrap:break-word;word-break:normal;hyphens:none;min-width:0;flex:1 1 auto;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.6em}
+.cust-head .badge{flex:0 0 auto;white-space:nowrap;font-size:9px;padding:2px 6px;align-self:flex-start}
 .cust-boxes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;text-align:center}
 .cust-box{background:var(--s3);border-radius:4px;padding:8px 4px;min-width:0}
 .cust-box-t{font-size:9px;letter-spacing:1px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cust-box-v{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;overflow-wrap:anywhere;line-height:1.2}
-.cust-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:auto}
+.cust-box-v{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cust-foot{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-top:auto}
+.cust-foot .cust-count{flex:1 0 100%}
 .cust-count{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);white-space:nowrap}
 .cust-actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;flex:1 1 auto}
 .cust-actions button{padding:5px 9px!important;font-size:10px!important;letter-spacing:.5px;white-space:nowrap;flex:0 0 auto}
@@ -1427,7 +1428,8 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <span id="cust_disc_display" style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--diesel)">₹0/L</span>
         <button onclick="editCustDiscount()" style="font-family:'Syne',sans-serif;font-size:10px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:2px 8px;border-radius:3px;cursor:pointer;font-weight:700">EDIT</button>
       </div>
-      <button class="btn btn-g" onclick="openLedgerAdjust()" style="margin-left:auto;padding:6px 14px">⇄ ADJUST / TRANSFER</button>
+      <button class="save-btn" onclick="openLedgerPayment()" style="margin-left:auto;padding:6px 14px">&#8377; RECEIVE PAYMENT</button>
+      <button class="btn btn-g" onclick="openLedgerAdjust()" style="padding:6px 14px">⇄ ADJUST / TRANSFER</button>
       <button class="btn btn-g" onclick="editCustBilling()" style="padding:6px 14px">🏢 BILLING DETAILS</button>
       <button class="btn btn-g" onclick="generateCustomerInvoice(currentLedgerCustomer)" style="padding:6px 14px">🧾 INVOICE PDF</button>
       <button class="btn btn-g" onclick="generateCustomerStatement(currentLedgerCustomer)" style="padding:6px 14px">📄 STATEMENT PDF</button>
@@ -1474,6 +1476,39 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <div style="display:flex;gap:8px">
           <button class="save-btn" onclick="submitLedgerAdjust()">&#10003; RECORD</button>
           <button class="btn btn-g" onclick="document.getElementById('adj_panel').style.display='none'">CANCEL</button>
+        </div>
+      </div>
+    </div>
+    <!-- Lump-sum payback. Lands on the unpaid bills oldest first. -->
+    <div id="pay_panel" style="display:none;margin-bottom:12px">
+      <div class="card" style="border-color:var(--green)">
+        <div class="card-head" style="color:var(--green)">RECEIVE PAYMENT &mdash; <span id="pay_panel_name"></span></div>
+        <div class="fgrid" style="margin-bottom:10px">
+          <div><div class="flabel">AMOUNT RECEIVED (₹)</div>
+            <input type="number" id="pay_bulk_amt" placeholder="0" min="0" step="0.01" oninput="bulkPayPreview()"></div>
+          <div><div class="flabel">DATE</div>
+            <input type="date" id="pay_bulk_date" class="date-inp"></div>
+          <div><div class="flabel">MODE</div>
+            <select id="pay_bulk_mode">
+              <option>Cash</option><option>GPay</option><option>Paytm</option>
+              <option>Bank Transfer</option><option>Cheque</option><option>Other</option>
+            </select></div>
+          <div><div class="flabel">NOTE</div>
+            <input type="text" id="pay_bulk_note" placeholder="e.g. cheque no. 401233"></div>
+        </div>
+        <div style="margin-bottom:10px">
+          <button class="btn btn-g" id="pay_full_btn" onclick="fillFullPayment()" style="padding:5px 12px;font-size:11px">SETTLE ALL BILLS</button>
+        </div>
+        <div id="pay_bulk_preview" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text);margin-bottom:10px;min-height:16px;line-height:1.6"></div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:10px;line-height:1.6">
+          The amount is laid across the unpaid bills oldest first, the same rule
+          the shift credit-back already follows. Anything over what he owes is
+          held as an advance, not discarded. Every bill it touches is stamped
+          with the payment reference.
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="save-btn" onclick="submitBulkPayment()">&#10003; RECORD PAYMENT</button>
+          <button class="btn btn-g" onclick="document.getElementById('pay_panel').style.display='none'">CANCEL</button>
         </div>
       </div>
     </div>
@@ -5787,7 +5822,7 @@ function setLedgerPeriod(p){ LED_PERIOD=p; renderLedger(); }
 // Is something on the ledger page half-finished? A background sync must not
 // wipe a form somebody is in the middle of typing into.
 function _ledgerBusy(){
-  const open=['ledger_form','ledger_form2','adj_panel','cust_bill_panel','cust_disc_panel']
+  const open=['ledger_form','ledger_form2','adj_panel','pay_panel','cust_bill_panel','cust_disc_panel']
     .some(function(id){const e=document.getElementById(id);return e&&e.style.display==='block';});
   if(open)return true;
   const a=document.activeElement;
@@ -5904,7 +5939,7 @@ function renderLedger(){
     // Three fixed boxes, whatever the state — the labels change, the layout
     // does not, so cards in the same row line up.
     const _box=(label,value,colour)=>
-      '<div class="cust-box"><div class="cust-box-t">'+label+'</div>'+
+      '<div class="cust-box" title="'+label+': '+value+'"><div class="cust-box-t">'+label+'</div>'+
       '<div class="cust-box-v" style="color:'+colour+'">'+value+'</div></div>';
     const _money=n=>'\u20B9'+Math.round(n).toLocaleString('en-IN');
     const boxes = c.advanceReceived>0
@@ -5916,7 +5951,7 @@ function renderLedger(){
         _box(balanceLabel,balanceVal,balanceCls);
     card.innerHTML=`
       <div class="cust-head">
-        <div class="cust-name">${_esc(name)}</div>
+        <div class="cust-name" title="${_esc(name)}">${_esc(name)}</div>
         ${statusBadge}
       </div>
       <div class="cust-boxes">${boxes}</div>
@@ -5984,6 +6019,7 @@ function openLedgerDetail(name){
   document.getElementById('cust_disc_panel').style.display='none';
   const _bp=document.getElementById('cust_bill_panel'); if(_bp)_bp.style.display='none';
   const _ap=document.getElementById('adj_panel'); if(_ap)_ap.style.display='none';
+  const _pp=document.getElementById('pay_panel'); if(_pp)_pp.style.display='none';
   const discRate=getCustDiscount(name);
   document.getElementById('cust_disc_display').textContent=discRate>0?'₹'+discRate.toFixed(2)+'/L':'₹0/L';
 
@@ -9855,6 +9891,161 @@ function submitLedgerAdjust(){
   refreshCreditSelects();refreshCredBackSelects();
   openLedgerDetail(from);
   showToast('Adjustment recorded on both accounts — '+ref);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// BULK PAYBACK
+// Customers settle in lump sums — "₹50,000 against the account" — not bill by
+// bill. Recording that meant typing into every row by hand and doing the
+// arithmetic in your head, which is where the mistakes came from. This takes
+// one amount and lays it across the unpaid bills oldest first (the rule the
+// shift-level credit-back already follows), so what is still owing falls out
+// of the allocation instead of being guessed. Anything paid beyond the bills
+// is parked as an advance rather than silently discarded.
+// ══════════════════════════════════════════════════════════════════
+function _custUnpaid(name){
+  return ledger.filter(function(e){
+    return e.customer===name && (e.amount||0)>0 && (e.paidBack||0) < e.amount-0.005;
+  }).sort(function(a,b){
+    return String(a.date||'').localeCompare(String(b.date||'')) || ((a.id||0)-(b.id||0));
+  });
+}
+function _custPosition(name){
+  var creditGiven=0,paid=0,advReceived=0,advUsed=0;
+  ledger.forEach(function(e){
+    if(e.customer!==name)return;
+    if((e.amount||0)>=0){ creditGiven+=e.amount; paid+=(e.paidBack||0); }
+    else { advReceived+=Math.abs(e.amount); advUsed+=(e.paidBack||0); }
+  });
+  var due=_r2(creditGiven-paid), advLeft=_r2(advReceived-advUsed);
+  return {due:due, advLeft:advLeft, net:_r2(due-advLeft)};
+}
+// Pure: works out where the money would land without writing anything.
+function _bulkPayPlan(name,amount){
+  var remaining=_r2(amount), rows=[], settled=0, partial=0;
+  _custUnpaid(name).forEach(function(e){
+    if(remaining<=0.005)return;
+    var dueBefore=_r2(e.amount-(e.paidBack||0));
+    var applying=_r2(Math.min(dueBefore,remaining));
+    remaining=_r2(remaining-applying);
+    var dueAfter=_r2(dueBefore-applying);
+    if(dueAfter<=0.005)settled++; else partial++;
+    rows.push({entry:e,dueBefore:dueBefore,applying:applying,dueAfter:dueAfter});
+  });
+  return {rows:rows,leftover:remaining,settled:settled,partial:partial,applied:_r2(amount-remaining)};
+}
+function openLedgerPayment(){
+  var name=currentLedgerCustomer; if(!name)return;
+  var p=document.getElementById('pay_panel'); if(!p)return;
+  var open=p.style.display==='none';
+  p.style.display=open?'block':'none';
+  if(!open)return;
+  var nm=document.getElementById('pay_panel_name'); if(nm)nm.textContent=name;
+  var a=document.getElementById('pay_bulk_amt'); if(a)a.value='';
+  var n=document.getElementById('pay_bulk_note'); if(n)n.value='';
+  var d=document.getElementById('pay_bulk_date'); if(d)d.value=_isoLocal();
+  var m=document.getElementById('pay_bulk_mode'); if(m)m.value='Cash';
+  var pos=_custPosition(name);
+  var f=document.getElementById('pay_full_btn');
+  if(f){
+    f.textContent='SETTLE ALL BILLS — '+fmt(pos.due);
+    f.style.display=pos.due>0.005?'':'none';
+  }
+  bulkPayPreview();
+  if(a)a.focus();
+}
+function fillFullPayment(){
+  var name=currentLedgerCustomer; if(!name)return;
+  var a=document.getElementById('pay_bulk_amt'); if(!a)return;
+  var due=_custPosition(name).due;
+  a.value=due>0.005?due:'';
+  bulkPayPreview();
+}
+function bulkPayPreview(){
+  var el=document.getElementById('pay_bulk_preview'); if(!el)return;
+  var name=currentLedgerCustomer; if(!name){el.innerHTML='';return;}
+  var amt=_r2(parseFloat((document.getElementById('pay_bulk_amt')||{}).value)||0);
+  var pos=_custPosition(name);
+  if(amt<=0){
+    el.innerHTML='<span style="color:var(--muted)">Unpaid bills: <b>'+fmt(pos.due)+'</b>'+
+      (pos.advLeft>0.005?' · advance in hand: <b style="color:var(--green)">'+fmt(pos.advLeft)+'</b>':'')+
+      '. Enter the amount received.</span>';
+    return;
+  }
+  var plan=_bulkPayPlan(name,amt);
+  if(!plan.rows.length){
+    el.innerHTML='<span style="color:var(--green)">Nothing outstanding — the whole '+fmt(amt)+
+      ' will be held as an advance.</span>';
+    return;
+  }
+  var h='<div style="margin-bottom:6px">Oldest bills first — this lands on <b>'+plan.rows.length+
+        '</b> bill'+(plan.rows.length!==1?'s':'')+':</div>'+
+        '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+  plan.rows.forEach(function(r){
+    h+='<tr>'+
+       '<td style="padding:2px 6px 2px 0;color:var(--muted)">'+_esc(String(r.entry.date||''))+'</td>'+
+       '<td style="padding:2px 6px;color:var(--muted)">'+_esc(String(r.entry.fuel||''))+'</td>'+
+       '<td style="padding:2px 6px;text-align:right">'+fmt(r.dueBefore)+'</td>'+
+       '<td style="padding:2px 6px;text-align:right;color:var(--green)">&minus;'+fmt(r.applying)+'</td>'+
+       '<td style="padding:2px 0 2px 6px;text-align:right;color:'+(r.dueAfter>0.005?'var(--red)':'var(--muted)')+'">'+
+         (r.dueAfter>0.005?fmt(r.dueAfter)+' left':'settled')+'</td></tr>';
+  });
+  h+='</table>';
+  var stillDue=_r2(pos.due-plan.applied);
+  h+='<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">'+
+     plan.settled+' bill'+(plan.settled!==1?'s':'')+' fully settled'+
+     (plan.partial?', '+plan.partial+' part-paid':'')+' — <b style="color:'+
+     (stillDue>0.005?'var(--red)':'var(--green)')+'">'+
+     (stillDue>0.005?fmt(stillDue)+' still owing':'account cleared')+'</b>';
+  if(plan.leftover>0.005)
+    h+='<br><span style="color:var(--green)">'+fmt(plan.leftover)+
+       ' over the bills — held as an advance he can draw fuel against.</span>';
+  if(pos.advLeft>0.005)
+    h+='<br><span style="color:var(--muted)">Advance already in hand: '+fmt(pos.advLeft)+
+       ', untouched by this.</span>';
+  el.innerHTML=h+'</div>';
+}
+function submitBulkPayment(){
+  var name=currentLedgerCustomer; if(!name)return;
+  var amt=_r2(Math.abs(parseFloat((document.getElementById('pay_bulk_amt')||{}).value)||0));
+  if(!amt){showToast('Enter the amount received');return;}
+  var date=(document.getElementById('pay_bulk_date')||{}).value||_isoLocal();
+  var mode=(document.getElementById('pay_bulk_mode')||{}).value||'Cash';
+  var note=_clean((document.getElementById('pay_bulk_note')||{}).value||'');
+  var plan=_bulkPayPlan(name,amt);
+
+  var msg='Record '+fmt(amt)+' received from '+name+'?\n\n'+
+          plan.rows.length+' bill(s) affected — '+plan.settled+' settled'+
+          (plan.partial?', '+plan.partial+' part-paid':'')+'.';
+  if(plan.leftover>0.005)
+    msg+='\n\n'+fmt(plan.leftover)+' is more than he owes — it will be held as an advance.';
+  if(!confirm(msg))return;
+
+  var ref='PAY-'+_newId();
+  plan.rows.forEach(function(r){
+    var e=r.entry;
+    e.paidBack=_r2((e.paidBack||0)+r.applying);
+    // Stamp the bill so the figure is traceable back to the payment that moved it.
+    e.notes=((e.notes?e.notes+' | ':'')+ref+': '+fmt(r.applying)+' '+mode+' '+date).slice(0,480);
+    if(_currentUser)sbSaveLedgerEntry(e).catch(console.error);
+  });
+  if(plan.leftover>0.005){
+    var advEntry={id:_newId(),date:date,customer:name,
+      shift:(typeof shift!=='undefined'&&shift?shift:'morning'),
+      fuel:'ADVANCE',amount:-_r2(plan.leftover),paidBack:0,kind:'advance',
+      notes:ref+': excess of '+fmt(plan.leftover)+' carried forward as advance'};
+    ledger.push(advEntry);
+    if(_currentUser)sbSaveLedgerEntry(advEntry).catch(console.error);
+  }
+  saveLedger();
+  if(typeof logActivity==='function')
+    logActivity('bulk_payment','ledger',ref,name+' paid '+fmt(amt)+' ('+mode+') on '+date+
+      ' — '+plan.settled+' settled'+(plan.partial?', '+plan.partial+' part-paid':'')+
+      (plan.leftover>0.005?', '+fmt(plan.leftover)+' to advance':'')+(note?' • '+note:''));
+  var p=document.getElementById('pay_panel'); if(p)p.style.display='none';
+  refreshCreditSelects();refreshCredBackSelects();
+  openLedgerDetail(name);
+  showToast(fmt(amt)+' recorded — '+plan.settled+' bill(s) settled, '+ref);
 }
 
 // ══════════════════════════════════════════════════════════════════
