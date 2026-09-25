@@ -317,18 +317,13 @@ input::placeholder{color:var(--dim)}
 }
 @media(max-width:768px){.entry-grid{grid-template-columns:1fr}.sum-grid{grid-template-columns:1fr 1fr}.charts-grid{grid-template-columns:1fr}}
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- supabase-js: the vendored copy (precached by sw.js, so it loads offline); CDN only if it is missing -->
+<script src="vendor/supabase.min.js"></script>
+<script>if(typeof supabase==='undefined')document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.min.js"><\/script>');</script>
 <script>
 var _currentUser=null,_isOwner=false,_supa=null,_syncInProgress=false;
 var fuelOpeningMSD=0,fuelOpeningHSD=0;
-// Local fallback users (used if DB unreachable on first login).
-// Real auth happens against the `users` table in Supabase after migration.
-var USERS_DB=[
-  {username:'shriviswath',password:'Cksv@2006',role:'owner',display:'Shri Viswath C K'},
-  {username:'kalimuthu',  password:'kalimuthu',  role:'owner',display:'Kalimuthu M'},
-  {username:'kumutha',    password:'kumutha',    role:'owner',display:'Kumutha K'},
-  {username:'nithin',     password:'nithin',     role:'owner',display:'Nithin K'}
-];
+// Sign-in: see MF_AUTH_V1 below. No passwords live in this file.
 // Every table is filtered on user_id, and user_id used to be the username —
 // so each of the four owners had their OWN stock list, rates, opening volumes
 // and shifts. Four sets of books for one bunk. All rows now carry the station
@@ -385,71 +380,355 @@ function showApp(){
   },800);
 }
 
-// Authenticate against Supabase users table; fall back to local USERS_DB if offline.
-async function signIn(u,p){
-  var err=document.getElementById('login-err'),btn=document.getElementById('login-btn');
-  var pwHash=await sha256(p);
-  var loggedInUser=null;
-
-  // Try Supabase first (preferred)
-  if(SUPABASE_URL.startsWith('https://')&&typeof supabase!=='undefined'){
-    try{
-      if(!_supa)_supa=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
-      var resp=await _supa.from('users').select('*').eq('username',u).maybeSingle();
-      if(resp.data&&resp.data.password_hash===pwHash){
-        loggedInUser={username:resp.data.username,display:resp.data.display_name,role:resp.data.role};
-        // update last_login + login_count (fire-and-forget)
-        _supa.from('users').update({last_login:new Date().toISOString(),login_count:(resp.data.login_count||0)+1}).eq('username',u).then(function(){});
+// ── MF_AUTH_V1 · MF_AUTH_V2 — sign-in with Supabase Auth ───────────────────────────────
+// Every person has a real Supabase Auth account (username@manifuels.app — a
+// label, never e-mailed). Whether they belong to the station, and whether they
+// are an owner, comes from the server (mf_whoami), so it cannot be changed from
+// the browser. No passwords live in this file.
+//
+// A new person signs in once with the one-time password the owner gave them
+// (the owner's own first code comes from the Supabase SQL Editor), then
+// chooses their own password. Old passwords are not carried over — they were
+// published inside the previous version of this file.
+var MF_AUTH_DOMAIN='manifuels.vercel.app';   // the station's own address; nothing is ever e-mailed to it
+var _mfPending=null;       // {username, old, mode:'claim'|'change', cancel} while choosing a password
+var _mfSigningOut=false;
+var MF_SETUP_MSG='Server not set up for the new sign-in yet — the owner must run stage1_accounts.sql in Supabase.';
+function _mfEmail(u){ return String(u||'').trim().toLowerCase()+'@'+MF_AUTH_DOMAIN; }
+function _mfClient(){
+  if(!_supa&&SUPABASE_URL.startsWith('https://')&&typeof supabase!=='undefined')
+    _supa=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+  return _supa;
+}
+function _mfNetErr(e){
+  var m=String((e&&(e.message||e))||'');
+  return (typeof navigator!=='undefined'&&navigator.onLine===false)||/fetch|network|timeout|load failed/i.test(m);
+}
+function _mfLoginMsg(t,ok){
+  var e=document.getElementById('login-err');
+  if(e){ e.textContent=t||''; e.style.color=ok?'var(--green)':'var(--red)'; }
+}
+function _mfSetUser(p){
+  _currentUser={id:MF_STATION,email:p.username+'@'+MF_AUTH_DOMAIN,username:p.username,
+                role:p.role,display:p.display||p.username};
+  _isOwner=p.role==='owner';
+}
+function _mfCachedProfile(uid){
+  try{ var c=JSON.parse(localStorage.getItem('mf_profile')||'null'); return (c&&c.uid===uid)?c:null; }catch(e){ return null; }
+}
+// The stored session, read straight from storage — used only to open the app
+// offline when the token could not be refreshed yet.
+function _mfStoredUid(){
+  try{
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i);
+      if(/^sb-.*-auth-token$/.test(k)){
+        var v=JSON.parse(localStorage.getItem(k)||'null');
+        var u=v&&(v.user||(v.currentSession&&v.currentSession.user));
+        if(u&&u.id)return u.id;
       }
-    }catch(e){console.warn('DB login failed, trying local:',e);}
+    }
+  }catch(e){}
+  return null;
+}
+// → profile | {none:true} (signed in but not a member) | null (cannot tell: offline)
+async function _mfLoadProfile(session){
+  var uid=session&&session.user&&session.user.id; if(!uid)return null;
+  try{
+    var r=await _supa.rpc('mf_whoami');
+    if(r.error)throw r.error;
+    if(!r.data)return {none:true};
+    var p=Object.assign({uid:uid},r.data);
+    localStorage.setItem('mf_profile',JSON.stringify(p));
+    return p;
+  }catch(e){
+    if(!_mfNetErr(e))console.error('mf_whoami failed:',e&&e.message);
+    if(/mf_whoami/.test(String(e&&e.message)))return _mfCachedProfile(uid)||{setup:true};
+    return _mfCachedProfile(uid);
   }
+}
+async function _mfLegacy(u,p){
+  try{
+    var r=await _mfClient().rpc('mf_invite_check',{p_username:u,p_password:p});
+    if(r.error)return /mf_invite_check/.test(r.error.message)?{setup:true}:null;
+    return r.data;
+  }catch(e){ return null; }
+}
+function _mfDone(){
+  _mfPending=null; _mfHideNewPw(); _mfLoginMsg('');
+  var pw=document.getElementById('login-pass'); if(pw)pw.value='';
+  if(typeof logActivity==='function')logActivity('login','user',_currentUser.username,'Signed in');
+  showApp();
+}
 
-  // Fallback to local USERS_DB (only if DB lookup didn't succeed)
-  if(!loggedInUser){
-    var localUser=USERS_DB.find(function(x){return x.username===u&&x.password===p;});
-    if(localUser)loggedInUser={username:u,display:localUser.display,role:localUser.role};
+// Boot: an existing session opens the app straight away (offline too).
+async function mfAuthBoot(){
+  var c=_mfClient();
+  if(!c){
+    // Library could not load (offline before it was ever cached): open with the
+    // saved session of this phone; nothing syncs until it loads.
+    var su=_mfStoredUid(), sp=su&&_mfCachedProfile(su);
+    if(sp&&!sp.must_change){ _mfSetUser(sp); showApp(); return; }
+    showLoginScreen(); _mfLoginMsg('Could not load the sign-in library — connect to the internet and reload.'); return;
   }
+  try{
+    c.auth.onAuthStateChange(function(ev){
+      // Refresh token revoked (password reset / removed by the owner) or expired for good.
+      if(ev==='SIGNED_OUT'&&_currentUser&&!_mfSigningOut){
+        _currentUser=null;_isOwner=false;showLoginScreen();
+        _mfLoginMsg('You have been signed out — please sign in again.');
+      }
+    });
+  }catch(e){}
+  var s=null; try{ s=(await c.auth.getSession()).data.session; }catch(e){}
+  if(!s){
+    // Offline with an expired token: open with the last profile of this account;
+    // sync picks up once the token refreshes.
+    var uid=_mfStoredUid(), cp=uid&&_mfCachedProfile(uid);
+    if(cp&&!cp.must_change&&(typeof navigator!=='undefined'&&navigator.onLine===false)){ _mfSetUser(cp); showApp(); return; }
+    showLoginScreen(); return;
+  }
+  // Known account on this phone: open now, confirm with the server in the background.
+  var cp0=_mfCachedProfile(s.user&&s.user.id);
+  if(cp0&&!cp0.must_change){
+    _mfSetUser(cp0); showApp();
+    _mfLoadProfile(s).then(function(p){
+      if(!p||!_currentUser)return;
+      if(p.none){ signOut(); _mfLoginMsg('This account is no longer a member of the station.'); return; }
+      if(p.must_change||p.role!==cp0.role)location.reload();   // role changed by the owner
+    });
+    return;
+  }
+  var p=await _mfLoadProfile(s);
+  if(!p){ showLoginScreen(); _mfLoginMsg('Could not check your account — connect to the internet and try again.'); return; }
+  if(p.setup){ await _mfSignOutQuiet(); showLoginScreen(); _mfLoginMsg(MF_SETUP_MSG); return; }
+  if(p.none){ await _mfSignOutQuiet(); showLoginScreen(); _mfLoginMsg('This account is not a member of the station. Ask the owner.'); return; }
+  _mfSetUser(p);
+  if(p.must_change){ _mfPending={username:p.username,mode:'change'}; showLoginScreen();
+    _mfShowNewPw('The owner set a temporary password for you. Choose your own to continue.'); return; }
+  showApp();
+}
+async function _mfSignOutQuiet(){
+  _mfSigningOut=true;
+  try{ await _mfClient().auth.signOut(); }catch(e){}
+  _mfSigningOut=false;
+}
 
-  if(loggedInUser){
-    _currentUser={id:MF_STATION,email:loggedInUser.username+'@manifuels.local',
-                  username:loggedInUser.username,role:loggedInUser.role,display:loggedInUser.display};
-    _isOwner=loggedInUser.role==='owner';
-    sessionStorage.setItem('mf_user',JSON.stringify(_currentUser));
-    // Log login to activity_log (fire-and-forget)
-    if(typeof logActivity==='function')logActivity('login','user',loggedInUser.username,'Signed in');
-    showApp();
-  }else{
-    if(err)err.textContent='Invalid username or password';
-    if(btn){btn.textContent='SIGN IN';btn.disabled=false;}
+async function signIn(u,p){
+  var c=_mfClient();
+  if(!c){ _mfLoginMsg('No connection to the server.'); return; }
+  var r; try{ r=await c.auth.signInWithPassword({email:_mfEmail(u),password:p}); }catch(e){ r={error:e}; }
+  if(!r.error&&r.data&&r.data.session){
+    var prof=await _mfLoadProfile(r.data.session);
+    if(!prof){ _mfLoginMsg('Signed in, but your account could not be loaded. Check the connection.'); return; }
+    if(prof.setup){ await _mfSignOutQuiet(); _mfLoginMsg(MF_SETUP_MSG); return; }
+    if(prof.none){ await _mfSignOutQuiet(); _mfLoginMsg('This account is not a member of the station. Ask the owner.'); return; }
+    _mfSetUser(prof);
+    if(prof.must_change){ _mfPending={username:prof.username,old:p,mode:'change'};
+      _mfShowNewPw('The owner set a temporary password for you. Choose your own to continue.'); return; }
+    _mfDone(); return;
   }
+  if(_mfNetErr(r.error)){ _mfLoginMsg('No internet — signing in on a phone the first time needs a connection.'); return; }
+  // No account yet: a one-time password from the owner lets you create one.
+  var lc=await _mfLegacy(u,p);
+  if(lc&&lc.setup){ _mfLoginMsg(MF_SETUP_MSG); return; }
+  if(lc&&lc.ok){
+    _mfPending={username:u,old:p,mode:'claim'};
+    _mfShowNewPw('Welcome'+(lc.display?', '+lc.display:'')+'. One-time step: choose your own password. The one-time password stops working after this.');
+    return;
+  }
+  if(lc&&lc.locked){ _mfLoginMsg('Too many wrong passwords for this invite — ask the owner to invite you again.'); return; }
+  _mfLoginMsg('Invalid username or password. New here? Use the one-time password the owner gave you.');
 }
 
 async function doLogin(){
   var u=document.getElementById('login-email'),p=document.getElementById('login-pass');
-  var e=document.getElementById('login-err'),b=document.getElementById('login-btn');
+  var b=document.getElementById('login-btn');
   var un=u?u.value.trim().toLowerCase():'',pw=p?p.value:'';
-  if(!un||!pw){if(e)e.textContent='Enter username and password';return;}
+  if(!un||!pw){ _mfLoginMsg('Enter username and password'); return; }
   if(b){b.textContent='SIGNING IN...';b.disabled=true;}
-  await signIn(un,pw);
-  if(b){b.textContent='SIGN IN';b.disabled=false;}
+  try{ await signIn(un,pw); }finally{ if(b){b.textContent='SIGN IN';b.disabled=false;} }
 }
 function signOut(){
   if(typeof logActivity==='function'&&_currentUser)logActivity('logout','user',_currentUser.username,'Signed out');
-  sessionStorage.removeItem('mf_user');_currentUser=null;_isOwner=false;showLoginScreen();
+  _mfSignOutQuiet();
+  try{ localStorage.removeItem('mf_profile'); sessionStorage.removeItem('mf_user'); }catch(e){}
+  _currentUser=null;_isOwner=false;
+  var d=document.getElementById('user-dropdown'); if(d)d.remove();
+  showLoginScreen();
 }
-function initAuth(){
-  var s=sessionStorage.getItem('mf_user');
-  if(s){try{
-    _currentUser=JSON.parse(s);
-    _currentUser.id=MF_STATION;   // sessions saved before this change still hold a username here
-    _isOwner=_currentUser.role==='owner';
-  }catch(e){sessionStorage.removeItem('mf_user');_currentUser=null;}}
+// Kept for callers of the old API. Sessions now live with Supabase Auth; the
+// old sessionStorage session (which held the role, editable in devtools) is ignored.
+function initAuth(){ try{ sessionStorage.removeItem('mf_user'); }catch(e){} }
+
+// ── choose-a-new-password panel (inside the sign-in card) ──
+function _mfShowNewPw(text,cancelable){
+  var card=document.getElementById('login-btn'); if(!card)return; card=card.parentNode;
+  var el=document.getElementById('mf-newpw');
+  if(!el){
+    el=document.createElement('div'); el.id='mf-newpw';
+    var inp='width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:10px 14px;font-family:\'JetBrains Mono\',monospace;font-size:13px;box-sizing:border-box';
+    var lab='display:block;font-size:10px;letter-spacing:2px;color:var(--muted);margin:0 0 6px;font-weight:700';
+    el.innerHTML='<div id="mf-newpw-text" style="font-size:12px;line-height:1.55;color:var(--text);margin-bottom:14px;font-family:\'JetBrains Mono\',monospace"></div>'+
+      '<label style="'+lab+'">NEW PASSWORD</label><input type="password" id="mf-np1" autocomplete="new-password" style="'+inp+';margin-bottom:12px">'+
+      '<label style="'+lab+'">TYPE IT AGAIN</label><input type="password" id="mf-np2" autocomplete="new-password" style="'+inp+'" onkeydown="if(event.key===\'Enter\')mfSubmitNewPw()">'+
+      '<div style="font-size:10px;color:var(--muted);margin:8px 0 14px;font-family:\'JetBrains Mono\',monospace">At least 8 characters, not your username.</div>'+
+      '<button id="mf-np-btn" onclick="mfSubmitNewPw()" style="width:100%;background:var(--petrol);color:#000;font-family:\'Syne\',sans-serif;font-weight:800;font-size:12px;letter-spacing:3px;padding:12px;border:none;border-radius:6px;cursor:pointer">SAVE PASSWORD</button>'+
+      '<button id="mf-np-cancel" onclick="mfCancelNewPw()" style="width:100%;margin-top:8px;background:transparent;color:var(--muted);font-family:\'Syne\',sans-serif;font-weight:700;font-size:11px;letter-spacing:2px;padding:10px;border:1px solid var(--border);border-radius:6px;cursor:pointer">CANCEL</button>';
+    card.insertBefore(el,document.getElementById('login-err'));
+  }
+  document.getElementById('mf-newpw-text').textContent=text||'';
+  document.getElementById('mf-np1').value=''; document.getElementById('mf-np2').value='';
+  if(_mfPending)_mfPending.cancel=!!cancelable;
+  ['login-email','login-pass'].forEach(function(id){ var f=document.getElementById(id); if(f)f.parentNode.style.display='none'; });
+  document.getElementById('login-btn').style.display='none';
+  el.style.display='block'; _mfLoginMsg('');
+  setTimeout(function(){ var f=document.getElementById('mf-np1'); if(f)f.focus(); },50);
 }
-initAuth();
+function _mfHideNewPw(){
+  var el=document.getElementById('mf-newpw'); if(el)el.style.display='none';
+  ['login-email','login-pass'].forEach(function(id){ var f=document.getElementById(id); if(f)f.parentNode.style.display=''; });
+  var b=document.getElementById('login-btn'); if(b)b.style.display='';
+}
+async function mfCancelNewPw(){
+  var P=_mfPending; _mfPending=null; _mfHideNewPw(); _mfLoginMsg('');
+  if(P&&P.cancel&&_currentUser){ showApp(); return; }         // changing from the menu: back to the app
+  if(P&&P.mode==='change'){ await _mfSignOutQuiet(); _currentUser=null; _isOwner=false; }
+}
+async function mfSubmitNewPw(){
+  var P=_mfPending; if(!P)return;
+  var a=document.getElementById('mf-np1').value, b=document.getElementById('mf-np2').value;
+  if(a.length<8){ _mfLoginMsg('At least 8 characters.'); return; }
+  if(a!==b){ _mfLoginMsg('The two passwords do not match.'); return; }
+  if(a.trim().toLowerCase()===String(P.username).toLowerCase()){ _mfLoginMsg('Do not use your username as the password.'); return; }
+  if(P.old&&a===P.old){ _mfLoginMsg('Choose a password different from the old one.'); return; }
+  var btn=document.getElementById('mf-np-btn'); btn.disabled=true; btn.textContent='SAVING...';
+  try{
+    var c=_mfClient();
+    if(P.mode==='claim'){
+      var s=await c.auth.signUp({email:_mfEmail(P.username),password:a});
+      if(s.error&&_mfNetErr(s.error)){ _mfLoginMsg('No internet — try again when connected.'); return; }
+      if(s.error||!s.data||!s.data.session){
+        // The account may already exist from an attempt that was cut off before
+        // joining (network drop): sign in with the password just chosen and finish.
+        var si=await c.auth.signInWithPassword({email:_mfEmail(P.username),password:a});
+        if(si.error||!si.data||!si.data.session){
+          var em=String((si.error&&si.error.message)||(s.error&&s.error.message)||'');
+          _mfLoginMsg(/confirm/i.test(em)||(!s.error&&!(s.data&&s.data.session))
+            ?'Supabase is asking for e-mail confirmation. The owner must turn off "Confirm email" (Supabase → Authentication → Email), then ask the owner to invite you again.'
+            :'An account with this username already exists with a different password. Ask the owner to invite you again.');
+          return;
+        }
+        s=si;
+      }
+      var cl=await c.rpc('mf_claim_member',{p_username:P.username,p_invite_password:P.old});
+      var bad=cl.error?cl.error.message:(!cl.data?'no membership returned':cl.data.error);
+      if(bad){ await _mfSignOutQuiet(); _mfLoginMsg('Could not join the station: '+bad); return; }
+      var prof=Object.assign({uid:s.data.session.user.id},cl.data);
+      localStorage.setItem('mf_profile',JSON.stringify(prof)); _mfSetUser(prof);
+    }else{
+      var u=await c.auth.updateUser({password:a});
+      if(u.error){ _mfLoginMsg(_mfNetErr(u.error)?'No internet — try again when connected.':u.error.message); return; }
+      await c.rpc('mf_password_changed');
+      try{ var cp=JSON.parse(localStorage.getItem('mf_profile')||'null'); if(cp){ cp.must_change=false; localStorage.setItem('mf_profile',JSON.stringify(cp)); } }catch(e){}
+      if(typeof logActivity==='function')logActivity('password','user',P.username,'Password changed');
+      if(P.cancel){ _mfPending=null; _mfHideNewPw(); showApp(); showToast('✓ Password changed'); return; }
+    }
+    _mfDone();
+  }finally{ btn.disabled=false; btn.textContent='SAVE PASSWORD'; }
+}
+function mfChangePassword(){
+  var d=document.getElementById('user-dropdown'); if(d)d.remove();
+  if(!_currentUser)return;
+  _mfPending={username:_currentUser.username,mode:'change'};
+  showLoginScreen(); _mfShowNewPw('Choose a new password for '+_currentUser.username+'. You stay signed in on this phone.',true);
+}
+
+// ── Members (owners only; the server enforces it too) ──
+function _mfGenTemp(){
+  var a='abcdefghjkmnpqrstuvwxyz23456789', s='';
+  var r=new Uint32Array(8); (window.crypto||{getRandomValues:function(x){for(var i=0;i<x.length;i++)x[i]=Math.random()*1e9;return x;}}).getRandomValues(r);
+  for(var i=0;i<8;i++)s+=a[r[i]%a.length];
+  return s.slice(0,4)+'-'+s.slice(4);
+}
+async function mfOpenMembers(note){
+  var d=document.getElementById('user-dropdown'); if(d)d.remove();
+  if(!_isOwner){ showToast('🔒 Owners only'); return; }
+  var ov=document.getElementById('mf-members');
+  if(!ov){
+    ov=document.createElement('div'); ov.id='mf-members';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:950;display:flex;align-items:flex-start;justify-content:center;padding:40px 12px;overflow:auto';
+    ov.onclick=function(e){ if(e.target===ov)ov.remove(); };
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML='<div style="background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:18px;width:100%;max-width:640px;font-family:\'JetBrains Mono\',monospace;font-size:12px">Loading…</div>';
+  var r; try{ r=await _mfClient().rpc('mf_members'); }catch(e){ r={error:e}; }
+  var box=ov.firstChild;
+  if(r.error){ box.innerHTML='<div style="color:var(--red)">'+_esc(_mfNetErr(r.error)?'No internet.':r.error.message)+'</div>'; return; }
+  var rows=(r.data||[]).map(function(m){
+    var me=_currentUser&&m.username===_currentUser.username;
+    var col=m.status==='active'?'var(--green)':(/locked/.test(m.status)?'var(--red)':'var(--diesel)');
+    return '<tr><td style="padding:7px 6px"><b>'+_esc(m.username)+'</b><div style="color:var(--muted);font-size:10px">'+_esc(m.display||'')+'</div></td>'+
+      '<td style="padding:7px 6px">'+_esc(m.role)+'</td>'+
+      '<td style="padding:7px 6px;color:'+col+'">'+_esc(m.status)+
+        (m.last_sign_in?'<div style="color:var(--muted);font-size:10px">last in '+new Date(m.last_sign_in).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})+'</div>':'')+'</td>'+
+      '<td style="padding:7px 0 7px 6px;text-align:right;width:1%">'+
+        (me?'<span style="color:var(--muted);font-size:10px">you</span>':
+        '<button class="btn btn-g" style="padding:4px 8px;font-size:10px;display:block;width:100%;margin-bottom:4px" data-u="'+_esc(m.username)+'" data-r="'+_esc(m.role)+'" onclick="mfMemberReset(this.dataset.u,this.dataset.r)">RESET</button> '+
+        '<button class="btn btn-d" style="padding:4px 8px;font-size:10px;display:block;width:100%" data-u="'+_esc(m.username)+'" onclick="mfMemberRemove(this.dataset.u)">REMOVE</button>')+
+      '</td></tr>';
+  }).join('');
+  var fs='background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 9px;font-family:inherit;font-size:12px;min-width:0';
+  box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+      '<div style="font-family:\'Syne\',sans-serif;font-weight:800;letter-spacing:2px">👥 MEMBERS</div>'+
+      '<button class="btn btn-g" style="padding:4px 10px" onclick="document.getElementById(\'mf-members\').remove()">✕</button></div>'+
+    (note?'<div style="background:var(--s3);border-left:3px solid var(--green);padding:9px 11px;margin-bottom:12px;line-height:1.6">'+note+'</div>':'')+
+    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="color:var(--muted);font-size:10px;text-align:left">'+
+      '<th style="padding:4px 6px">USER</th><th style="padding:4px 6px">ROLE</th><th style="padding:4px 6px">STATUS</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">'+
+      '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px;font-weight:700">ADD A PERSON</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+        '<input id="mfm_u" placeholder="username (e.g. ravi)" style="'+fs+'">'+
+        '<input id="mfm_n" placeholder="full name" style="'+fs+'">'+
+        '<select id="mfm_r" style="'+fs+'"><option value="staff">staff</option><option value="manager">manager</option><option value="owner">owner</option></select>'+
+        '<button class="save-btn" style="margin:0;padding:8px" onclick="mfMemberAdd()">INVITE</button></div>'+
+      '<div style="color:var(--muted);font-size:10px;margin-top:8px;line-height:1.6">They get a temporary password to sign in with once; the app then makes them choose their own. '+
+      'Staff: the app hides owner pages (P&amp;L, drawings, activity log, this panel). The database itself keeps drawings and the activity log owners-only and lets only owners delete records permanently; '+
+      'other business records (shifts, credit, stock, salaries) are readable by every member — add staff you trust with those numbers.</div></div>';
+}
+async function _mfMemberCall(fn,args){
+  try{ var r=await _mfClient().rpc(fn,args); if(r.error)throw r.error; return {ok:true,msg:r.data}; }
+  catch(e){ return {ok:false,msg:_mfNetErr(e)?'No internet.':(e.message||String(e))}; }
+}
+async function mfMemberAdd(){
+  var u=document.getElementById('mfm_u').value.trim().toLowerCase(), n=document.getElementById('mfm_n').value.trim(), role=document.getElementById('mfm_r').value;
+  if(!/^[a-z0-9._-]{3,32}$/.test(u)){ showToast('Username: 3–32 letters or digits'); return; }
+  var t=_mfGenTemp(), res=await _mfMemberCall('mf_set_member',{p_username:u,p_display:n||u,p_role:role,p_temp_password:t});
+  if(!res.ok){ showToast('✗ '+res.msg); return; }
+  if(typeof logActivity==='function')logActivity('member_add','user',u,role);
+  mfOpenMembers('Invited <b>'+_esc(u)+'</b>. Tell them: username <b>'+_esc(u)+'</b>, temporary password <b style="font-size:14px;letter-spacing:1px">'+t+'</b>. It works once; they choose their own at first sign-in.');
+}
+async function mfMemberReset(u,role){
+  if(!confirm('Reset the password for '+u+'? They are signed out on every phone and must use the temporary password you give them.'))return;
+  var t=_mfGenTemp(), res=await _mfMemberCall('mf_set_member',{p_username:u,p_display:null,p_role:role,p_temp_password:t});
+  if(!res.ok){ showToast('✗ '+res.msg); return; }
+  if(typeof logActivity==='function')logActivity('member_reset','user',u,'Password reset');
+  mfOpenMembers('New temporary password for <b>'+_esc(u)+'</b>: <b style="font-size:14px;letter-spacing:1px">'+t+'</b>. They choose their own at next sign-in.');
+}
+async function mfMemberRemove(u){
+  if(!confirm('Remove '+u+'? They lose access immediately. Their past entries stay.'))return;
+  var res=await _mfMemberCall('mf_remove_member',{p_username:u});
+  if(!res.ok){ showToast('✗ '+res.msg); return; }
+  if(typeof logActivity==='function')logActivity('member_remove','user',u,'Removed');
+  mfOpenMembers('Removed <b>'+_esc(u)+'</b>.');
+}
+
 document.addEventListener('DOMContentLoaded',function(){
   if(typeof _outboxBadge==='function')_outboxBadge();
-  if(_currentUser)showApp();else showLoginScreen();
+  showLoginScreen();
+  mfAuthBoot();
 });
+initAuth();
 // END CRITICAL BLOCK — AUTH / SESSION
 </script>
 </head>
@@ -11965,9 +12244,9 @@ function showSyncHealth(){
   var hint='';
   var allErr=jobs.map(function(j){return j.lastError||'';}).join(' ');
   if(/column .* does not exist|Could not find the '.*' column/i.test(allErr))
-    hint='A column the app writes is missing from the database. Run <b>db/apply_all.sql</b> in the Supabase SQL editor — 009 and 010 are the usual culprits.';
+    hint='A column the app writes is missing from the database. Run only the one migration that adds it (009 and 010 are the usual culprits). <b>Never run apply_all.sql or 004_grants.sql</b> — they switch the database security off.';
   else if(/row-level security|permission denied|401|JWT/i.test(allErr))
-    hint='RLS is on, or the grant was revoked, for that table. Run <b>db/004_grants.sql</b>.';
+    hint='The server refused this device: it is not signed in, or this account has no access. Sign out and sign in again; if it continues, the owner checks the Members panel. These entries are kept until they go through. <b>Do not run 004_grants.sql</b> — it switches the database security off.';
   else if(/relation .* does not exist/i.test(allErr))
     hint='That table does not exist yet. Run <b>db/010_ensure_tables.sql</b>.';
   else if(/invalid input syntax|out of range/i.test(allErr))
@@ -12092,12 +12371,15 @@ function toggleUserMenu(){
   var ex=document.getElementById('user-dropdown');if(ex){ex.remove();return;}
   var d=document.createElement('div');d.id='user-dropdown';
   d.style.cssText='position:fixed;top:56px;right:16px;background:var(--s2);border:1px solid var(--border2);border-radius:8px;padding:12px;z-index:600;min-width:200px;box-shadow:0 8px 32px rgba(0,0,0,.6)';
-  var email=(_currentUser&&(_currentUser.email||_currentUser.username))||'';
+  var who=_currentUser?((_currentUser.display||_currentUser.username)):'';
   var h='<div style="font-size:11px;color:var(--muted);margin-bottom:6px">SIGNED IN AS</div>';
-  h+='<div style="font-size:13px;color:var(--text);margin-bottom:8px">'+email+'</div>';
+  h+='<div style="font-size:13px;color:var(--text);margin-bottom:2px">'+_esc(who)+'</div>';
+  h+='<div style="font-size:10px;color:var(--muted);margin-bottom:8px">'+_esc(_currentUser?_currentUser.username+' · '+_currentUser.role:'')+'</div>';
   h+='<div style="border-top:1px solid var(--border);padding-top:10px">';
   h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="syncNow()">&#8635; SYNC NOW</button>';
   h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="this.closest(\'#user-dropdown\').remove();showSyncHealth()">&#9877; SYNC HEALTH</button>';
+  h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="mfChangePassword()">&#128273; CHANGE PASSWORD</button>';
+  if(_isOwner)h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="mfOpenMembers()">&#128101; MEMBERS</button>';
   h+='<button class="nav-tab" style="width:100%;padding:8px;color:var(--red)" onclick="signOut()">&#9211; SIGN OUT</button>';
   h+='</div>';
   d.innerHTML=h;document.body.appendChild(d);
@@ -12353,7 +12635,13 @@ function _outboxRead(){
   try{ return JSON.parse(localStorage.getItem(MF_OUTBOX_KEY)||'[]'); }catch(e){ return []; }
 }
 function _outboxWrite(q){
-  try{ localStorage.setItem(MF_OUTBOX_KEY, JSON.stringify(q.slice(-500))); }catch(e){}
+  // Never trim: every queued job is a real entry not yet on the server. (It
+  // used to keep only the newest 500, silently dropping the oldest.)
+  try{ localStorage.setItem(MF_OUTBOX_KEY, JSON.stringify(q)); }
+  catch(e){
+    console.error('Outbox: phone storage full with', q.length, 'unsent entries');
+    if(typeof showToast==='function')showToast('⚠ Phone storage full — '+q.length+' entries not yet sent. Connect and sync now.');
+  }
   _outboxBadge();
 }
 function _outboxQueue(table, op, rows, key, why){
@@ -12402,15 +12690,18 @@ async function _outboxFlush(){
       }
       if(error) throw new Error(error.message||'write rejected');
     }catch(e){
-      job.tries=(job.tries||0)+1;
       job.lastError=String(e.message||e);
+      // Not signed in / no access is not a bad row: keep it until someone signs
+      // in again, however long that takes. Only data errors count toward giving up.
+      job.authFail=/row-level security|permission denied|\bJWT\b|\b42501\b|not authenticated|Auth session missing|\bstatus (401|403)\b/i.test(job.lastError);
+      if(!job.authFail) job.tries=(job.tries||0)+1;
       if(job.tries===1||job.tries===5){
         console.error('Outbox rejected by server ['+job.table+']:', job.lastError);
         if(typeof showToast==='function' && job.tries===1)
           showToast('⚠ '+job.table+': '+job.lastError.slice(0,70));
       }
       // 20 attempts ≈ several days of retries before we stop trying
-      if(job.tries<20) kept.push(job);
+      if(job.authFail||job.tries<20) kept.push(job);
       else console.error('Outbox gave up on',job.table,job.lastError);
     }
   }
