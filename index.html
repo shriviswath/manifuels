@@ -636,6 +636,33 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
 .pl-band{margin-bottom:14px}
 .pl-band-t{font-family:'Syne',sans-serif;font-weight:800;font-size:10px;letter-spacing:2.5px;color:var(--muted);text-transform:uppercase;margin-bottom:8px}
 .pl-band-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.wk{background:var(--s2);border:1px solid var(--border2);border-radius:10px;padding:16px;margin-bottom:14px;font-size:12px}
+.wk-h{border-bottom:2px solid var(--border2);padding-bottom:8px;margin-bottom:10px}
+.wk-title{font-family:'Syne',sans-serif;font-weight:800;font-size:14px;letter-spacing:2px}
+.wk-meta{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:3px}
+.wk-sec{font-family:'Syne',sans-serif;font-weight:800;font-size:11px;letter-spacing:2.5px;color:var(--petrol);margin:18px 0 8px}
+.wk-tbl{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:11px}
+.wk-tbl th{text-align:left;font-family:'Syne',sans-serif;font-size:9px;letter-spacing:1.5px;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--border2);white-space:nowrap}
+.wk-tbl td{padding:5px 8px;border-bottom:1px dotted var(--border);vertical-align:top}
+.wk-tbl tr.wk-sub td{color:var(--muted)}
+.wk-tbl tr.wk-tot td{border-top:1px solid var(--border2)}
+.wk-tbl tr.wk-grand td{border-bottom:3px double var(--border2);color:var(--petrol)}
+.wk-stmt td:first-child{min-width:230px}
+.wk-nt{color:var(--blue);text-align:center}
+.wk-note{border:1px solid var(--border);border-radius:6px;margin-bottom:8px;background:var(--s1)}
+.wk-note>summary{cursor:pointer;padding:9px 12px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px}
+.wk-no{display:inline-block;min-width:26px;padding:1px 6px;margin-right:8px;border-radius:3px;background:rgba(77,166,255,.15);color:var(--blue);font-size:10px;text-align:center}
+.wk-body{padding:4px 12px 12px}
+.wk-sched{margin:8px 0}.wk-sched>summary{cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--petrol);padding:4px 0}
+.wk-f{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);font-style:italic}
+.wk-p{font-size:11px;line-height:1.6;margin:8px 0;color:var(--text)}
+.wk-tie{font-family:'JetBrains Mono',monospace;font-size:10px;margin-top:6px;padding:4px 8px;border-radius:4px}
+.wk-tie.ok{color:var(--green);background:rgba(61,220,132,.07)}.wk-tie.bad{color:var(--red);background:rgba(255,77,106,.08)}
+.wk-checks{display:flex;flex-direction:column;gap:6px}
+.wk-chk{display:flex;gap:10px;padding:9px 11px;border-radius:6px;background:var(--s3);border-left:3px solid var(--border2)}
+.wk-chk.ok{border-left-color:var(--green)}.wk-chk.warn{border-left-color:var(--diesel)}.wk-chk.bad{border-left-color:var(--red)}.wk-chk.info{border-left-color:var(--blue)}
+.wk-ico{font-weight:800;width:14px;flex-shrink:0}.wk-chk.ok .wk-ico{color:var(--green)}.wk-chk.warn .wk-ico{color:var(--diesel)}.wk-chk.bad .wk-ico{color:var(--red)}.wk-chk.info .wk-ico{color:var(--blue)}
+.wk-chk-t{font-weight:700;font-size:12px}.wk-chk-d{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);line-height:1.55;margin-top:2px}
 .pl-recon{background:var(--s2);border:1px solid var(--border);border-left:3px solid var(--petrol);border-radius:8px;padding:14px;margin-bottom:14px;font-family:'JetBrains Mono',monospace;font-size:11px}
 .pl-warn{background:rgba(255,176,32,.08);border:1px solid var(--diesel);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text);line-height:1.7}
 .pl-charts-row{display:grid;grid-template-columns:2fr 1fr;gap:12px}
@@ -963,7 +990,9 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <!-- Dynamic pack sizes (20ml/30ml etc) injected here when enabled -->
         <div id="pack_extra_sizes"></div>
       </div>
-      <div class="sec"><span class="dot dp"></span>LOOSE OIL (LITRES)</div>
+      <div class="sec" style="display:flex;align-items:center;justify-content:space-between"><span><span class="dot dp"></span>LOOSE OIL (LITRES)</span>
+        <button onclick="openLooseSetup()" type="button" style="font-family:'Syne',sans-serif;font-size:9px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:3px 8px;border-radius:3px;cursor:pointer;font-weight:700;letter-spacing:1px">⚙ LOOSE SETUP</button>
+      </div>
       <div class="card">
         <div class="rg">
           <div><label>OPENING (L) — last shift's closing</label><input type="number" id="oil_prev" placeholder="0.00" step="0.01" oninput="calc()"></div>
@@ -1242,6 +1271,8 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
     <div class="sec" style="margin:0;border:none"><span class="dot dpu"></span>OIL STOCK INVENTORY</div>
     <button class="btn btn-g" onclick="addStockItem()">＋ ADD ITEM</button>
   </div>
+  <!-- MF_PACK_STOCK_V1 -->
+  <div id="pack_stock_wrap" style="margin-bottom:12px"></div>
   <div class="card">
     <table class="stock-tbl" style="width:100%">
       <thead><tr><th>ITEM NAME</th><th>CATEGORY</th><th>QTY IN STOCK</th><th>RATE (₹)</th><th>UNIT</th><th title="Can be drawn as loose oil">LOOSE</th><th title="Litres in one bottle or can — used when it is opened for loose sale">L / UNIT</th><th>STATUS</th><th>VALUE</th><th></th></tr></thead>
@@ -1327,6 +1358,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <div class="pl-title"><span class="dot" style="background:var(--green)"></span>PROFIT &amp; LOSS — <span id="pl_period" style="color:var(--petrol)">—</span></div>
     </div>
     <div class="pl-grid" id="pl_cards"></div>
+    <div id="pl_workings"></div>
     <div class="pl-charts-row">
       <div class="chart-wrap"><div class="chart-title">DAILY P&amp;L TREND (₹)</div><canvas id="plTrendChart" height="200"></canvas></div>
       <div class="chart-wrap"><div class="chart-title">PROFIT COMPOSITION</div><canvas id="plDonutChart" height="200"></canvas></div>
@@ -2919,6 +2951,7 @@ function _deviceConfig(){
     tankCfg:     g('tankCfg'),
     orderCfg:    g('orderCfg'),
     looseOilCfg: g('looseOilCfg'),
+    packStockCfg: g('packStockCfg'),
     payrollCfg:  g('payrollCfg'),
     bizProfile:  (typeof bizProfile!=='undefined') ? bizProfile : g('bizProfile'),
     // Cost basis of the stock that was in the tank at the start, and whether
@@ -2981,7 +3014,11 @@ function _applyDeviceConfig(cfg){
   }
   if(cfg.tankCfg)     localStorage.setItem('tankCfg', JSON.stringify(cfg.tankCfg));
   if(cfg.orderCfg)    localStorage.setItem('orderCfg', JSON.stringify(cfg.orderCfg));
-  if(cfg.looseOilCfg) localStorage.setItem('looseOilCfg', JSON.stringify(cfg.looseOilCfg));
+  // Section-level newest-wins. The whole block is re-sent on ANY settings
+  // save, so a phone with an old loose setup used to overwrite a fresh one
+  // just by changing a rate.
+  _cfgApplyIfNewer('looseOilCfg', cfg.looseOilCfg);
+  _cfgApplyIfNewer('packStockCfg', cfg.packStockCfg);
   // Payroll rules must be identical everywhere or two owners compute two
   // different wages from the same register.
   if(cfg.payrollCfg)  localStorage.setItem('payrollCfg', JSON.stringify(cfg.payrollCfg));
@@ -3296,6 +3333,7 @@ function showPage(p){
     lbl.innerHTML=`<span>${parts[0]}</span> ${parts.slice(1).join(' ')}`;}
   if(p==='dashboard')renderDashboard();
   if(p==='entry'&&typeof mfOnEntryShown==='function')mfOnEntryShown();
+  if(p==='entry'&&typeof renderPackStockHint==='function')setTimeout(renderPackStockHint,0);
   if(p==='tally')updateTally();
   if(p==='history')renderHistory();
   if(p==='stock')renderMasterStock();
@@ -3599,7 +3637,8 @@ function setLooseSize(id,val){
   var cfg=_looseOilCfg(), v=parseFloat(val);
   cfg.sizes[String(id)]=(isFinite(v)&&v>0)?v:0;
   localStorage.setItem('looseOilCfg',JSON.stringify(
-    {stockId:cfg.stockId,litresPerUnit:cfg.litresPerUnit,allowed:cfg.allowed,sizes:cfg.sizes}));
+    {stockId:cfg.stockId,litresPerUnit:cfg.litresPerUnit,allowed:cfg.allowed,sizes:cfg.sizes,updatedAt:new Date().toISOString()}));
+  if(typeof _looseSetupRefresh==='function')_looseSetupRefresh();
   if(_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(function(){});
   if(typeof renderLooseOpenRows==='function')renderLooseOpenRows();
   calc();
@@ -3626,7 +3665,8 @@ function toggleLooseAllowed(id,on){
           if(cfg.stockId===s)cfg.stockId='';   // it was the live source — unlink it
         }
   localStorage.setItem('looseOilCfg',JSON.stringify(
-    {stockId:cfg.stockId,litresPerUnit:cfg.litresPerUnit,allowed:a,sizes:cfg.sizes}));
+    {stockId:cfg.stockId,litresPerUnit:cfg.litresPerUnit,allowed:a,sizes:cfg.sizes,updatedAt:new Date().toISOString()}));
+  if(typeof _looseSetupRefresh==='function')_looseSetupRefresh();
   if(_currentUser&&typeof sbSaveSettings==='function')sbSaveSettings().catch(function(){});
   if(typeof renderLooseOilCfg==='function')renderLooseOilCfg();
   calc();
@@ -3694,7 +3734,7 @@ function _recNonFuelCOGS(r){
   }
 
   // pack oil, by size
-  const packs={'40':(r.ps||0)};
+  const packs={'40':_recPs40(r).n};   // estimated where the count was lost
   const extra=r.extraPackSold||{};
   Object.keys(extra).forEach(function(k){packs[k]=(packs[k]||0)+(parseFloat(extra[k])||0);});
   let packQty=0, packQtyUnpriced=0;
@@ -3706,6 +3746,8 @@ function _recNonFuelCOGS(r){
     if(c>0) cost+=c*qty; else packQtyUnpriced+=qty;
   });
   if(packQtyUnpriced>0&&packQty>0) unpricedRev+=(r.pv||0)*(packQtyUnpriced/packQty);
+  // Pack value with no count at all: estimate it rather than cost it at zero.
+  if(packQty===0&&(r.pv||0)>0) unpricedRev+=(r.pv||0);
 
   // loose oil — priced off the bottles that were actually opened, so a shift
   // drawn from 1 L cans is not costed at the 0.5 L bottle's rate per litre.
@@ -3715,7 +3757,8 @@ function _recNonFuelCOGS(r){
     const spend =r.looseOpened.reduce((s2,o)=>s2+(o.qty||0)*(uc[String(o.id)]||0),0);
     if(litres>0&&spend>0)_lc=spend/litres;
   }
-  if(_lc>0) cost+=_lc*(r.os||0); else unpricedRev+=(r.ov||0);
+  // Litres unknown (lost to sync) used to cost the sale at zero. Estimate it.
+  if(_lc>0&&(r.os||0)>0) cost+=_lc*r.os; else if((r.ov||0)>0) unpricedRev+=(r.ov||0);
 
   return {cost:cost, unpricedRev:unpricedRev};
 }
@@ -3838,6 +3881,17 @@ function computeAlerts(){
     alerts.push({type:'warn',icon:'📒',title:`${name} owes ${fmt(due)}`,desc:'Consider following up on payment',action:'LEDGER',page:'ledger'});
   });
 
+  // Pack oil at or below its minimum (MF_PACK_STOCK_V1)
+  if(typeof _packBalances==='function'){
+    _packBalances().forEach(function(p){
+      if(p.status==='OUT')
+        alerts.push({type:'danger',icon:'🧴',title:p.size+' ml pack — out of stock',
+          desc:p.balance+' packs by the register (minimum '+p.min+'). Order now.',action:'STOCK',page:'stock'});
+      else if(p.status==='LOW')
+        alerts.push({type:'warn',icon:'🧴',title:p.size+' ml pack at minimum',
+          desc:p.balance+' packs left (minimum '+p.min+')',action:'STOCK',page:'stock'});
+    });
+  }
   // Low / out of stock
   const outOfStock = stock.filter(x=>(x.qty||0)<=0);
   const lowStock = stock.filter(x=>(x.qty||0)>0 && (x.qty||0)<=2);
@@ -4693,6 +4747,10 @@ function renderMasterStock(){
   document.getElementById('stk_cnt').textContent=stock.length;
   document.getElementById('stk_low').textContent=low;
   document.getElementById('stk_cats').textContent=cats.size;
+  if(typeof renderPackStock==='function'){
+    const _pl=renderPackStock();
+    if(_pl)document.getElementById('stk_low').textContent=low+_pl;
+  }
 }
 var _stockPushTimer=null;
 function _pushStockItem(item){
@@ -5143,7 +5201,12 @@ function _doSaveShift(){
             msd1_prev:v('msd1_prev'),msd1_cur:v('msd1_cur'),
             msd2_prev:v('msd2_prev'),msd2_cur:v('msd2_cur'),
             hsd1_prev:v('hsd1_prev'),hsd1_cur:v('hsd1_cur'),
-            hsd2_prev:v('hsd2_prev'),hsd2_cur:v('hsd2_cur')},
+            hsd2_prev:v('hsd2_prev'),hsd2_cur:v('hsd2_cur'),
+            // Not columns on shift_records: without riding here they never
+            // left this device and the next sync wiped them everywhere.
+            ps:c.ps||0, os:c.os||0, handover:_r2(c.handover||0), looseOpened:c.looseOpened||[],
+            exp:{tmsd:v('e_tmsd'),thsd:v('e_thsd'),toil:v('e_toil'),items:v('e_items'),
+                 tea:v('e_tea'),chit:v('e_chit'),other:v('e_other')}},
     looseOilUnits:c.bottlesOpened||0,   // whole bottles, so the reversal on delete is whole too
     looseOpened:c.looseOpened||[],      // which item, how many — needed to reverse and to cost it
     notes:_clean(document.getElementById('notes').value),
@@ -5429,7 +5492,7 @@ function _summarizeRecs(recs){
   const tv=recs.reduce((s,r)=>s+
     ((r.msdT?(r.msdV/r.msdT)*(r.testMSDL||0):0)+
      (r.hsdT?(r.hsdV/r.hsdT)*(r.testHSDL||0):0)+
-     (r.etoil||0)),0);   // testing fuel and the hydrometer draw
+     _recHydro(r)),0);   // testing fuel and the hydrometer draw
   const msdAvg=_fuelWAC('MSD'), hsdAvg=_fuelWAC('HSD');
   const totalMSDL=Math.max(0,recs.reduce((s,r)=>s+(r.msdT||0)-(r.testMSDL||0),0));
   const totalHSDL=Math.max(0,recs.reduce((s,r)=>s+(r.hsdT||0)-(r.testHSDL||0),0));
@@ -5662,10 +5725,10 @@ function _plCore(recs, from, to){
   // that shift's fuel revenue mix. The residual error is the price difference
   // between the two fuels on a few litres — cents, against the whole tank the
   // old code was over-costing.
-  const testHydro  = recs.reduce((s,r)=>s+(r.etoil||0),0);
+  const testHydro  = recs.reduce((s,r)=>s+_recHydro(r),0);   // r.etoil was never stored
   let hydMSDL=0, hydHSDL=0;
   recs.forEach(function(r){
-    const hv=r.etoil||0; if(hv<=0)return;
+    const hv=_recHydro(r); if(hv<=0)return;
     const mv=r.msdV||0, dv=r.hsdV||0, tot=mv+dv; if(tot<=0)return;
     const mRate=(r.msdT>0)?(mv/r.msdT):0;
     const dRate=(r.hsdT>0)?(dv/r.hsdT):0;
@@ -5765,6 +5828,491 @@ function _plCore(recs, from, to){
     grossMarginPct:grossMarginPct, netMarginPct:netMarginPct,
     realizedFuelProfit:realizedFuelProfit, shifts:recs.length
   };
+}
+
+// ══════════════════════════════════════════════════════════════════
+// P&L WORKINGS — MF_PL_WORKINGS_V1
+// The statement a CA would put in front of you: every figure with its
+// formula, the records it comes from, a tie-out back to the engine, and a
+// list of the places money can leak without showing up in profit.
+// Read-only: nothing here writes data. The headline figures come from
+// _plCore(); these workings re-derive them and say so when they disagree.
+// ══════════════════════════════════════════════════════════════════
+
+// Fields that are not shift_records columns ride in `meters` (jsonb).
+function _recFromMeters(o){
+  if(o&&o.meters){
+    ['ps','os','handover','looseOpened'].forEach(function(k){
+      if(o[k]==null&&o.meters[k]!=null)o[k]=o.meters[k];
+    });
+  }
+  return o;
+}
+function _recExpHeads(r){ return (r&&r.meters&&r.meters.exp)||null; }
+function _recHydro(r){
+  if(r&&r.etoil!=null)return parseFloat(r.etoil)||0;
+  var h=_recExpHeads(r); return h?(parseFloat(h.toil)||0):0;
+}
+// 40 ml packs sold. Shifts synced before this fix lost the count (it never
+// reached the server); it is estimated from the pack value at today's rate.
+function _recPs40(r){
+  if(r&&r.ps!=null)return {n:parseFloat(r.ps)||0,est:false};
+  if(r&&r.meters&&r.meters.ps!=null)return {n:parseFloat(r.meters.ps)||0,est:false};
+  var pv=(r&&r.pv)||0; if(pv<=0)return {n:0,est:false};
+  var extraVal=0, ex=(r&&r.extraPackSold)||{};
+  Object.keys(ex).forEach(function(k){
+    var pc=(typeof packSizesConfig!=='undefined'?packSizesConfig:[]).find(function(p){return String(p.size)===String(k);});
+    extraVal+=(parseFloat(ex[k])||0)*((pc&&pc.rate)||0);
+  });
+  var rate=0; try{ rate=parseFloat(JSON.parse(localStorage.getItem('fuelRates')||'{}').pack)||0; }catch(e){}
+  if(!(rate>0))rate=40;
+  return {n:Math.max(0,Math.round((pv-extraVal)/rate)),est:true};
+}
+
+function _wkM(n){ n=+n||0; return n<0?'('+fmt(-n)+')':fmt(n); }          // CA brackets for negatives
+function _wkL(n){ return (+n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})+' L'; }
+function _wkN(n,d){ return (+n||0).toLocaleString('en-IN',{minimumFractionDigits:d||0,maximumFractionDigits:d||0}); }
+function _wkTie(a,b){ return Math.abs((+a||0)-(+b||0))<1; }
+function _wkRank(sh){ return sh==='night'?2:1; }
+function _wkSortAsc(a,b){ return String(a.date).localeCompare(String(b.date))||(_wkRank(a.shift)-_wkRank(b.shift)); }
+
+// Item-level mirror of _recNonFuelCOGS, so the schedule can show each line.
+function _plNonFuelDetail(recs){
+  var uc=_stockUnitCost(), pc=_packUnitCost(), lcost=_looseOilCostPerL();
+  var items={}, packs={}, loose={litres:0,sales:0,cost:0,noQtySales:0,rateNote:''};
+  var unpriced=[], exact=0, unp=0, estPackShifts=0;
+  var addUnp=function(what,amt){ if(amt>0.004){ unp+=amt; unpriced.push({what:what,amt:amt}); } };
+  recs.forEach(function(r){
+    var lines=r.stockSold;
+    if(Array.isArray(lines)&&lines.length){
+      lines.forEach(function(it){
+        var q=parseFloat(it.qty)||0, rate=parseFloat(it.rate)||0, k=String(it.id);
+        if(!items[k])items[k]={name:it.name||('#'+k),qty:0,sales:0,unit:uc[k]||0,cost:0,unpriced:0};
+        items[k].qty+=q; items[k].sales+=rate*q;
+        if(uc[k]>0){ items[k].cost+=uc[k]*q; exact+=uc[k]*q; } else { items[k].unpriced+=rate*q; addUnp(items[k].name+' (no purchase price)',rate*q); }
+      });
+    } else addUnp('Counter stock — '+r.id+' saved before item detail',r.stRev||0);
+
+    var p40=_recPs40(r); if(p40.est&&p40.n>0)estPackShifts++;
+    var sz={'40':p40.n}, ex=r.extraPackSold||{};
+    Object.keys(ex).forEach(function(k){ sz[k]=(sz[k]||0)+(parseFloat(ex[k])||0); });
+    var pq=0, pqU=0;
+    Object.keys(sz).forEach(function(k){
+      var q=parseFloat(sz[k])||0; if(q<=0)return; pq+=q;
+      if(!packs[k])packs[k]={qty:0,est:0,unit:pc[k]||0,cost:0};
+      packs[k].qty+=q; if(k==='40'&&p40.est)packs[k].est+=q;
+      if(pc[k]>0){ packs[k].cost+=pc[k]*q; exact+=pc[k]*q; } else pqU+=q;
+    });
+    if(pqU>0&&pq>0)addUnp('Pack oil with no purchase price — '+r.id,(r.pv||0)*(pqU/pq));
+    if(pq===0&&(r.pv||0)>0)addUnp('Pack oil, quantity unknown — '+r.id,r.pv||0);
+
+    var lc=lcost;
+    if(Array.isArray(r.looseOpened)&&r.looseOpened.length){
+      var li=r.looseOpened.reduce(function(s,o){return s+(o.qty||0)*(o.size||0);},0);
+      var sp=r.looseOpened.reduce(function(s,o){return s+(o.qty||0)*(uc[String(o.id)]||0);},0);
+      if(li>0&&sp>0)lc=sp/li;
+    }
+    loose.sales+=(r.ov||0);
+    if(lc>0&&(r.os||0)>0){ loose.litres+=r.os; loose.cost+=lc*r.os; exact+=lc*r.os; }
+    else if((r.ov||0)>0){ loose.noQtySales+=(r.ov||0); addUnp('Loose oil, '+((r.os||0)>0?'no bottle cost':'litres unknown')+' — '+r.id,r.ov||0); }
+  });
+  return {items:items,packs:packs,loose:loose,unpriced:unpriced,exact:exact,unp:unp,estPackShifts:estPackShifts};
+}
+
+// ── Where money can leak. Each check: status, title, detail. ─────────────
+function _plAuditChecks(from,to,recs,P,X){
+  var out=[], now=new Date(), today=_isoLocal();
+  var add=function(st,t,d){ out.push({st:st,t:t,d:d}); };
+
+  // 1. Missing shifts
+  var miss=[];
+  if(from&&to){
+    var d=new Date(from+'T00:00:00'), end=to<today?to:today, guard=0;
+    while(_isoLocal(d)<=end&&guard++<800){
+      var ds=_isoLocal(d);
+      ['morning','night'].forEach(function(sh){
+        var ended=(typeof mfSlotEnd==='function')?(mfSlotEnd({date:ds,shift:sh})<now):(ds<today);
+        var id=ds.replace(/-/g,'')+'_'+sh.toUpperCase();
+        if(ended&&!records.some(function(r){return r.id===id;}))miss.push(ds+' '+sh);
+      });
+      d.setDate(d.getDate()+1);
+    }
+  }
+  if(miss.length)add('bad','Missing shifts: '+miss.length,
+    'No record for '+miss.slice(0,8).join(', ')+(miss.length>8?' …':'')+'. Fuel sold in a missing shift is in nobody\'s revenue, and its cash in nobody\'s tally. The next shift\'s opening meter will show the jump (check 2).');
+  else add('ok','Every shift in the period is recorded','Morning and night present for every completed day.');
+
+  // 2. Meter continuity — opening must equal the previous closing
+  var all=records.slice().sort(_wkSortAsc), gaps=[];
+  for(var i=1;i<all.length;i++){
+    var a=all[i-1], b=all[i];
+    if((from&&b.date<from)||(to&&b.date>to))continue;
+    ['msd1','msd2','hsd1','hsd2'].forEach(function(k){
+      var pc=parseFloat(a.meters&&a.meters[k+'_cur']), po=parseFloat(b.meters&&b.meters[k+'_prev']);
+      if(pc>0&&po>0&&Math.abs(po-pc)>0.005)gaps.push({id:b.id,prev:a.id,k:k.toUpperCase(),pc:pc,po:po,diff:po-pc});
+    });
+  }
+  if(gaps.length){
+    var gl=gaps.filter(function(g){return g.diff>0;}).reduce(function(s,g){return s+g.diff;},0);
+    add('bad','Meter breaks: '+gaps.length,
+      _wkL(gl)+' dispensed between shifts that no shift accounts for. '+
+      gaps.slice(0,6).map(function(g){return g.id+' '+g.k+': opened '+g.po+' vs '+g.prev+' closed '+g.pc+' ('+(g.diff>0?'+':'')+g.diff.toFixed(2)+' L)';}).join('; ')+
+      (gaps.length>6?' …':'')+'. Positive = fuel left the pump unrecorded; negative = a reading was mistyped.');
+  } else add('ok','Meter readings are continuous','Every opening reading equals the previous closing.');
+
+  // 3. Cash differences — real money, NOT in the profit figure
+  var shorts=recs.filter(function(r){return (r.bal||0)<-1;}), overs=recs.filter(function(r){return (r.bal||0)>1;});
+  var sAmt=shorts.reduce(function(s,r){return s+r.bal;},0), oAmt=overs.reduce(function(s,r){return s+r.bal;},0);
+  if(shorts.length)add(Math.abs(sAmt)>500?'bad':'warn','Cash short on '+shorts.length+' shift'+(shorts.length!==1?'s':'')+': '+fmt(-sAmt),
+    'Profit is measured on meter readings, so a shortage does not reduce it — the money is simply missing. Largest: '+
+    shorts.slice().sort(function(a,b){return a.bal-b.bal;}).slice(0,4).map(function(r){return r.id+' '+fmt(-r.bal);}).join(', ')+
+    (oAmt>0?'. Surpluses elsewhere total '+fmt(oAmt)+' — surpluses usually mean an expense or credit line was missed.':'.'));
+  else add('ok','No cash shortages',oAmt>0?'Surpluses of '+fmt(oAmt)+' — check nothing was left off.':'Every shift tallied.');
+
+  // 4. Records that can still be changed
+  var unl=recs.filter(function(r){return !r.lockedAt;}).length;
+  if(unl)add('warn',unl+' of '+recs.length+' shifts are unlocked','An unlocked shift can be re-saved or deleted, which changes this P&L after the fact. Lock shifts once the cash is counted (History → lock).');
+  else add('ok','All shifts in the period are locked','The figures cannot change underneath this report.');
+
+  // 5. Fuel sold below landed cost
+  var below=[];
+  recs.forEach(function(r){
+    if(r.msdT>0&&P.wacMSD>0&&(r.msdV/r.msdT)<P.wacMSD-0.005)below.push(r.id+' MSD @ '+fmt(r.msdV/r.msdT));
+    if(r.hsdT>0&&P.wacHSD>0&&(r.hsdV/r.hsdT)<P.wacHSD-0.005)below.push(r.id+' HSD @ '+fmt(r.hsdV/r.hsdT));
+  });
+  if(below.length)add('bad','Sold below cost on '+below.length+' shift-fuel'+(below.length!==1?'s':''),
+    below.slice(0,6).join(', ')+'. Landed cost: MSD '+fmt(P.wacMSD)+'/L, HSD '+fmt(P.wacHSD)+'/L. Either the rate was entered wrong or a load\'s cost is wrong.');
+  if(P.fuelUncosted)add('bad','Fuel sold with no purchase cost','Gross and net profit cannot be stated until a fuel load (or the opening stock cost) is entered.');
+
+  // 6. Testing and hydrometer
+  var tL=(P.testMSDL||0)+(P.testHSDL||0)+(P.hydMSDL||0)+(P.hydHSDL||0), mL=(P.totalMSDL||0)+(P.totalHSDL||0);
+  if(mL>0){
+    var tp=tL/mL*100;
+    add(tp>0.5?'warn':'ok','Testing fuel: '+_wkL(tL)+' ('+tp.toFixed(2)+'% of metered)',
+      (tp>0.5?'High. Testing is removed from sales AND from cost, so a padded testing figure hides fuel that was actually sold. ':'')+
+      'Statutory 5 L test per nozzle per day ≈ '+_wkL(20*Math.max(1,new Set(recs.map(function(r){return r.date;})).size))+' for this period.');
+  }
+
+  // 7. Tank dips
+  var tol=(typeof tankCfg==='function')?tankCfg().tol:25;
+  var dips=(typeof dipReadings!=='undefined'?dipReadings:[]).filter(function(x){return (!from||x.date>=from)&&(!to||x.date<=to);});
+  var badDips=dips.filter(function(x){return Math.abs(x.variation||0)>tol;});
+  if(!dips.length)add('warn','No tank dips in this period','Without a dip there is no physical check that the book stock is really in the tank. Take one at least weekly (Dip & Variation).');
+  else if(badDips.length){
+    var vv=badDips.reduce(function(s,x){return s+(x.variation||0);},0);
+    add('bad',badDips.length+' dip'+(badDips.length!==1?'s':'')+' outside ±'+tol+' L',
+      badDips.slice(0,5).map(function(x){return x.date+' '+x.type+' '+(x.variation>0?'+':'')+(+x.variation).toFixed(1)+' L';}).join(', ')+
+      '. Net '+(vv>0?'+':'')+vv.toFixed(1)+' L. A shortage is stock lost (leak, theft, unrecorded sale) and is NOT in this P&L.');
+  } else add('ok',dips.length+' dip'+(dips.length!==1?'s':'')+', all within ±'+tol+' L','Book and physical stock agree.');
+
+  // 8. Credit on the shift vs the ledger
+  var credMiss=[];
+  recs.forEach(function(r){
+    if(!((r.credit||0)>0))return;
+    var s=ledger.filter(function(e){
+      if((e.amount||0)<=0||e.kind==='advance'||e.kind==='adjust'||e.fuel==='ADJUST')return false;
+      return e.shiftId?e.shiftId===r.id:(e.date===r.date&&e.shift===r.shift);
+    }).reduce(function(t,e){return t+e.amount;},0);
+    if(s<(r.credit||0)-1)credMiss.push(r.id+': shift '+fmt(r.credit)+', ledger '+fmt(s));
+  });
+  if(credMiss.length)add('bad','Credit missing from the ledger on '+credMiss.length+' shift'+(credMiss.length!==1?'s':''),
+    credMiss.slice(0,5).join('; ')+(credMiss.length>5?' …':'')+'. Credit given on the shift that is not in the ledger will never be collected.');
+  else if(recs.some(function(r){return (r.credit||0)>0;}))add('ok','Shift credit matches the ledger','Every rupee of credit on a shift has a ledger entry.');
+
+  // 9. Data quality behind the numbers
+  var noQty=recs.filter(function(r){return ((r.pv||0)>0&&r.ps==null&&!(r.meters&&r.meters.ps!=null))||((r.ov||0)>0&&r.os==null&&!(r.meters&&r.meters.os!=null));});
+  if(noQty.length)add('warn',noQty.length+' shift'+(noQty.length!==1?'s have':' has')+' pack/loose sales with no quantity',
+    'Saved before quantities were synced — the count was lost on the server. Pack counts are estimated from value at today\'s pack rate; loose oil is costed by the invoice buy:sell ratio. Both are marked "est." in Note 2.');
+  var noHeads=recs.filter(function(r){return (r.exp||0)>0&&!_recExpHeads(r);});
+  if(noHeads.length)add('info','Expense heads unknown for '+noHeads.length+' shift'+(noHeads.length!==1?'s':''),
+    fmt(noHeads.reduce(function(s,r){return s+(r.exp||0);},0))+' of expenses from shifts saved before head-wise detail was kept. The hydrometer draw inside them could not be separated, so their testing adjustment is incomplete.');
+  if(P.cogsEstimated>0)add('warn','Part of COGS is estimated: '+fmt(P.cogsEstimated),
+    fmt(P.unpricedRev)+' of oil/stock sales has no purchase price, costed at the invoice buy:sell ratio of '+(P.costRatio*100).toFixed(1)+'%. Enter purchase prices on Oil Register to make it exact.');
+  if(X.totalCreditDiscounts>0)add('info','Credit discounts are estimated',
+    'Litres are back-calculated from the rupee credit at today\'s pump rate, not the rate on the day. Record litres on credit entries to make this exact.');
+  var cr=recs.reduce(function(s,r){return s+(r.credit||0);},0);
+  if(cr>0)add('info',fmt(cr)+' of this revenue was sold on credit','It is profit on paper until collected. '+fmt(recs.reduce(function(s,r){return s+(r.credBack||0);},0))+' of older credit was collected in the period (not revenue).');
+  return out;
+}
+
+function renderPLWorkings(from,to,recs,P,X){
+  var box=document.getElementById('pl_workings'); if(!box)return;
+  var open=localStorage.getItem('plWorkingsOpen')==='1';
+  var btn='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 12px">'+
+    '<button class="btn btn-g" onclick="togglePLWorkings()" style="padding:7px 14px">'+(open?'▾ HIDE':'▸ SHOW')+' WORKINGS — CA VIEW</button>'+
+    (open?'<button class="btn btn-g" onclick="printPLWorkings()" style="padding:7px 14px">🖨 PRINT WORKINGS</button>'+
+          '<button class="btn btn-g" onclick="document.querySelectorAll(\'#pl_workings details\').forEach(function(d){d.open=true})" style="padding:7px 14px">EXPAND ALL</button>':'')+
+    '</div>';
+  if(!open){ box.innerHTML=btn; return; }
+
+  var per=_formatRange(from,to), n=recs.length;
+  var nf=_plNonFuelDetail(recs);
+  var sumMV=P.sumMSDV, sumHV=P.sumHSDV;
+  var pvT=recs.reduce(function(s,r){return s+(r.pv||0);},0), ovT=recs.reduce(function(s,r){return s+(r.ov||0);},0), stT=recs.reduce(function(s,r){return s+(r.stRev||0);},0);
+  var cbT=recs.reduce(function(s,r){return s+(r.credBack||0);},0);
+  var fuelUnc=P.fuelUncosted;
+  var rowS='style="text-align:right;white-space:nowrap"';
+  var tr=function(cells,cls){ return '<tr'+(cls?' class="'+cls+'"':'')+'>'+cells.map(function(c,i){return '<td'+(i>0&&i===cells.length-1?' '+rowS:'')+'>'+c+'</td>';}).join('')+'</tr>'; };
+  var tbl=function(head,rows){ return '<div style="overflow-x:auto"><table class="wk-tbl"><thead><tr>'+head.map(function(h,i){return '<th'+(i===head.length-1?' '+rowS:'')+'>'+h+'</th>';}).join('')+'</tr></thead><tbody>'+rows.join('')+'</tbody></table></div>'; };
+  var tie=function(ok,txt){ return '<div class="wk-tie '+(ok?'ok':'bad')+'">'+(ok?'✓ ':'✗ ')+txt+'</div>'; };
+  var note=function(no,title,body,openIt){ return '<details class="wk-note"'+(openIt?' open':'')+'><summary><span class="wk-no">'+no+'</span>'+title+'</summary><div class="wk-body">'+body+'</div></details>'; };
+  var f=function(txt){ return '<span class="wk-f">'+txt+'</span>'; };
+
+  // ── A. STATEMENT ─────────────────────────────────────────────────────
+  var st=[];
+  var sl=function(lbl,no,a,b,cls){ st.push('<tr'+(cls?' class="'+cls+'"':'')+'><td>'+lbl+'</td><td class="wk-nt">'+(no||'')+'</td><td '+rowS+'>'+(a==null?'':a)+'</td><td '+rowS+'>'+(b==null?'':b)+'</td></tr>'); };
+  sl('<b>I. Revenue from operations</b>','1',null,'<b>'+fmt(P.revenue)+'</b>');
+  sl('II. Less: Cost of goods sold','2',null,fuelUnc?'not known':_wkM(-P.totalCOGS));
+  sl('&nbsp;&nbsp;&nbsp;Fuel (MSD + HSD)','2A',fuelUnc?'—':fmt(P.cogsFuel),null,'wk-sub');
+  sl('&nbsp;&nbsp;&nbsp;Oil, packs, counter stock','2B',fmt(P.cogsNonFuel),null,'wk-sub');
+  sl('<b>III. Gross profit (I − II)</b>',null,null,'<b>'+(fuelUnc?'—':fmt(P.grossProfit))+'</b>','wk-tot');
+  sl('&nbsp;&nbsp;&nbsp;Gross margin',null,null,fuelUnc||!P.revenue?'—':(P.grossProfit/P.revenue*100).toFixed(2)+'%','wk-sub');
+  sl('IV. Less: Operating expenses','3',null,_wkM(-P.opex));
+  if(X.includeWages&&X.totalStaffCost>0)sl('V. Less: Staff wages','4',null,_wkM(-X.totalStaffCost));
+  else sl('V. Staff wages — <i>not deducted (setting)</i>','4',null,'—','wk-sub');
+  if(X.totalCreditDiscounts>0)sl('VI. Less: Credit discounts (estimated)','5',null,_wkM(-X.totalCreditDiscounts));
+  sl('<b>VII. Net profit</b>',null,null,'<b>'+(fuelUnc?'—':_wkM(X.netFinal))+'</b>','wk-tot wk-grand');
+  sl('&nbsp;&nbsp;&nbsp;Net margin',null,null,fuelUnc||!P.revenue?'—':(X.netFinal/P.revenue*100).toFixed(2)+'%','wk-sub');
+  sl('VIII. Appropriation: owner drawings','6',null,X.totalDrawings>0?_wkM(-X.totalDrawings):'—');
+  if(!X.includeWages&&X.staffCashOut>0)sl('IX. Cash paid to staff (wages not in VII)','4',null,_wkM(-X.staffCashOut));
+  sl('<b>Retained in the business</b>',null,null,'<b>'+(fuelUnc?'—':_wkM(X.cashAfterDrawings))+'</b>','wk-tot');
+  var stmt='<table class="wk-tbl wk-stmt"><thead><tr><th>PARTICULARS</th><th>NOTE</th><th '+rowS+'>₹</th><th '+rowS+'>₹</th></tr></thead><tbody>'+st.join('')+'</tbody></table>';
+
+  // ── NOTE 1 — REVENUE ─────────────────────────────────────────────────
+  var rateM=P.totalMSDL>0?sumMV/P.totalMSDL:0, rateH=P.totalHSDL>0?sumHV/P.totalHSDL:0;
+  var hydL=(P.hydMSDL||0)+(P.hydHSDL||0);
+  var n1rows=[
+    tr(['MSD (petrol) metered',f('Σ litres × that shift\'s pump rate'),_wkL(P.totalMSDL),fmt(sumMV)]),
+    tr(['&nbsp;&nbsp;less testing returned to tank',f('test litres × shift rate'),_wkL(P.testMSDL),_wkM(-P.testValMSD)],'wk-sub'),
+    tr(['HSD (diesel) metered',f('Σ litres × that shift\'s pump rate'),_wkL(P.totalHSDL),fmt(sumHV)]),
+    tr(['&nbsp;&nbsp;less testing returned to tank',f('test litres × shift rate'),_wkL(P.testHSDL),_wkM(-P.testValHSD)],'wk-sub'),
+    tr(['&nbsp;&nbsp;less hydrometer draw',f('₹ ÷ shift rate, split by fuel mix'),_wkL(hydL),_wkM(-P.testHydro)],'wk-sub'),
+    tr(['<b>Fuel revenue</b>','','<b>'+_wkL(P.soldMSDL+P.soldHSDL)+'</b>','<b>'+fmt(P.revFuel)+'</b>'],'wk-tot'),
+    tr(['Pack oil',f('packs sold × pack rate'),Object.keys(nf.packs).map(function(k){return _wkN(nf.packs[k].qty)+'×'+k+'ml'+(nf.packs[k].est?' (est.)':'');}).join(', ')||'—',fmt(pvT)]),
+    tr(['Loose oil',f('(opening + opened − closing) L × rate'),nf.loose.litres>0?_wkL(nf.loose.litres):'—',fmt(ovT)]),
+    tr(['Counter stock',f('Σ qty × item rate'),Object.keys(nf.items).length+' item(s)',fmt(stT)]),
+    tr(['<b>Revenue from operations</b>','','','<b>'+fmt(P.revenue)+'</b>'],'wk-tot wk-grand')
+  ];
+  var sched=recs.slice().sort(_wkSortAsc).map(function(r){
+    var tv=(r.msdT>0?(r.msdV/r.msdT)*(r.testMSDL||0):0)+(r.hsdT>0?(r.hsdV/r.hsdT)*(r.testHSDL||0):0)+_recHydro(r);
+    return tr([r.date,r.shift.slice(0,1).toUpperCase(),_wkN(r.msdT,2),_wkN(r.msdV,2),_wkN(r.hsdT,2),_wkN(r.hsdV,2),
+      _wkN((r.pv||0)+(r.ov||0),2),_wkN(r.stRev||0,2),tv>0?'('+_wkN(tv,2)+')':'—',_wkN(_recRevenue(r)-tv,2)]);
+  });
+  var schedTot=recs.reduce(function(s,r){
+    var tv=(r.msdT>0?(r.msdV/r.msdT)*(r.testMSDL||0):0)+(r.hsdT>0?(r.hsdV/r.hsdT)*(r.testHSDL||0):0)+_recHydro(r);
+    return s+_recRevenue(r)-tv;},0);
+  sched.push(tr(['<b>Total</b>','',_wkN(P.totalMSDL,2),_wkN(sumMV,2),_wkN(P.totalHSDL,2),_wkN(sumHV,2),_wkN(pvT+ovT,2),_wkN(stT,2),'('+_wkN(P.testValue,2)+')','<b>'+_wkN(schedTot,2)+'</b>'],'wk-tot'));
+  var n1=tbl(['COMPONENT','HOW IT IS WORKED OUT','QUANTITY','₹'],n1rows)+
+    '<div class="wk-p"><b>Not revenue, and excluded:</b> credit repaid by customers '+fmt(cbT)+' (a debt coming back, not a sale — it is inside each shift\'s "right side" total, which is why that total is not used); cash handed over '+fmt(P.handoverTotal)+' (moved, not earned).</div>'+
+    '<div class="wk-p"><b>Recognition:</b> accrual basis — a sale is revenue when the fuel leaves the pump, whether paid in cash, UPI or on credit.</div>'+
+    '<details class="wk-sched"><summary>Schedule 1A — shift by shift ('+n+' shifts)</summary>'+
+    tbl(['DATE','SH','MSD L','MSD ₹','HSD L','HSD ₹','OIL ₹','STOCK ₹','TESTING ₹','REVENUE ₹'],sched)+'</details>'+
+    tie(_wkTie(schedTot,P.revenue),'Schedule 1A total '+fmt(schedTot)+(_wkTie(schedTot,P.revenue)?' agrees with ':' does NOT agree with ')+'revenue in the statement '+fmt(P.revenue));
+
+  // ── NOTE 2 — COGS ───────────────────────────────────────────────────
+  var wacTable=function(type){
+    var L=(typeof fuelLoads!=='undefined'?fuelLoads:[]).filter(function(l){return l.type===type&&(!to||String(l.date||'')<=to);})
+      .slice().sort(function(a,b){return String(a.date).localeCompare(String(b.date));});
+    var rows=[], vol=0, cost=0;
+    var ov=(type==='MSD'?fuelOpeningMSD:fuelOpeningHSD)||0, oc=(typeof openingCost==='function')?openingCost(type):0;
+    if(ov>0&&oc>0){ vol+=ov; cost+=ov*oc; rows.push(tr(['Opening stock','—','—',_wkL(ov),fmt(oc),fmt(ov*oc)])); }
+    else if(ov>0)rows.push(tr(['Opening stock','—','—',_wkL(ov),'<span style="color:var(--diesel)">no cost set — excluded</span>','—']));
+    L.forEach(function(l){
+      var v=parseFloat(l.vol)||0, c=parseFloat(l.totalCost!=null?l.totalCost:l.total_cost)||0;
+      if(!c&&l.buy)c=(parseFloat(l.buy)||0)*v;
+      var inc=v>0&&c>0; if(inc){vol+=v;cost+=c;}
+      rows.push(tr([l.date,_esc(l.inv||'—'),_esc(l.supplier||'—'),_wkL(v),inc?fmt(c/v):'<span style="color:var(--diesel)">no cost — excluded</span>',inc?fmt(c):'—']));
+    });
+    var w=vol>0?cost/vol:0;
+    rows.push(tr(['<b>Weighted average</b>','','','<b>'+_wkL(vol)+'</b>','<b>'+fmt(w)+'</b>','<b>'+fmt(cost)+'</b>'],'wk-tot'));
+    return {html:tbl(['DATE','INVOICE','SUPPLIER','LITRES','₹ / L (landed)','₹'],rows),wac:w,loads:L.length};
+  };
+  var wM=wacTable('MSD'), wH=wacTable('HSD');
+  var n2a=tbl(['','MSD','HSD'],[
+      tr(['Metered out (Note 1)',_wkL(P.totalMSDL),_wkL(P.totalHSDL)]),
+      tr(['less testing returned',_wkM(-P.testMSDL).replace('₹','')+' L',_wkM(-P.testHSDL).replace('₹','')+' L'],'wk-sub'),
+      tr(['less hydrometer returned',_wkM(-P.hydMSDL).replace('₹','')+' L',_wkM(-P.hydHSDL).replace('₹','')+' L'],'wk-sub'),
+      tr(['<b>Litres actually sold</b>','<b>'+_wkL(P.soldMSDL)+'</b>','<b>'+_wkL(P.soldHSDL)+'</b>'],'wk-tot'),
+      tr(['× Weighted average landed cost (2A-i)',fmt(P.wacMSD)+'/L',fmt(P.wacHSD)+'/L']),
+      tr(['<b>Cost of fuel sold</b>','<b>'+fmt(P.soldMSDL*P.wacMSD)+'</b>','<b>'+fmt(P.soldHSDL*P.wacHSD)+'</b>'],'wk-tot'),
+      tr(['Average selling rate',fmt(rateM)+'/L',fmt(rateH)+'/L'],'wk-sub'),
+      tr(['<b>Margin per litre</b>','<b>'+fmt(rateM-P.wacMSD)+'</b>','<b>'+fmt(rateH-P.wacHSD)+'</b>'],'wk-sub')
+    ])+
+    '<div class="wk-p"><b>Method:</b> weighted average cost (permitted under AS-2). Every litre ever put in the tank up to '+(to||'today')+' — the opening stock at its landed cost plus each load at its bill total incl. VAT and lorry hire — divided by the litres. Loads dated after the period end are left out. The same rate costs every litre sold in the period.</div>'+
+    '<details class="wk-sched"><summary>2A-i — MSD landed cost ('+wM.loads+' load'+(wM.loads!==1?'s':'')+')</summary>'+wM.html+'</details>'+
+    '<details class="wk-sched"><summary>2A-ii — HSD landed cost ('+wH.loads+' load'+(wH.loads!==1?'s':'')+')</summary>'+wH.html+'</details>'+
+    tie(_wkTie(P.soldMSDL*P.wacMSD+P.soldHSDL*P.wacHSD,P.cogsFuel),'Fuel cost '+fmt(P.soldMSDL*P.wacMSD+P.soldHSDL*P.wacHSD)+' agrees with the statement')+
+    tie(_wkTie(wM.wac,P.wacMSD)&&_wkTie(wH.wac,P.wacHSD),'Landed cost tables reproduce the engine\'s rates (MSD '+fmt(wM.wac)+', HSD '+fmt(wH.wac)+')');
+
+  var itemRows=Object.keys(nf.items).map(function(k){var x=nf.items[k];
+    return tr([_esc(x.name),_wkN(x.qty),fmt(x.sales),x.unit>0?fmt(x.unit):'<span style="color:var(--diesel)">none</span>',x.cost>0?fmt(x.cost):'—',x.cost>0?fmt(x.sales-x.cost):'—']);});
+  Object.keys(nf.packs).forEach(function(k){var x=nf.packs[k];
+    itemRows.push(tr([k+' ml pack'+(x.est?' <span style="color:var(--diesel)">('+_wkN(x.est)+' est.)</span>':''),_wkN(x.qty),'—',x.unit>0?fmt(x.unit):'<span style="color:var(--diesel)">none</span>',x.cost>0?fmt(x.cost):'—','—']));});
+  if(nf.loose.litres>0||nf.loose.sales>0)itemRows.push(tr(['Loose oil',nf.loose.litres>0?_wkL(nf.loose.litres):'—',fmt(nf.loose.sales),nf.loose.litres>0?fmt(nf.loose.cost/nf.loose.litres)+'/L':'—',nf.loose.cost>0?fmt(nf.loose.cost):'—',nf.loose.cost>0?fmt(nf.loose.sales-nf.loose.noQtySales-nf.loose.cost):'—']));
+  itemRows.push(tr(['<b>Costed exactly</b>','','','','<b>'+fmt(nf.exact)+'</b>',''],'wk-tot'));
+  var unpCap=Math.max(0,Math.min(nf.unp,P.nonFuelRev));
+  var n2b=tbl(['ITEM','QTY','SALES ₹','UNIT COST','COST ₹','MARGIN ₹'],itemRows)+
+    '<div class="wk-p"><b>Unit costs</b> are weighted averages of purchase prices: counter stock and bottles from Oil Register invoice lines, packs from the Pack Register, loose oil from the bottles actually opened on each shift.</div>'+
+    (unpCap>0?'<div class="wk-p"><b>Sales with no purchase price: '+fmt(unpCap)+'</b> × buy:sell ratio '+(P.costRatio*100).toFixed(2)+'% = <b>'+fmt(P.cogsEstimated)+' estimated cost</b>. '+
+      f('ratio = Σ(buy × qty) ÷ Σ(sell × qty) over every Oil Register line')+'</div>'+
+      '<details class="wk-sched"><summary>What is estimated ('+nf.unpriced.length+' line'+(nf.unpriced.length!==1?'s':'')+')</summary>'+
+      tbl(['LINE','₹'],nf.unpriced.slice(0,60).map(function(u){return tr([_esc(u.what),fmt(u.amt)]);}))+'</details>':'')+
+    tie(_wkTie(nf.exact,P.cogsExact),'Exact cost '+fmt(nf.exact)+(_wkTie(nf.exact,P.cogsExact)?' agrees with the engine':' differs from the engine ('+fmt(P.cogsExact)+')'))+
+    tie(_wkTie(nf.exact+unpCap*P.costRatio,P.cogsNonFuel),'Exact + estimated = '+fmt(nf.exact+unpCap*P.costRatio)+' = statement line 2B');
+  var n2=note('2A','Fuel',n2a,true)+note('2B','Oil, packs and counter stock',n2b,false);
+
+  // ── NOTE 3 — EXPENSES ────────────────────────────────────────────────
+  var heads={tea:0,items:0,chit:0,other:0,tmsd:0,thsd:0,toil:0}, unalloc=0, withHeads=0;
+  recs.forEach(function(r){
+    var h=_recExpHeads(r);
+    if(h){ withHeads++; var s=0; Object.keys(heads).forEach(function(k){ var v=parseFloat(h[k])||0; heads[k]+=v; s+=v; }); unalloc+=Math.max(0,(r.exp||0)-s); }
+    else unalloc+=(r.exp||0);
+  });
+  var testExpKnown=heads.tmsd+heads.thsd+heads.toil;
+  var n3=tbl(['HEAD','','₹'],[
+      tr(['Tea / food','',fmt(heads.tea)]),
+      tr(['Items','',fmt(heads.items)]),
+      tr(['Chit fund','',fmt(heads.chit)]),
+      tr(['Other','',fmt(heads.other)]),
+      tr(['Testing — MSD, HSD, hydrometer','',fmt(testExpKnown)]),
+      tr(['Not split by head ('+(n-withHeads)+' older shift'+(n-withHeads!==1?'s':'')+')',f('saved before heads were kept'),fmt(unalloc)]),
+      tr(['<b>Total entered on shifts</b>','','<b>'+fmt(P.opexGross)+'</b>'],'wk-tot'),
+      tr(['less testing value (same amount removed from revenue — Note 1)','',_wkM(-P.testValue)],'wk-sub'),
+      tr(['<b>Operating expenses</b>','','<b>'+fmt(P.opex)+'</b>'],'wk-tot wk-grand')])+
+    '<div class="wk-p"><b>Why testing comes out of both sides:</b> the test measure is metered (so it is in sales) and poured back (so the shift books it as an expense to balance the cash). Left in, it inflates revenue and expenses equally and charges the cost of fuel that never left the tank.</div>'+
+    '<div class="wk-p"><b>Chit fund</b> is shown as recorded on the shifts. It sits inside operating expenses.</div>';
+
+  // ── NOTE 4 — STAFF ──────────────────────────────────────────────────
+  var n4=tbl(['','₹'],[
+      tr(['Salary paid in period',fmt(X.totalSalaries)]),
+      tr(['less advance recovered out of salary',_wkM(-X.totalAdvRecovered)],'wk-sub'),
+      tr(['add advances given',fmt(X.totalAdvances)]),
+      tr(['add bonus',fmt(X.totalBonuses)]),
+      tr(['<b>Cash paid to staff</b>','<b>'+fmt(X.staffCashOut)+'</b>'],'wk-tot'),
+      tr(['Wage cost (accrual): '+(X.wagesAccrued?'earned per attendance register':'no register — salary paid'),fmt(X.totalStaffCost)])])+
+    '<div class="wk-p">'+(X.includeWages
+      ?'<b>Deducted in the statement</b> at the accrual figure. An advance is a loan to the employee, not a cost, so it is not expensed when paid.'
+      :'<b>Not deducted in the statement</b> (Reports → "deduct staff wages" is off): food and tea for staff are already in Note 3 and wages are settled irregularly. The cash paid is shown below net profit instead.')+'</div>';
+
+  // ── NOTE 5 — CREDIT DISCOUNTS ────────────────────────────────────────
+  var n5='';
+  if(X.totalCreditDiscounts>0){
+    var rates=JSON.parse(localStorage.getItem('fuelRates')||'{}');
+    var avg=((parseFloat(rates.hsd)||90)+(parseFloat(rates.msd)||100))/2, mR=parseFloat(rates.msd)||avg, hR=parseFloat(rates.hsd)||avg, dTot=0;
+    var dRows=Object.keys(customerProfiles).filter(function(nm){return (customerProfiles[nm].discountPerL||0)>0;}).map(function(nm){
+      var d=customerProfiles[nm].discountPerL, amt=0, lit=0;
+      ledger.forEach(function(e){
+        if(e.customer!==nm||(e.amount||0)<=0||e.kind==='adjust'||e.fuel==='ADJUST'||(from&&e.date<from)||(to&&e.date>to))return;
+        var rt=e.fuel==='MSD'?mR:(e.fuel==='HSD'?hR:avg); amt+=e.amount; lit+=rt>0?e.amount/rt:0;
+      });
+      dTot+=lit*d;
+      return tr([_esc(nm),fmt(amt),_wkL(lit),fmt(d)+'/L',fmt(lit*d)]);
+    });
+    dRows.push(tr(['<b>Total</b>','','','','<b>'+fmt(dTot)+'</b>'],'wk-tot'));
+    n5=note('5','Credit discounts (estimated)',tbl(['CUSTOMER','CREDIT ₹','EST. LITRES','DISCOUNT','₹'],dRows)+
+      '<div class="wk-p">'+f('litres = credit ₹ ÷ current pump rate for that fuel; discount = litres × fixed ₹/L')+'. Estimated because litres are not recorded on credit entries.</div>'+
+      tie(_wkTie(dTot,X.totalCreditDiscounts),'Agrees with the statement ('+fmt(X.totalCreditDiscounts)+')'),false);
+  }
+
+  // ── NOTE 6 — DRAWINGS ───────────────────────────────────────────────
+  var n6=(X.drawingsInRange||[]).length
+    ? tbl(['DATE','PURPOSE','BY','₹'],X.drawingsInRange.map(function(d){return tr([d.date,_esc(d.purpose||'—'),_esc(d.createdBy||'—'),fmt(d.amount||0)]);})
+        .concat([tr(['<b>Total</b>','','','<b>'+fmt(X.totalDrawings)+'</b>'],'wk-tot')]))+
+      '<div class="wk-p">Drawings are the owners taking profit out — an appropriation, not an expense. They reduce what stays in the business, not the profit itself.</div>'
+    : '<div class="wk-p">No drawings in this period.</div>';
+
+  // ── NOTE 7 — CASH, CREDIT, PURCHASES (memorandum) ────────────────────
+  var S=function(k){return recs.reduce(function(s,r){return s+(r[k]||0);},0);};
+  var n7=tbl(['','₹'],[
+      tr(['<b>Cash tally across '+n+' shifts</b>',''],'wk-tot'),
+      tr(['Collected — cash + GPay + Paytm',fmt(S('cash')+S('gpay')+S('paytm'))]),
+      tr(['+ credit given',fmt(S('credit'))]),
+      tr(['+ expenses paid from the drawer',fmt(S('exp'))]),
+      tr(['+ cash handed over',fmt(P.handoverTotal)]),
+      tr(['= Left side (accounted for)',fmt(S('leftTotal'))],'wk-sub'),
+      tr(['Right side — goods sold + credit repaid',fmt(S('rightTotal'))],'wk-sub'),
+      tr(['<b>Net cash over / (short)</b>','<b>'+_wkM(S('bal'))+'</b>'],'wk-tot'),
+      tr(['<b>Customer credit</b>',''],'wk-tot'),
+      tr(['Given in period (revenue not yet collected)',fmt(S('credit'))]),
+      tr(['Collected against older credit',_wkM(-cbT)]),
+      tr(['Net increase in money owed to you',_wkM(S('credit')-cbT)],'wk-sub'),
+      tr(['<b>Stock bought (cash out, not cost)</b>',''],'wk-tot'),
+      tr(['Fuel loads in period ('+P.loadsInRange.length+')',fmt(P.fuelCOGS)]),
+      tr(['Oil invoices in period ('+P.oilInRange.length+')',fmt(P.oilCOGS)])])+
+    '<div class="wk-p">None of these are in the profit figure. A cash shortage is money that should be in the drawer and is not; profit is worked out from the meters, so it does not see it. Stock bought is only a cost when it is sold (Note 2).</div>';
+
+  // ── NOTE 8 — FUEL QUANTITY RECONCILIATION ────────────────────────────
+  var n8='';
+  if(typeof bookStock==='function'&&from&&to){
+    var dayBefore=_isoLocal(new Date(new Date(from+'T00:00:00').getTime()-86400000));
+    var qr=['MSD','HSD'].map(function(t){
+      var a=bookStock(t,dayBefore,'close'), b=bookStock(t,to,'close');
+      var ld=(typeof fuelLoads!=='undefined'?fuelLoads:[]).filter(function(l){return l.type===t&&l.date>=from&&l.date<=to;}).reduce(function(s,l){return s+(parseFloat(l.vol)||0);},0);
+      var met=t==='MSD'?P.totalMSDL:P.totalHSDL, ret=t==='MSD'?P.testMSDL:P.testHSDL;
+      var dp=(typeof dipReadings!=='undefined'?dipReadings:[]).filter(function(x){return x.type===t&&x.date>=from&&x.date<=to;})
+        .sort(function(x,y){return String(y.date).localeCompare(String(x.date));})[0];
+      return {t:t,a:a.book,ld:ld,met:met,ret:ret,b:b.book,dp:dp,since:b.since};
+    });
+    var q=function(k,fn){return tr([k,fn(qr[0]),fn(qr[1])]);};
+    n8=note('8','Fuel quantity reconciliation (stock audit)',
+      tbl(['LITRES','MSD','HSD'],[
+        q('Book stock at start of period',function(x){return _wkL(x.a);}),
+        q('+ received (loads)',function(x){return _wkL(x.ld);}),
+        q('− metered out',function(x){return '('+_wkL(x.met)+')';}),
+        q('+ testing returned',function(x){return _wkL(x.ret);}),
+        q('<b>= Book stock at end</b>',function(x){return '<b>'+_wkL(x.b)+'</b>';}),
+        q('Latest dip in period',function(x){return x.dp?_wkL(x.dp.observed)+' ('+x.dp.date+' '+x.dp.slot+')':'<span style="color:var(--diesel)">none</span>';}),
+        q('Variation at that dip',function(x){return x.dp?'<b style="color:'+((x.dp.variation||0)<0?'var(--red)':'var(--green)')+'">'+((x.dp.variation||0)>0?'+':'')+(+x.dp.variation||0).toFixed(2)+' L</b>':'—';}),
+        q('Value at landed cost',function(x){var w=x.t==='MSD'?P.wacMSD:P.wacHSD;return x.dp?_wkM((x.dp.variation||0)*w):'—';})
+      ])+'<div class="wk-p">Book stock is counted forward from the last physical dip (or the opening stock). A shortage here is fuel that left the tank without being metered or recorded — the classic leak. It is not in the P&L; its value is shown so you can judge it.</div>'+
+      (Math.abs((qr[0].b-qr[0].a)-(qr[0].ld-qr[0].met+qr[0].ret))>1||Math.abs((qr[1].b-qr[1].a)-(qr[1].ld-qr[1].met+qr[1].ret))>1
+        ?'<div class="wk-p" style="color:var(--diesel)">Start + movement does not equal end: a dip taken inside the period re-based the book stock. That difference is the dip variation.</div>':''),false);
+  }
+
+  // ── C. AUDIT CHECKS ─────────────────────────────────────────────────
+  var chk=_plAuditChecks(from,to,recs,P,X);
+  var ico={ok:'✓',warn:'⚠',bad:'✗',info:'ℹ'};
+  var bad=chk.filter(function(c){return c.st==='bad';}).length, warn=chk.filter(function(c){return c.st==='warn';}).length;
+  var checks='<div class="wk-checks">'+chk.map(function(c){
+    return '<div class="wk-chk '+c.st+'"><span class="wk-ico">'+ico[c.st]+'</span><div><div class="wk-chk-t">'+_esc(c.t)+'</div><div class="wk-chk-d">'+_esc(c.d)+'</div></div></div>';
+  }).join('')+'</div>';
+
+  box.innerHTML=btn+
+    '<div class="wk" id="wk_doc">'+
+      '<div class="wk-h"><div class="wk-title">MANI FUELS — STATEMENT OF PROFIT &amp; LOSS</div>'+
+      '<div class="wk-meta">For '+per+' · '+n+' shift'+(n!==1?'s':'')+' · prepared '+new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})+
+      (_currentUser?' by '+_esc(_currentUser.display||_currentUser.username):'')+'</div></div>'+
+      '<div class="wk-p"><b>Basis:</b> accrual. Revenue = meter litres × pump rate on each shift plus oil and stock sold. Cost of fuel = litres sold × weighted average landed cost. Every figure below is worked out from the saved records, and each note says which.</div>'+
+      '<div class="wk-sec">A. STATEMENT</div>'+stmt+
+      '<div class="wk-sec">B. NOTES AND WORKINGS</div>'+
+      note('1','Revenue from operations',n1,true)+
+      '<details class="wk-note" open><summary><span class="wk-no">2</span>Cost of goods sold</summary><div class="wk-body">'+n2+'</div></details>'+
+      note('3','Operating expenses',n3,false)+
+      note('4','Staff',n4,false)+
+      n5+
+      note('6','Owner drawings',n6,false)+
+      note('7','Cash, credit and purchases — outside profit (memorandum)',n7,false)+
+      n8+
+      '<div class="wk-sec">C. CHECKS — WHERE MONEY CAN LEAK '+
+        '<span style="font-weight:400;letter-spacing:0">('+(bad?bad+' problem'+(bad!==1?'s':''):'no problems')+(warn?', '+warn+' to review':'')+')</span></div>'+checks+
+    '</div>';
+}
+function togglePLWorkings(){
+  localStorage.setItem('plWorkingsOpen',localStorage.getItem('plWorkingsOpen')==='1'?'0':'1');
+  genReport();
+}
+function printPLWorkings(){
+  var doc=document.getElementById('wk_doc'); if(!doc)return;
+  var c=doc.cloneNode(true);
+  c.querySelectorAll('details').forEach(function(d){d.open=true;});
+  var area=document.getElementById('pdf-print-area');
+  area.innerHTML='<style>#pdf-print-area .wk *{color:#000!important;background:transparent!important;border-color:#bbb!important}'+
+    '#pdf-print-area .wk-tbl{width:100%;border-collapse:collapse;font-size:10px}'+
+    '#pdf-print-area .wk-tbl td,#pdf-print-area .wk-tbl th{border-bottom:1px solid #ddd!important;padding:3px 5px}'+
+    '#pdf-print-area .wk-note,#pdf-print-area .wk-sched{page-break-inside:avoid}'+
+    '#pdf-print-area summary{font-weight:700;list-style:none;margin:8px 0 4px}</style>'+c.outerHTML;
+  if(typeof logActivity==='function')logActivity('export_pl','report',null,'P&L workings printed');
+  setTimeout(function(){window.print();},300);
 }
 
 function renderPL(from, to, shiftRecs){
@@ -6011,6 +6559,14 @@ function renderPL(from, to, shiftRecs){
     recon+
     (cashCards.length?'<div class="pl-band"><div class="pl-band-t">CASH MOVEMENT — money in and out, outside the profit sum</div>'+
       '<div class="pl-band-grid">'+_cardHtml(cashCards)+'</div></div>':'');
+  if(typeof renderPLWorkings==='function'){
+    try{
+      renderPLWorkings(from,to,shiftRecs,_pl,{totalCreditDiscounts:totalCreditDiscounts,includeWages:includeWages,
+        totalStaffCost:totalStaffCost,wagesAccrued:wagesAccrued,totalSalaries:totalSalaries,totalAdvances:totalAdvances,
+        totalAdvRecovered:totalAdvRecovered,totalBonuses:totalBonuses,staffCashOut:staffCashOut,
+        drawingsInRange:drawingsInRange,totalDrawings:totalDrawings,netFinal:netFinal,cashAfterDrawings:cashAfterDrawings});
+    }catch(e){ console.error('P&L workings failed:',e); var _w=document.getElementById('pl_workings'); if(_w)_w.innerHTML='<div class="pl-warn">Workings could not be built: '+_esc(e.message)+'</div>'; }
+  }
 
   // ── DAILY TREND CHART ──
   // Aggregate by date: revenue (from shifts), COGS (from loads+oil), net (revenue - COGS - opex for that day)
@@ -7010,6 +7566,193 @@ function renderOilReg(){
 }
 
 // ════ PACK PURCHASE REGISTER (multi-size) ════
+// ══════════════════════════════════════════════════════════════════
+// PACK OIL STOCK — MF_PACK_STOCK_V1
+// in stock = received (Pack Register) − sold (saved shifts) + correction.
+// The correction comes from a physical count: packs held before the register
+// existed, breakage, miscounts. It is stored as an offset so later purchases
+// and sales keep moving the figure.
+// ══════════════════════════════════════════════════════════════════
+// A function, not a var: renderMasterStock() runs at boot, above this line.
+function _packMinDefault(){ return 20; }
+function _cfgApplyIfNewer(key, inc){
+  if(!inc)return;
+  var loc=null; try{ loc=JSON.parse(localStorage.getItem(key)||'null'); }catch(e){}
+  var a=String((loc&&loc.updatedAt)||''), b=String(inc.updatedAt||'');
+  if(a && b<a){
+    // Ours is newer than what the server holds: put it back up, don't lose it.
+    if(typeof queueSettingsSave==='function')queueSettingsSave();
+    return;
+  }
+  localStorage.setItem(key, JSON.stringify(inc));
+}
+function _packStockCfg(){
+  var c=null; try{ c=JSON.parse(localStorage.getItem('packStockCfg')||'null'); }catch(e){}
+  c=(c&&typeof c==='object')?c:{};
+  return {min:c.min||{}, adj:c.adj||{}, counted:c.counted||{}, updatedAt:c.updatedAt||''};
+}
+function _savePackStockCfg(c){
+  c.updatedAt=new Date().toISOString();
+  localStorage.setItem('packStockCfg', JSON.stringify(c));
+  if(typeof queueSettingsSave==='function')queueSettingsSave();
+}
+function _packSizesInUse(){
+  var s=new Set([40]);
+  try{ packSizesConfig.filter(function(p){return p.enabled;}).forEach(function(p){s.add(+p.size);}); }catch(e){}
+  try{ packReg.forEach(function(p){s.add(+(p.size||40));}); }catch(e){}
+  return Array.from(s).sort(function(a,b){return a-b;});
+}
+function _packBalances(){
+  var cfg=_packStockCfg(), recv={}, sold={};
+  try{ packReg.forEach(function(p){ var k=+(p.size||40); recv[k]=(recv[k]||0)+(parseFloat(p.qty)||0); }); }catch(e){}
+  (records||[]).forEach(function(r){
+    sold[40]=(sold[40]||0)+_recPs40(r).n;
+    if(r.extraPackSold)Object.keys(r.extraPackSold).forEach(function(k){
+      sold[+k]=(sold[+k]||0)+(parseFloat(r.extraPackSold[k])||0);
+    });
+  });
+  return _packSizesInUse().map(function(sz){
+    var k=String(sz), adj=parseFloat(cfg.adj[k])||0;
+    var min=(cfg.min[k]!=null&&cfg.min[k]!=='')?(parseFloat(cfg.min[k])||0):_packMinDefault();
+    var bal=Math.round((recv[sz]||0)-(sold[sz]||0)+adj);
+    return {size:sz, received:recv[sz]||0, sold:sold[sz]||0, adj:adj, balance:bal, min:min,
+            counted:cfg.counted[k]||null,
+            status: bal<=0?'OUT':(bal<=min?'LOW':'OK')};
+  });
+}
+function setPackMin(size,val){
+  var c=_packStockCfg(), v=parseFloat(val);
+  c.min[String(size)]=(isFinite(v)&&v>=0)?Math.round(v):_packMinDefault();
+  _savePackStockCfg(c);
+  if(typeof logActivity==='function')logActivity('pack_min','stock',size+'ml','Minimum set to '+c.min[String(size)]+' packs');
+  _packRerender();
+}
+function _packRerender(){
+  var pg=document.getElementById('page-stock');
+  if(pg&&pg.classList.contains('active'))renderMasterStock(); else renderPackStock();
+  renderPackStockHint();
+  if(typeof renderGlobalAlertBell==='function')renderGlobalAlertBell();
+}
+// Physical count → correction, so the register agrees with the shelf.
+function setPackCount(size){
+  var el=document.getElementById('pk_count_'+size), v=el?parseFloat(el.value):NaN;
+  if(!isFinite(v)||v<0){showToast('Enter the number of '+size+' ml packs on the shelf');return;}
+  var cur=_packBalances().find(function(p){return p.size===size;});
+  var c=_packStockCfg(), k=String(size);
+  var before=cur?cur.balance:0;
+  c.adj[k]=(parseFloat(c.adj[k])||0)+(Math.round(v)-before);
+  c.counted[k]={count:Math.round(v), at:new Date().toISOString(),
+                by:(_currentUser&&_currentUser.username)||''};
+  _savePackStockCfg(c);
+  if(typeof logActivity==='function')logActivity('pack_count','stock',size+'ml',
+    'Counted '+Math.round(v)+' packs (register said '+before+', '+(Math.round(v)-before>=0?'+':'')+(Math.round(v)-before)+')');
+  _packRerender();
+  showToast('✓ '+size+' ml stock set to '+Math.round(v)+' packs');
+}
+// Oil Stock page block. Returns how many sizes are LOW/OUT.
+function renderPackStock(){
+  var w=document.getElementById('pack_stock_wrap'); if(!w)return 0;
+  var rows=_packBalances(), lowN=0;
+  var pill={OK:'sok',LOW:'slow',OUT:'szero'};
+  w.innerHTML='<div class="card"><div class="card-head">PACK OIL STOCK '+
+    '<span style="font-size:10px;color:var(--muted);font-weight:400">received − sold on shifts ± physical count</span></div>'+
+    '<div style="overflow-x:auto"><table class="stock-tbl" style="width:100%;min-width:640px"><thead><tr>'+
+    '<th>PACK</th><th>RECEIVED</th><th>SOLD</th><th>CORRECTION</th><th>IN STOCK</th><th>MINIMUM</th><th>STATUS</th><th>SHELF COUNT</th></tr></thead><tbody>'+
+    rows.map(function(p){
+      if(p.status!=='OK')lowN++;
+      var col=p.status==='OUT'?'var(--red)':p.status==='LOW'?'var(--diesel)':'var(--green)';
+      var cnt=p.counted?'<div style="font-size:9px;color:var(--muted);margin-top:2px">last counted '+
+        new Date(p.counted.at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})+' · '+p.counted.count+'</div>':'';
+      return '<tr><td style="font-weight:700;color:'+(p.size===40?'var(--petrol)':'var(--blue)')+'">'+p.size+' ml</td>'+
+        '<td>'+p.received+'</td><td>'+p.sold+'</td>'+
+        '<td style="color:var(--muted)">'+(p.adj?(p.adj>0?'+':'')+Math.round(p.adj):'—')+'</td>'+
+        '<td style="font-weight:700;font-size:14px;color:'+col+'">'+p.balance+'</td>'+
+        '<td><input type="number" min="0" step="1" value="'+p.min+'" onchange="setPackMin('+p.size+',this.value)" style="width:64px" title="Alert at or below this many packs"></td>'+
+        '<td><span class="spill '+pill[p.status]+'">'+p.status+'</span></td>'+
+        '<td><div style="display:flex;gap:4px;align-items:center"><input type="number" min="0" step="1" id="pk_count_'+p.size+'" placeholder="count" style="width:70px">'+
+        '<button class="btn btn-g" style="padding:4px 8px;font-size:10px" onclick="setPackCount('+p.size+')">SET</button></div>'+cnt+'</td></tr>';
+    }).join('')+'</tbody></table></div></div>';
+  return lowN;
+}
+// Shift entry: live stock under each pack card, and a warning while typing.
+function renderPackStockHint(){
+  var bal={}; _packBalances().forEach(function(p){bal[p.size]=p;});
+  document.querySelectorAll('.pack-size-card').forEach(function(card){
+    var sz=+(card.getAttribute('data-pack-size')||40), p=bal[sz]; if(!p)return;
+    var pre=sz===40?'pack':'pack'+sz;
+    var a=parseFloat((document.getElementById(pre+'_prev')||{}).value), b=parseFloat((document.getElementById(pre+'_cur')||{}).value);
+    var now=(isFinite(a)&&isFinite(b)&&a>=b)?(a-b):0;
+    // A shift already saved is already in p.sold; don't count it twice.
+    var sid=(document.getElementById('shiftId')||{}).textContent;
+    if(sid&&(records||[]).some(function(r){return r.id===sid;}))now=0;
+    var after=p.balance-now;
+    var h=card.querySelector('.pack-stock-hint');
+    if(!h){ h=document.createElement('div'); h.className='pack-stock-hint';
+            h.style.cssText="font-family:'JetBrains Mono',monospace;font-size:10px;margin-top:6px;padding:6px 8px;border-radius:4px;background:var(--s3);line-height:1.5";
+            card.appendChild(h); }
+    var col=after<=0?'var(--red)':after<=p.min?'var(--diesel)':'var(--muted)';
+    h.style.borderLeft='3px solid '+col;
+    h.innerHTML='<span style="color:var(--muted)">In stock:</span> <b style="color:var(--text)">'+p.balance+'</b> packs · min '+p.min+
+      (now?' · after this shift <b style="color:'+col+'">'+after+'</b>':'')+
+      (after<=p.min?'<br><span style="color:'+col+'">⚠ '+(after<=0?'Out of stock':'At or below minimum')+' — reorder '+sz+' ml packs</span>':'');
+  });
+}
+document.addEventListener('input',function(e){
+  var id=e.target&&e.target.id||'';
+  if(/^pack\d*_(prev|cur)$/.test(id))renderPackStockHint();
+});
+
+// ── LOOSE / L-UNIT SETUP, reachable from the shift entry ─────────────────
+function openLooseSetup(){
+  var o=document.getElementById('looseSetupOverlay');
+  if(!o){
+    o=document.createElement('div'); o.id='looseSetupOverlay';
+    o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:850;display:flex;align-items:center;justify-content:center;padding:16px';
+    o.innerHTML='<div style="background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:18px;max-width:560px;width:100%;max-height:85vh;overflow-y:auto">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'+
+      '<div style="font-family:\'Syne\',sans-serif;font-weight:800;font-size:15px;letter-spacing:1.5px">⚙ LOOSE OIL SETUP</div>'+
+      '<button onclick="closeLooseSetup()" style="background:transparent;border:1px solid var(--border2);color:var(--muted);padding:5px 12px;border-radius:4px;cursor:pointer">✕</button></div>'+
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.5">Tick the bottles you pour into the loose jar and set the litres in one bottle. Same settings as the LOOSE and L / UNIT columns on Oil Stock; they sync to every device.</div>'+
+      '<div id="looseSetupList"></div></div>';
+    o.addEventListener('click',function(e){ if(e.target===o)closeLooseSetup(); });
+    document.body.appendChild(o);
+  }
+  o.style.display='flex';
+  // Order fixed when the panel opens (ticked first). Re-sorting on every tap
+  // made rows jump under the operator's finger.
+  var cfg0=_looseOilCfg();
+  _looseSetupOrder=stock.map(function(x){return x.id;}).sort(function(a,b){
+    return (cfg0.allowed.indexOf(String(b))>=0?1:0)-(cfg0.allowed.indexOf(String(a))>=0?1:0);});
+  _looseSetupRefresh();
+}
+var _looseSetupOrder=null;
+function closeLooseSetup(){
+  var o=document.getElementById('looseSetupOverlay'); if(o)o.style.display='none';
+  if(typeof renderLooseOilCfg==='function')renderLooseOilCfg();
+  if(document.getElementById('page-stock')&&document.getElementById('page-stock').classList.contains('active'))renderMasterStock();
+}
+function _looseSetupRefresh(){
+  var list=document.getElementById('looseSetupList'); if(!list)return;
+  var o=document.getElementById('looseSetupOverlay'); if(!o||o.style.display==='none')return;
+  var cfg=_looseOilCfg(), on=function(id){return cfg.allowed.indexOf(String(id))>=0;};
+  // Ticked items first, then everything else in register order.
+  var ord=_looseSetupOrder||[];
+  var items=stock.slice().sort(function(a,b){
+    var i=ord.indexOf(a.id), j=ord.indexOf(b.id);
+    return (i<0?1e9:i)-(j<0?1e9:j);
+  });
+  list.innerHTML=items.map(function(x){
+    var t=on(x.id), sz=_looseSize(x);
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">'+
+      '<input type="checkbox" '+(t?'checked':'')+' onchange="toggleLooseAllowed('+x.id+',this.checked)" style="width:18px;height:18px;accent-color:var(--petrol)">'+
+      '<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_esc(x.name)+'</div>'+
+      '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--muted)">'+_esc(x.cat||'')+' · '+(x.qty||0)+' '+_esc(x.unit||'')+'</div></div>'+
+      '<div style="display:flex;align-items:center;gap:4px"><input type="number" step="0.01" min="0" value="'+(sz||'')+'" placeholder="L" '+(t?'':'disabled')+
+      ' onchange="setLooseSize('+x.id+',this.value)" style="width:70px'+(t?'':';opacity:.35')+'"><span style="font-size:10px;color:var(--muted)">L / '+_esc(x.unit||'unit')+'</span></div>'+
+      (t&&!(sz>0)?'<span style="font-size:10px;color:var(--diesel)">⚠ size</span>':'')+
+      '</div>';
+  }).join('');
+}
 let packReg=JSON.parse(localStorage.getItem('packReg')||'[]');
 function savePackReg(){localStorage.setItem('packReg',JSON.stringify(packReg));}
 
@@ -7136,7 +7879,7 @@ function renderPackReg(){
   const allRecs=JSON.parse(localStorage.getItem('fuelRecords')||'[]');
   const soldBySize={40:0};
   allRecs.forEach(r=>{
-    soldBySize[40]+=(r.ps||0);
+    soldBySize[40]+=_recPs40(r).n;
     if(r.extraPackSold){
       Object.keys(r.extraPackSold).forEach(s=>{
         const sNum=parseInt(s);
@@ -11686,6 +12429,7 @@ async function loadAllFromSupabase(silent) {
         meters: r.meters || {},
         looseOilUnits: r.loose_oil_units || 0
       }));
+      remoteRecs.forEach(_recFromMeters);   // ps / os / handover / looseOpened
       const mrg = _mergeById(records, _dropDeleted('shift_records',remoteRecs), 'savedAt', 'shift_records');
       records = mrg.merged.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
       localStorage.setItem('fuelRecords', JSON.stringify(records));
