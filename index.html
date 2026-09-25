@@ -454,6 +454,7 @@ document.addEventListener('DOMContentLoaded',function(){
     <div class="sidebar-section">DATA</div>
     <button class="nav-tab owner-only" onclick="showPage('activity');closeMenu()"><span class="tab-icon">📜</span>Activity Log<span class="owner-badge" title="Owner only">🔒</span></button>
     <button class="nav-tab owner-only" onclick="exportFullBackup();closeMenu()"><span class="tab-icon">💾</span>Backup &amp; Download<span class="owner-badge" title="Owner only">🔒</span></button>
+    <button class="nav-tab owner-only" onclick="openStatement();closeMenu()"><span class="tab-icon">🧾</span>Business Statement<span class="owner-badge" title="Owner only">🔒</span></button>
     <button class="nav-tab" onclick="exportPDF();closeMenu()"><span class="tab-icon">📄</span>Export Report (PDF)</button>
     <button class="nav-tab owner-only" onclick="document.getElementById('import-file').click();closeMenu()"><span class="tab-icon">📥</span>Import Backup<span class="owner-badge" title="Owner only">🔒</span></button>
     <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
@@ -663,6 +664,61 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
 .wk-chk.ok{border-left-color:var(--green)}.wk-chk.warn{border-left-color:var(--diesel)}.wk-chk.bad{border-left-color:var(--red)}.wk-chk.info{border-left-color:var(--blue)}
 .wk-ico{font-weight:800;width:14px;flex-shrink:0}.wk-chk.ok .wk-ico{color:var(--green)}.wk-chk.warn .wk-ico{color:var(--diesel)}.wk-chk.bad .wk-ico{color:var(--red)}.wk-chk.info .wk-ico{color:var(--blue)}
 .wk-chk-t{font-weight:700;font-size:12px}.wk-chk-d{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);line-height:1.55;margin-top:2px}
+/* MF_STATEMENT_V1 */
+#stmtOverlay{position:fixed;inset:0;z-index:950;background:#2b2f36;display:none;flex-direction:column}
+.stmt-bar{background:var(--s1);border-bottom:1px solid var(--border2);padding:8px 12px;display:flex;flex-direction:column;gap:6px}
+.stmt-bar-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.stmt-bar-row label{display:flex;align-items:center;gap:5px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px}
+.stmt-quick{display:flex;gap:4px}.stmt-quick .btn{padding:4px 8px;font-size:9px}
+.stmt-scroll{flex:1;overflow:auto;padding:18px 10px 40px}
+.stmt{background:#fff;color:#111;margin:0 auto;box-shadow:0 6px 30px rgba(0,0,0,.5);padding:26px 28px;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;font-size:11px;line-height:1.4;font-variant-numeric:tabular-nums;letter-spacing:0}
+.stmt-portrait{max-width:794px}.stmt-landscape{max-width:1123px}
+.st-head{display:flex;justify-content:space-between;gap:20px;border-bottom:3px solid #0b3d5c;padding-bottom:12px;margin-bottom:12px}
+.st-org{font-size:22px;font-weight:800;letter-spacing:1px;color:#0b3d5c;text-transform:uppercase}
+.st-addr{font-size:10px;color:#444;margin-top:4px}
+.st-doc{text-align:right}.st-doc-t{font-size:13px;font-weight:800;letter-spacing:2px;color:#0b3d5c;margin-bottom:6px}
+.st-kv{margin-left:auto}.st-kv td{padding:1px 0 1px 12px;font-size:10px;text-align:right;border:none}.st-kv td:first-child{color:#666}
+.st-sum{width:100%;border-collapse:collapse;margin:8px 0}
+.st-sum td{border:1px solid #c9d3dc;padding:8px 10px;width:25%;vertical-align:top;background:#f4f7fa}
+.st-sum td div{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#555;margin-bottom:3px}
+.st-sum td b{font-size:14px}.st-sum td.st-close{background:#0b3d5c;color:#fff}.st-sum td.st-close div{color:#cfe0ec}
+.st-glance{width:100%;border-collapse:collapse;margin:6px 0 4px;font-size:10.5px}
+.st-glance td{border-bottom:1px solid #e3e8ed;padding:4px 6px}.st-glance td:nth-child(odd){color:#555}.st-glance td:nth-child(even){text-align:right;font-weight:700}
+.stmt h2{font-size:12.5px;letter-spacing:1px;text-transform:uppercase;color:#0b3d5c;border-bottom:1.5px solid #0b3d5c;padding-bottom:3px;margin:22px 0 6px;font-family:inherit}
+.stmt h3{font-size:11px;margin:12px 0 4px;color:#222;font-family:inherit}
+.st-note{font-size:9.5px;color:#555;margin:4px 0}
+.st-t{width:100%;border-collapse:collapse;font-size:10.5px}
+.st-t thead{display:table-header-group}
+.st-t th{background:#0b3d5c;color:#fff;text-align:left;padding:5px 6px;font-size:9.5px;letter-spacing:.3px;font-weight:700}
+.st-t td{padding:4px 6px;border-bottom:1px solid #e3e8ed;vertical-align:top;color:#111}
+.st-t tbody tr:nth-child(even) td{background:#fafbfc}
+.st-t .n{text-align:right;white-space:nowrap}
+.st-t tr{page-break-inside:avoid;break-inside:avoid}
+.st-h td{background:#e8f0f6!important;font-weight:700;color:#0b3d5c!important;border-top:1px solid #b8cad8}
+.st-f td{background:#f4f7fa!important;font-size:9.5px;color:#333}
+.st-w td{background:#fff4e0!important}
+.st-memo td{color:#777!important;font-style:italic}
+.st-tot td{border-top:1.5px solid #333;background:#eef2f5!important}
+.st-grand td{border-bottom:3px double #333}
+.st-sub{font-size:9px;color:#666;margin-top:1px}
+.st-ref{font-size:9px;color:#666;font-family:'Courier New',monospace;word-break:break-all}
+.st-small{font-size:9.5px}.st-small td,.st-small th{padding:3px 4px}
+.st-neg{color:#b00020!important;font-weight:700}
+.st-pl td:first-child{width:75%}
+.st-chk-bad td{background:#fdecee!important}.st-chk-warn td{background:#fff4e0!important}.st-chk-ok td{background:#eef8f1!important}
+.st-sign{display:flex;justify-content:space-between;margin-top:34px;font-size:10px;color:#333;page-break-inside:avoid}
+.st-foot{font-size:9px;color:#777;border-top:1px solid #ccc;margin-top:18px;padding-top:6px;text-align:center}
+#stmt-print{display:none}
+@media print{
+  body.printing-stmt{background:#fff!important}
+  body.printing-stmt > *{display:none!important}
+  body.printing-stmt > #stmt-print{display:block!important;position:static!important}
+  body.printing-stmt #stmt-print,body.printing-stmt #stmt-print *{visibility:visible!important}
+  body.printing-stmt .stmt{box-shadow:none;padding:0;max-width:none;margin:0}
+  body.printing-stmt *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body.printing-stmt .stmt h2{page-break-after:avoid;break-after:avoid}
+}
+@media(max-width:640px){.stmt{padding:14px 12px}.st-head{flex-direction:column}.st-doc{text-align:left}.st-kv{margin-left:0}.st-kv td{text-align:left;padding:1px 10px 1px 0}.st-sum td{display:block;width:auto}}
 .pl-recon{background:var(--s2);border:1px solid var(--border);border-left:3px solid var(--petrol);border-radius:8px;padding:14px;margin-bottom:14px;font-family:'JetBrains Mono',monospace;font-size:11px}
 .pl-warn{background:rgba(255,176,32,.08);border:1px solid var(--diesel);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text);line-height:1.7}
 .pl-charts-row{display:grid;grid-template-columns:2fr 1fr;gap:12px}
@@ -1311,6 +1367,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
     <span style="color:var(--muted)">to</span>
     <input type="date" class="date-inp" id="rep_to">
     <button class="save-btn" style="padding:6px 16px;margin:0" onclick="genReport()">GENERATE</button>
+    <button class="btn btn-g" style="padding:6px 14px" onclick="openStatement()" title="Bank-statement style report you can print">📄 STATEMENT</button>
   </div>
 
   <!-- Quick range buttons -->
@@ -6036,6 +6093,7 @@ function _plAuditChecks(from,to,recs,P,X){
 }
 
 function renderPLWorkings(from,to,recs,P,X){
+  window._lastPL={from:from,to:to,P:P,X:X};   // the statement reuses wages/discount settings
   var box=document.getElementById('pl_workings'); if(!box)return;
   var open=localStorage.getItem('plWorkingsOpen')==='1';
   var btn='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 12px">'+
@@ -6313,6 +6371,426 @@ function printPLWorkings(){
     '#pdf-print-area summary{font-weight:700;list-style:none;margin:8px 0 4px}</style>'+c.outerHTML;
   if(typeof logActivity==='function')logActivity('export_pl','report',null,'P&L workings printed');
   setTimeout(function(){window.print();},300);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// BUSINESS STATEMENT — MF_STATEMENT_V1
+// A printable, bank-statement style account of a period: every rupee in
+// and out, date by date, with a running balance, then the registers behind
+// it (meters, customers, fuel stock, purchases, staff), the profit & loss,
+// and the exceptions. White paper on screen; prints across as many A4
+// pages as it needs, with column headings repeated on every page.
+// Read-only — nothing here writes business data.
+// ══════════════════════════════════════════════════════════════════
+var STMT_SECTIONS=[
+  ['txn','Transaction statement'],['shifts','Shift & meter register'],['cust','Customer credit'],
+  ['stock','Fuel stock register'],['purch','Purchases & supplier dues'],['staff','Staff'],
+  ['pl','Profit & loss'],['checks','Exceptions']];
+function _stmtSecOn(k){
+  var s=null; try{ s=JSON.parse(localStorage.getItem('stmtSections')||'null'); }catch(e){}
+  return !s || s[k]!==false;
+}
+function _stmtSetSec(k,on){
+  var s={}; try{ s=JSON.parse(localStorage.getItem('stmtSections')||'{}')||{}; }catch(e){}
+  s[k]=!!on; localStorage.setItem('stmtSections',JSON.stringify(s)); renderStatement();
+}
+function _sN(n){ n=+n||0; return n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function _sAmt(n){ return (+n||0)?_sN(n):''; }
+function _sBal(n){ n=+n||0; return _sN(Math.abs(n))+(n<0?' Dr':' Cr'); }
+function _sD(d){ return d?new Date(d+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):''; }
+function _sL(n,dp){ return (+n||0).toLocaleString('en-IN',{minimumFractionDigits:dp==null?2:dp,maximumFractionDigits:dp==null?2:dp}); }
+function _sStaffName(id){ var s=(typeof staffList!=='undefined'?staffList:[]).find(function(x){return x.id===id;}); return s?s.name:'#'+id; }
+var _SHIFT_ORD={morning:1,night:2};
+
+// ── Every money movement in the period, as statement lines ───────────────
+function _stmtTransactions(from,to){
+  var rows=[], inR=function(d){return d&&(!from||d>=from)&&(!to||d<=to);};
+  var recs=records.filter(function(r){return inR(r.date);});
+
+  recs.forEach(function(r){
+    var o=_SHIFT_ORD[r.shift]||1, m=r.meters||{}, L=[];
+    var sref=r.date.slice(8,10)+'/'+r.date.slice(5,7)+' '+(r.shift==='night'?'N':'M');
+    var push=function(x){ x.date=r.date; x.ord=o; x.ref=sref; x.sortRef=r.id; x.shift=r.id; L.push(x); };
+    var mc=function(k){ return (m[k+'_prev']!=null&&m[k+'_cur']!=null&&(m[k+'_prev']||m[k+'_cur']))?k.toUpperCase().replace(/(\d)/,' M$1')+' '+_sL(m[k+'_prev'],3)+' → '+_sL(m[k+'_cur'],3):''; };
+    // Sales — credit side
+    if((r.msdV||0)>0) push({cr:r.msdV,desc:'Petrol (MSD) sales',
+      sub:_sL(r.msdT,3)+' L @ ₹'+_sN(r.msdT>0?r.msdV/r.msdT:0)+'/L'+([mc('msd1'),mc('msd2')].filter(Boolean).length?' · '+[mc('msd1'),mc('msd2')].filter(Boolean).join(' · '):'')+
+          ((r.testMSDL||0)>0?' · incl. '+_sL(r.testMSDL)+' L testing':'')});
+    if((r.hsdV||0)>0) push({cr:r.hsdV,desc:'Diesel (HSD) sales',
+      sub:_sL(r.hsdT,3)+' L @ ₹'+_sN(r.hsdT>0?r.hsdV/r.hsdT:0)+'/L'+([mc('hsd1'),mc('hsd2')].filter(Boolean).length?' · '+[mc('hsd1'),mc('hsd2')].filter(Boolean).join(' · '):'')+
+          ((r.testHSDL||0)>0?' · incl. '+_sL(r.testHSDL)+' L testing':'')});
+    if((r.pv||0)>0){
+      var p=_recPs40(r), ex=r.extraPackSold||{}, parts=[];
+      if(p.n>0)parts.push(_sL(p.n,0)+' × 40 ml'+(p.est?' (count estimated)':''));
+      Object.keys(ex).forEach(function(k){ if(+ex[k]>0)parts.push(_sL(ex[k],0)+' × '+k+' ml'); });
+      push({cr:r.pv,desc:'Pack oil sales',sub:parts.join(' · ')||'packs not recorded'});
+    }
+    if((r.ov||0)>0) push({cr:r.ov,desc:'Loose oil sales',
+      sub:(r.os>0?_sL(r.os)+' L':'litres not recorded')+(m.oil_prev!=null&&m.oil_cur!=null?' · jar '+_sL(m.oil_prev)+' → '+_sL(m.oil_cur)+' L':'')+
+          (Array.isArray(r.looseOpened)&&r.looseOpened.length?' · opened '+r.looseOpened.map(function(x){return x.qty+'×'+(x.name||'bottle');}).join(', '):'')});
+    var lines=Array.isArray(r.stockSold)?r.stockSold:[], lsum=0;
+    lines.forEach(function(it){ var v=(+it.qty||0)*(+it.rate||0); lsum+=v;
+      push({cr:v,desc:'Counter sale — '+(it.name||'item'),sub:_sL(it.qty,0)+' '+(it.unit||'')+' @ ₹'+_sN(it.rate)}); });
+    if((r.stRev||0)-lsum>0.5) push({cr:(r.stRev||0)-lsum,desc:'Counter stock sales',sub:lines.length?'difference between lines and shift total':'item detail not recorded'});
+    // Credit collected on the shift
+    var tag=String(r.shift||'').toUpperCase(), pays=(typeof ledgerPayments!=='undefined'?ledgerPayments:[]).filter(function(x){
+      return x.source==='shift'&&x.date===r.date&&String(x.note||'').indexOf(tag)===0; }), byC={}, psum=0;
+    pays.forEach(function(x){ byC[x.customer]=(byC[x.customer]||0)+(+x.amount||0); psum+=(+x.amount||0); });
+    Object.keys(byC).forEach(function(c){ push({cr:byC[c],desc:'Credit received — '+c,sub:'repayment of earlier credit, collected on the shift'}); });
+    if((r.credBack||0)-psum>0.5) push({cr:(r.credBack||0)-psum,desc:'Credit received from customers',sub:'customer-wise detail not recorded'});
+    // Sold on credit — goes to the customer's account, not the drawer
+    var crRows=ledger.filter(function(e){
+      if((e.amount||0)<=0||e.kind==='advance'||e.kind==='adjust'||e.fuel==='ADJUST')return false;
+      return e.shiftId?e.shiftId===r.id:(e.date===r.date&&e.shift===r.shift);
+    }), csum=0;
+    crRows.forEach(function(e){ csum+=e.amount; push({dr:e.amount,desc:'Credit sale — '+e.customer,sub:(e.fuel||'')+' · to customer account, not cash'}); });
+    if((r.credit||0)-csum>0.5) push({dr:(r.credit||0)-csum,desc:'Credit sales — not in ledger',sub:'⚠ on the shift but no matching customer entry',warn:true});
+    // Expenses paid out of the drawer
+    var h=_recExpHeads(r), hs=0;
+    if(h){
+      [['tea','Tea / food'],['items','Items'],['chit','Chit fund'],['other','Other expenses'],
+       ['tmsd','Testing — petrol (returned to tank)'],['thsd','Testing — diesel (returned to tank)'],['toil','Hydrometer test']]
+      .forEach(function(k){ var v=parseFloat(h[k[0]])||0; if(v>0){ hs+=v; push({dr:v,desc:'Expense — '+k[1],sub:''}); } });
+    }
+    if((r.exp||0)-hs>0.5) push({dr:(r.exp||0)-hs,desc:'Shift expenses',sub:'heads not recorded on this shift'});
+    if((r.handover||0)>0) push({dr:r.handover,desc:'Cash handed over',sub:'taken out of the drawer during the shift'});
+    if((r.bal||0)<-0.5) push({dr:-r.bal,desc:'Cash SHORT',sub:'counted less than the records say should be there',warn:true});
+    if((r.bal||0)>0.5)  push({cr:r.bal,desc:'Cash excess',sub:'counted more than recorded — check for a missed entry',warn:true});
+    // Header + closing line for the shift
+    var coll=(r.cash||0)+(r.gpay||0)+(r.paytm||0);
+    var net=L.reduce(function(s,x){return s+(x.cr||0)-(x.dr||0);},0);
+    var on=(typeof staffAttendance!=='undefined'?staffAttendance:[]).filter(function(a){return a.date===r.date&&a.shift===r.shift&&(a.status==='present'||a.status==='half');})
+      .map(function(a){return _sStaffName(a.staffId)+(a.status==='half'?' (½)':'');});
+    rows.push({head:true,date:r.date,ord:o,ref:r.id,sortRef:r.id,
+      desc:(r.shift==='night'?'NIGHT':'MORNING')+' SHIFT'+(typeof mfSlotLabel==='function'?' · '+mfSlotLabel({date:r.date,shift:r.shift}):'')+
+        (on.length?' · On duty: '+on.join(', '):'')+(r.lockedAt?' · 🔒 locked':'')+(r.tag?' · '+r.tag:'')});
+    Array.prototype.push.apply(rows,L);
+    rows.push({foot:true,date:r.date,ord:o,ref:r.id,sortRef:r.id,
+      desc:'Kept from this shift: Cash ₹'+_sN(r.cash)+' · GPay ₹'+_sN(r.gpay)+' · Paytm ₹'+_sN(r.paytm)+' = ₹'+_sN(coll)+
+        (Math.abs(net-coll)>1?' · ⚠ lines above net to ₹'+_sN(net)+' — ₹'+_sN(net-coll)+' not explained (a field that was not synced)':'')+
+        (r.notes?' · Note: '+r.notes:''),warn:Math.abs(net-coll)>1});
+  });
+
+  // Purchases — bills on their bill date (supplier payments carry no date of their own)
+  (typeof fuelLoads!=='undefined'?fuelLoads:[]).filter(function(l){return inR(l.date);}).forEach(function(l){
+    var tc=+(l.totalCost!=null?l.totalCost:l.total_cost)||0, due=Math.max(0,tc-(+l.amountPaid||0));
+    rows.push({date:l.date,ord:0,ref:l.inv||'LOAD',dr:tc,desc:'Fuel purchase — '+(l.type||'')+' '+_sL(l.vol,0)+' L'+(l.supplier?' · '+l.supplier:''),
+      sub:'landed ₹'+_sN((+l.vol||0)>0?tc/l.vol:0)+'/L'+(l.billTotal?' · bill ₹'+_sN(l.billTotal):'')+(l.lorryRent?' + lorry ₹'+_sN(l.lorryRent):'')+
+          (l.lorry?' · '+l.lorry:'')+' · paid ₹'+_sN(l.amountPaid||0)+(due>0.5?' · DUE ₹'+_sN(due):''),warn:due>0.5});
+  });
+  (typeof oilReg!=='undefined'?oilReg:[]).filter(function(o){return inR(o.date);}).forEach(function(o){
+    var due=Math.max(0,(+o.totalCost||0)-(+o.amountPaid||0));
+    rows.push({date:o.date,ord:0,ref:o.inv||'OIL',dr:o.totalCost||0,desc:'Oil purchase — '+(o.company||''),
+      sub:(o.items||[]).map(function(i){return (i.name||'item')+' ×'+i.qty+' @ ₹'+_sN(i.buy);}).join(' · ')+' · paid ₹'+_sN(o.amountPaid||0)+(due>0.5?' · DUE ₹'+_sN(due):''),warn:due>0.5});
+  });
+  (typeof packReg!=='undefined'?packReg:[]).filter(function(p){return inR(p.date)&&(+p.totalCost||0)>0;}).forEach(function(p){
+    rows.push({date:p.date,ord:0,ref:'PACK',dr:p.totalCost,desc:'Pack purchase — '+_sL(p.qty,0)+' × '+(p.size||40)+' ml',sub:(p.supplier||'')+' @ ₹'+_sN(p.cost)+(p.notes?' · '+p.notes:'')});
+  });
+  // Staff
+  (typeof staffPayments!=='undefined'?staffPayments:[]).filter(function(p){return inR(p.date);}).forEach(function(p){
+    var ded=+p.advanceDeducted||0, cash=p.type==='salary'?(+p.amount||0)-ded:(+p.amount||0);
+    var lbl={salary:'Salary',advance:'Advance',bonus:'Bonus',chit:'Chit'}[p.type]||p.type;
+    if(cash>0)rows.push({date:p.date,ord:3,ref:'STAFF',dr:cash,desc:'Staff '+lbl+' — '+_sStaffName(p.staffId),
+      sub:(p.type==='salary'&&ded>0?'gross ₹'+_sN(p.amount)+' − advance recovered ₹'+_sN(ded):'')+(p.notes?' · '+p.notes:'')});
+  });
+  // Owner drawings
+  (typeof ownerDrawings!=='undefined'?ownerDrawings:[]).filter(function(d){return inR(d.date);}).forEach(function(d){
+    rows.push({date:d.date,ord:3,ref:'DRAW',dr:d.amount||0,desc:'Owner drawing'+(d.purpose?' — '+d.purpose:''),sub:(d.createdBy?'by '+d.createdBy:'')+(d.notes?' · '+d.notes:'')});
+  });
+  // Money received on the ledger page (not through a shift)
+  (typeof ledgerPayments!=='undefined'?ledgerPayments:[]).filter(function(p){return p.source!=='shift'&&inR(p.date);}).forEach(function(p){
+    rows.push({date:p.date,ord:3,ref:p.ref||'PAY',cr:+p.amount||0,desc:(p.kind==='advance'?'Advance received — ':'Credit received — ')+p.customer,sub:(p.mode||'')+(p.note?' · '+p.note:'')});
+  });
+  ledger.filter(function(e){return inR(e.date)&&(e.amount||0)<0&&e.kind==='advance'&&!e.shiftId&&!/^PAY-/.test(e.notes||'');}).forEach(function(e){
+    rows.push({date:e.date,ord:3,ref:'ADV',cr:-e.amount,desc:'Advance received — '+e.customer,sub:'entered on the ledger page'});
+  });
+  // Credit entered on the ledger page, not tied to any shift: shown, not counted
+  ledger.filter(function(e){
+    if(!inR(e.date)||(e.amount||0)<=0||e.shiftId||e.kind==='adjust'||e.fuel==='ADJUST')return false;
+    return !records.some(function(r){return r.date===e.date&&r.shift===e.shift&&(r.credit||0)>0;});
+  }).forEach(function(e){
+    rows.push({date:e.date,ord:3,ref:'LEDGER',memo:true,desc:'Credit entry on ledger page — '+e.customer+' ₹'+_sN(e.amount),sub:'not linked to a shift · shown for information, not in the balance'});
+  });
+
+  rows.sort(function(a,b){ return String(a.date).localeCompare(String(b.date))||(a.ord-b.ord)||String(a.sortRef||a.ref).localeCompare(String(b.sortRef||b.ref))||((a.head?0:a.foot?2:1)-(b.head?0:b.foot?2:1)); });
+  return {rows:rows,recs:recs};
+}
+
+function openStatement(){
+  if(typeof _isOwner!=='undefined'&&!_isOwner){ showToast('🔒 Owner access only'); return; }
+  var o=document.getElementById('stmtOverlay');
+  if(!o){
+    o=document.createElement('div'); o.id='stmtOverlay';
+    o.innerHTML=
+      '<div class="stmt-bar">'+
+        '<div class="stmt-bar-row">'+
+          '<b style="font-family:Syne,sans-serif;letter-spacing:2px">📄 BUSINESS STATEMENT</b>'+
+          '<label>From <input type="date" id="stmt_from" class="date-inp" onchange="renderStatement()"></label>'+
+          '<label>To <input type="date" id="stmt_to" class="date-inp" onchange="renderStatement()"></label>'+
+          '<span class="stmt-quick"><button class="btn btn-g" onclick="stmtRange(\'month\')">THIS MONTH</button><button class="btn btn-g" onclick="stmtRange(\'last\')">LAST MONTH</button><button class="btn btn-g" onclick="stmtRange(\'7d\')">7 DAYS</button><button class="btn btn-g" onclick="stmtRange(\'today\')">TODAY</button></span>'+
+          '<label title="Cash in hand + bank at the start of the period, if you know it">Opening balance ₹ <input type="number" id="stmt_open" step="0.01" placeholder="0" style="width:110px" oninput="renderStatement()"></label>'+
+          '<label>Paper <select id="stmt_orient" onchange="renderStatement()" style="padding:4px 6px"><option value="portrait">A4 portrait</option><option value="landscape">A4 landscape</option></select></label>'+
+          '<span style="margin-left:auto;display:flex;gap:6px">'+
+            '<button class="btn btn-g" onclick="stmtCsv()">⬇ CSV</button>'+
+            '<button class="save-btn" style="margin:0;padding:7px 16px" onclick="printStatement()">🖨 PRINT / SAVE PDF</button>'+
+            '<button class="btn btn-g" onclick="closeStatement()">✕</button></span>'+
+        '</div>'+
+        '<div class="stmt-bar-row" id="stmt_secs"></div>'+
+      '</div>'+
+      '<div class="stmt-scroll"><div id="stmt_paper"></div></div>';
+    document.body.appendChild(o);
+  }
+  var f=document.getElementById('rep_from'), t=document.getElementById('rep_to');
+  var sf=document.getElementById('stmt_from'), st=document.getElementById('stmt_to');
+  if(!sf.value){ if(f&&f.value&&t&&t.value){ sf.value=f.value; st.value=t.value; } else stmtRange('month',true); }
+  document.getElementById('stmt_secs').innerHTML='<span style="color:var(--muted);font-size:10px;letter-spacing:1px">INCLUDE:</span>'+
+    STMT_SECTIONS.map(function(s){return '<label><input type="checkbox" '+(_stmtSecOn(s[0])?'checked':'')+' onchange="_stmtSetSec(\''+s[0]+'\',this.checked)"> '+s[1]+'</label>';}).join('');
+  o.style.display='flex';
+  document.body.style.overflow='hidden';
+  renderStatement();
+}
+function closeStatement(){ var o=document.getElementById('stmtOverlay'); if(o)o.style.display='none'; document.body.style.overflow=''; }
+function stmtRange(k,quiet){
+  var n=new Date(), iso=_isoLocal, f, t;
+  if(k==='month'){ f=iso(new Date(n.getFullYear(),n.getMonth(),1)); t=iso(n); }
+  else if(k==='last'){ f=iso(new Date(n.getFullYear(),n.getMonth()-1,1)); t=iso(new Date(n.getFullYear(),n.getMonth(),0)); }
+  else if(k==='7d'){ var s=new Date(n); s.setDate(s.getDate()-6); f=iso(s); t=iso(n); }
+  else { f=t=iso(n); }
+  document.getElementById('stmt_from').value=f; document.getElementById('stmt_to').value=t;
+  if(!quiet)renderStatement();
+}
+
+var _stmtLastRows=[];
+function renderStatement(){
+  var paper=document.getElementById('stmt_paper'); if(!paper)return;
+  var from=document.getElementById('stmt_from').value, to=document.getElementById('stmt_to').value;
+  var orient=document.getElementById('stmt_orient').value||'portrait';
+  paper.className='stmt stmt-'+orient;
+  if(!from||!to||from>to){ paper.innerHTML='<p>Choose a valid period.</p>'; return; }
+  var opening=parseFloat(document.getElementById('stmt_open').value)||0;
+  var T=_stmtTransactions(from,to), recs=T.recs;
+  var P=_plCore(recs,from,to);
+  var X=(window._lastPL&&window._lastPL.from===from&&window._lastPL.to===to)?window._lastPL.X:null;
+  if(!X&&T.recs.length&&typeof genReport==='function'){
+    // Same period on the Reports page, so wages/discounts/drawings follow its settings.
+    try{ document.getElementById('rep_from').value=from; document.getElementById('rep_to').value=to; genReport(); }catch(e){}
+    X=(window._lastPL&&window._lastPL.from===from&&window._lastPL.to===to)?window._lastPL.X:null;
+  }
+  var bz=(typeof bizProfile!=='undefined'?bizProfile:{})||{};
+  var now=new Date();
+
+  // Running balance
+  var bal=opening, tin=0, tout=0, n=0;
+  T.rows.forEach(function(x){ if(x.head||x.foot||x.memo)return; tin+=x.cr||0; tout+=x.dr||0; bal+=(x.cr||0)-(x.dr||0); x.bal=bal; n++; });
+  _stmtLastRows=T.rows;
+  var closing=bal;
+
+  var H=[];
+  // ── Letterhead ──
+  H.push('<div class="st-head"><div><div class="st-org">'+_esc(bz.name||'Mani Fuels')+'</div>'+
+    '<div class="st-addr">'+[bz.address,bz.phone?'Ph: '+bz.phone:'',bz.email,bz.gstin?'GSTIN: '+bz.gstin:''].filter(Boolean).map(_esc).join('<br>')+'</div></div>'+
+    '<div class="st-doc"><div class="st-doc-t">BUSINESS ACCOUNT STATEMENT</div>'+
+    '<table class="st-kv"><tr><td>Statement period</td><td><b>'+_sD(from)+' to '+_sD(to)+'</b></td></tr>'+
+    '<tr><td>Statement no.</td><td>MF/ST/'+from.replace(/-/g,'')+'-'+to.replace(/-/g,'')+'</td></tr>'+
+    '<tr><td>Generated</td><td>'+now.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})+'</td></tr>'+
+    '<tr><td>Prepared by</td><td>'+_esc(_currentUser?(_currentUser.display||_currentUser.username):'—')+'</td></tr>'+
+    '<tr><td>Shifts in period</td><td>'+recs.length+'</td></tr></table></div></div>');
+
+  // ── Account summary (bank style) ──
+  H.push('<table class="st-sum"><tr>'+
+    '<td><div>Opening balance</div><b>₹ '+_sN(opening)+'</b></td>'+
+    '<td><div>Total credits (money in)</div><b>₹ '+_sN(tin)+'</b></td>'+
+    '<td><div>Total debits (money out)</div><b>₹ '+_sN(tout)+'</b></td>'+
+    '<td class="st-close"><div>Closing balance</div><b>₹ '+_sN(closing)+'</b></td></tr></table>');
+  var shortT=recs.reduce(function(s,r){return s+Math.min(0,r.bal||0);},0), overT=recs.reduce(function(s,r){return s+Math.max(0,r.bal||0);},0);
+  var custOut=0; (function(){ var by={}; ledger.forEach(function(e){ var d=e.amount>=0?(e.amount-(e.paidBack||0)):-(Math.abs(e.amount)-(e.paidBack||0)); by[e.customer]=(by[e.customer]||0)+d; }); Object.keys(by).forEach(function(k){ if(by[k]>0)custOut+=by[k]; }); })();
+  var supDue=(typeof fuelLoads!=='undefined'?fuelLoads:[]).reduce(function(s,l){return s+Math.max(0,(+(l.totalCost!=null?l.totalCost:l.total_cost)||0)-(+l.amountPaid||0));},0)+
+             (typeof oilReg!=='undefined'?oilReg:[]).reduce(function(s,o){return s+Math.max(0,(+o.totalCost||0)-(+o.amountPaid||0));},0);
+  var net=X?X.netFinal:P.netProfit;
+  var kv=[['Petrol sold',_sL(P.soldMSDL)+' L'],['Diesel sold',_sL(P.soldHSDL)+' L'],['Revenue','₹ '+_sN(P.revenue)],
+          ['Gross profit',P.fuelUncosted?'not known':'₹ '+_sN(P.grossProfit)],['Net profit',P.fuelUncosted?'not known':'₹ '+_sN(net)],
+          ['Cash short / excess','₹ '+_sN(-shortT)+' short · ₹ '+_sN(overT)+' excess'],
+          ['Credit given',  '₹ '+_sN(recs.reduce(function(s,r){return s+(r.credit||0);},0))],
+          ['Credit collected','₹ '+_sN(recs.reduce(function(s,r){return s+(r.credBack||0);},0)+(typeof ledgerPayments!=='undefined'?ledgerPayments:[]).filter(function(p){return p.source!=='shift'&&p.date>=from&&p.date<=to&&p.kind!=='advance';}).reduce(function(s,p){return s+(+p.amount||0);},0))],
+          ['Customers owe you (today)','₹ '+_sN(custOut)],['You owe suppliers (today)','₹ '+_sN(supDue)]];
+  H.push('<table class="st-glance">'+[0,2,4,6,8].map(function(i){return '<tr><td>'+kv[i][0]+'</td><td>'+kv[i][1]+'</td><td>'+kv[i+1][0]+'</td><td>'+kv[i+1][1]+'</td></tr>';}).join('')+'</table>');
+  H.push('<p class="st-note">Balance = money received less money paid out, from the opening balance you entered. Sales on credit reduce it (the customer has not paid); purchase bills are taken on their bill date. Figures marked “estimated” are explained in the Profit &amp; loss section.</p>');
+
+  // ── 1. Transactions ──
+  if(_stmtSecOn('txn')){
+    var tr=T.rows.map(function(x){
+      if(x.head) return '<tr class="st-h"><td>'+_sD(x.date)+'</td><td colspan="5">'+_esc(x.desc)+' <span class="st-ref">'+_esc(x.ref)+'</span></td></tr>';
+      if(x.foot) return '<tr class="st-f'+(x.warn?' st-w':'')+'"><td></td><td colspan="5">'+_esc(x.desc)+'</td></tr>';
+      return '<tr'+(x.warn?' class="st-w"':'')+(x.memo?' class="st-memo"':'')+'><td>'+_sD(x.date)+'</td><td class="st-ref">'+_esc(x.ref||'')+'</td>'+
+        '<td><div>'+_esc(x.desc)+'</div>'+(x.sub?'<div class="st-sub">'+_esc(x.sub)+'</div>':'')+'</td>'+
+        '<td class="n">'+(x.memo?'':_sAmt(x.dr))+'</td><td class="n">'+(x.memo?'':_sAmt(x.cr))+'</td><td class="n">'+(x.memo?'':_sN(x.bal))+'</td></tr>';
+    });
+    H.push('<h2>1. Transaction statement</h2>'+
+      '<table class="st-t st-txn"><thead><tr><th style="width:78px">Date</th><th style="width:62px">Ref</th><th>Particulars</th><th class="n" style="width:92px">Debit (out)</th><th class="n" style="width:92px">Credit (in)</th><th class="n" style="width:100px">Balance</th></tr></thead><tbody>'+
+      '<tr class="st-f"><td>'+_sD(from)+'</td><td></td><td><b>Opening balance</b></td><td></td><td></td><td class="n"><b>'+_sN(opening)+'</b></td></tr>'+
+      tr.join('')+
+      '<tr class="st-tot"><td></td><td></td><td><b>Totals for the period · '+n+' entries</b></td><td class="n"><b>'+_sN(tout)+'</b></td><td class="n"><b>'+_sN(tin)+'</b></td><td class="n"><b>'+_sN(closing)+'</b></td></tr>'+
+      '</tbody></table>');
+  }
+
+  // ── 2. Shift & meter register ──
+  if(_stmtSecOn('shifts')){
+    var sr=recs.slice().sort(function(a,b){return String(a.date).localeCompare(String(b.date))||((_SHIFT_ORD[a.shift]||1)-(_SHIFT_ORD[b.shift]||1));});
+    var mm=function(r,k){var m=r.meters||{};return (m[k+'_prev']!=null&&(m[k+'_prev']||m[k+'_cur']))?_sL(m[k+'_prev'],3)+'<br>'+_sL(m[k+'_cur'],3):'—';};
+    var tot={mL:0,hL:0,s:0,c:0,cr:0,e:0,b:0};
+    var body=sr.map(function(r){
+      var sales=_recRevenue(r), coll=(r.cash||0)+(r.gpay||0)+(r.paytm||0);
+      tot.mL+=r.msdT||0; tot.hL+=r.hsdT||0; tot.s+=sales; tot.c+=coll; tot.cr+=r.credit||0; tot.e+=r.exp||0; tot.b+=r.bal||0;
+      return '<tr><td>'+_sD(r.date)+'</td><td>'+(r.shift==='night'?'N':'M')+'</td><td class="n">'+mm(r,'msd1')+'</td><td class="n">'+mm(r,'msd2')+'</td><td class="n">'+_sL(r.msdT,3)+'</td>'+
+        '<td class="n">'+mm(r,'hsd1')+'</td><td class="n">'+mm(r,'hsd2')+'</td><td class="n">'+_sL(r.hsdT,3)+'</td>'+
+        '<td class="n">'+_sN(sales)+'</td><td class="n">'+_sN(coll)+'</td><td class="n">'+_sAmt(r.credit)+'</td><td class="n">'+_sAmt(r.exp)+'</td>'+
+        '<td class="n'+((r.bal||0)<-0.5?' st-neg':'')+'">'+_sN(r.bal)+'</td></tr>';
+    });
+    H.push('<h2>2. Shift &amp; meter register</h2><p class="st-note">Each machine shows opening over closing reading. Litres = closing − opening for both machines.</p>'+
+      '<table class="st-t st-small"><thead><tr><th>Date</th><th>Sh</th><th class="n">MSD M1</th><th class="n">MSD M2</th><th class="n">MSD L</th><th class="n">HSD M1</th><th class="n">HSD M2</th><th class="n">HSD L</th><th class="n">Sales ₹</th><th class="n">Collected ₹</th><th class="n">Credit ₹</th><th class="n">Expenses ₹</th><th class="n">Over/(Short)</th></tr></thead><tbody>'+
+      body.join('')+'<tr class="st-tot"><td colspan="4"><b>Total</b></td><td class="n"><b>'+_sL(tot.mL,3)+'</b></td><td></td><td></td><td class="n"><b>'+_sL(tot.hL,3)+'</b></td><td class="n"><b>'+_sN(tot.s)+'</b></td><td class="n"><b>'+_sN(tot.c)+'</b></td><td class="n"><b>'+_sN(tot.cr)+'</b></td><td class="n"><b>'+_sN(tot.e)+'</b></td><td class="n"><b>'+_sN(tot.b)+'</b></td></tr></tbody></table>');
+  }
+
+  // ── 3. Customer credit ──
+  if(_stmtSecOn('cust')){
+    var C={};
+    var cu=function(nm){ if(!C[nm])C[nm]={given:0,recv:0,adv:0,out:0,oldest:''}; return C[nm]; };
+    ledger.forEach(function(e){
+      var c=cu(e.customer);
+      if(e.amount>0){ var due=e.amount-(e.paidBack||0); c.out+=due; if(due>0.5&&(!c.oldest||e.date<c.oldest))c.oldest=e.date;
+        if(e.date>=from&&e.date<=to&&e.kind!=='adjust'&&e.fuel!=='ADJUST')c.given+=e.amount; }
+      else c.out-=Math.abs(e.amount)-(e.paidBack||0);
+    });
+    (typeof ledgerPayments!=='undefined'?ledgerPayments:[]).forEach(function(p){ if(p.date>=from&&p.date<=to){ var c=cu(p.customer); if(p.kind==='advance')c.adv+=+p.amount||0; else c.recv+=+p.amount||0; } });
+    var names=Object.keys(C).filter(function(k){var c=C[k];return c.given||c.recv||c.adv||Math.abs(c.out)>0.5;}).sort(function(a,b){return C[b].out-C[a].out;});
+    var ct={g:0,r:0,a:0,o:0};
+    H.push('<h2>3. Customer credit</h2><table class="st-t"><thead><tr><th>Customer</th><th class="n">Credit given in period</th><th class="n">Received in period</th><th class="n">Advance received</th><th class="n">Balance today</th><th>Oldest unpaid</th></tr></thead><tbody>'+
+      names.map(function(k){var c=C[k]; ct.g+=c.given; ct.r+=c.recv; ct.a+=c.adv; ct.o+=c.out;
+        var age=c.oldest?Math.floor((now-new Date(c.oldest+'T00:00:00'))/86400000):0;
+        return '<tr'+(age>30&&c.out>0.5?' class="st-w"':'')+'><td>'+_esc(k)+'</td><td class="n">'+_sAmt(c.given)+'</td><td class="n">'+_sAmt(c.recv)+'</td><td class="n">'+_sAmt(c.adv)+'</td>'+
+          '<td class="n">'+(c.out<-0.5?_sN(-c.out)+' adv':_sN(c.out))+'</td><td>'+(c.oldest&&c.out>0.5?_sD(c.oldest)+' ('+age+' days)':'—')+'</td></tr>';}).join('')+
+      '<tr class="st-tot"><td><b>Total</b></td><td class="n"><b>'+_sN(ct.g)+'</b></td><td class="n"><b>'+_sN(ct.r)+'</b></td><td class="n"><b>'+_sN(ct.a)+'</b></td><td class="n"><b>'+_sN(ct.o)+'</b></td><td></td></tr></tbody></table>'+
+      '<p class="st-note">“Received” counts payments recorded with a date (shift collections and the ledger page). Balance today is net of advances held.</p>');
+  }
+
+  // ── 4. Fuel stock register ──
+  if(_stmtSecOn('stock')&&typeof bookStock==='function'){
+    var days=[], d0=new Date(from+'T00:00:00'), g=0;
+    while(_isoLocal(d0)<=to&&g++<400){ days.push(_isoLocal(d0)); d0.setDate(d0.getDate()+1); }
+    var tolV=(typeof tankCfg==='function')?tankCfg().tol:25;
+    var fr=function(t){
+      var rowsS=days.map(function(ds){
+        var prev=_isoLocal(new Date(new Date(ds+'T00:00:00').getTime()-86400000));
+        var a=bookStock(t,prev,'close').book, b=bookStock(t,ds,'close').book;
+        var rv=(typeof fuelLoads!=='undefined'?fuelLoads:[]).filter(function(l){return l.type===t&&l.date===ds;}).reduce(function(s,l){return s+(+l.vol||0);},0);
+        var dr=records.filter(function(r){return r.date===ds;});
+        var sold=dr.reduce(function(s,r){return s+(t==='MSD'?(r.msdT||0):(r.hsdT||0));},0);
+        var ret=dr.reduce(function(s,r){return s+(t==='MSD'?(r.testMSDL||0):(r.testHSDL||0));},0);
+        var dip=(typeof dipReadings!=='undefined'?dipReadings:[]).filter(function(x){return x.type===t&&x.date===ds;}).pop();
+        return '<tr'+(dip&&Math.abs(dip.variation||0)>tolV?' class="st-w"':'')+'><td>'+_sD(ds)+'</td><td class="n">'+_sL(a)+'</td><td class="n">'+_sAmt(rv)+'</td><td class="n">'+_sAmt(sold)+'</td><td class="n">'+_sAmt(ret)+'</td><td class="n">'+_sL(b)+'</td>'+
+          '<td class="n">'+(dip?_sL(dip.observed):'')+'</td><td class="n">'+(dip?((dip.variation>0?'+':'')+_sL(dip.variation)):'')+'</td></tr>';
+      });
+      return '<h3>'+(t==='MSD'?'Petrol (MSD)':'Diesel (HSD)')+' — litres</h3><table class="st-t st-small"><thead><tr><th>Date</th><th class="n">Opening book</th><th class="n">Received</th><th class="n">Metered out</th><th class="n">Testing back</th><th class="n">Closing book</th><th class="n">Dip</th><th class="n">Variation</th></tr></thead><tbody>'+rowsS.join('')+'</tbody></table>';
+    };
+    H.push('<h2>4. Fuel stock register</h2><p class="st-note">Book stock = opening + received − metered + testing returned, carried forward from the last physical dip. Variation = dip − book; outside ±'+tolV+' L is highlighted.</p>'+fr('MSD')+fr('HSD'));
+  }
+
+  // ── 5. Purchases ──
+  if(_stmtSecOn('purch')){
+    var inR=function(x){return x.date>=from&&x.date<=to;};
+    var FL=(typeof fuelLoads!=='undefined'?fuelLoads:[]).filter(inR), OI=(typeof oilReg!=='undefined'?oilReg:[]).filter(inR);
+    var pt={v:0,c:0,p:0,d:0};
+    H.push('<h2>5. Purchases &amp; supplier dues</h2><h3>Fuel loads</h3><table class="st-t st-small"><thead><tr><th>Date</th><th>Invoice</th><th>Supplier</th><th>Fuel</th><th class="n">Litres</th><th class="n">Landed ₹/L</th><th class="n">Total ₹</th><th class="n">Paid ₹</th><th class="n">Due ₹</th></tr></thead><tbody>'+
+      FL.map(function(l){var tc=+(l.totalCost!=null?l.totalCost:l.total_cost)||0, due=Math.max(0,tc-(+l.amountPaid||0)); pt.v+=+l.vol||0; pt.c+=tc; pt.p+=+l.amountPaid||0; pt.d+=due;
+        return '<tr'+(due>0.5?' class="st-w"':'')+'><td>'+_sD(l.date)+'</td><td>'+_esc(l.inv||'')+'</td><td>'+_esc(l.supplier||'')+'</td><td>'+_esc(l.type||'')+'</td><td class="n">'+_sL(l.vol,0)+'</td><td class="n">'+_sN((+l.vol||0)>0?tc/l.vol:0)+'</td><td class="n">'+_sN(tc)+'</td><td class="n">'+_sN(l.amountPaid||0)+'</td><td class="n">'+_sAmt(due)+'</td></tr>';}).join('')+
+      '<tr class="st-tot"><td colspan="4"><b>Total</b></td><td class="n"><b>'+_sL(pt.v,0)+'</b></td><td></td><td class="n"><b>'+_sN(pt.c)+'</b></td><td class="n"><b>'+_sN(pt.p)+'</b></td><td class="n"><b>'+_sN(pt.d)+'</b></td></tr></tbody></table>'+
+      (OI.length?'<h3>Oil &amp; lubricant invoices</h3><table class="st-t st-small"><thead><tr><th>Date</th><th>Invoice</th><th>Supplier</th><th>Items</th><th class="n">Total ₹</th><th class="n">Paid ₹</th><th class="n">Due ₹</th></tr></thead><tbody>'+
+        OI.map(function(o){var due=Math.max(0,(+o.totalCost||0)-(+o.amountPaid||0));return '<tr><td>'+_sD(o.date)+'</td><td>'+_esc(o.inv||'')+'</td><td>'+_esc(o.company||'')+'</td><td>'+_esc((o.items||[]).map(function(i){return (i.name||'')+' ×'+i.qty+' @'+i.buy;}).join(', '))+'</td><td class="n">'+_sN(o.totalCost)+'</td><td class="n">'+_sN(o.amountPaid||0)+'</td><td class="n">'+_sAmt(due)+'</td></tr>';}).join('')+'</tbody></table>':'')+
+      '<p class="st-note">Supplier dues outstanding today, all periods: <b>₹ '+_sN(supDue)+'</b>.</p>');
+  }
+
+  // ── 6. Staff ──
+  if(_stmtSecOn('staff')&&typeof staffList!=='undefined'&&staffList.length){
+    var SP=(typeof staffPayments!=='undefined'?staffPayments:[]).filter(function(p){return p.date>=from&&p.date<=to;});
+    var SA=(typeof staffAttendance!=='undefined'?staffAttendance:[]).filter(function(a){return a.date>=from&&a.date<=to;});
+    H.push('<h2>6. Staff</h2><table class="st-t"><thead><tr><th>Name</th><th>Role</th><th class="n">Present</th><th class="n">Half</th><th class="n">Absent</th><th class="n">Salary paid</th><th class="n">Advance</th><th class="n">Bonus</th><th class="n">Adv. recovered</th></tr></thead><tbody>'+
+      staffList.map(function(s){
+        var a=SA.filter(function(x){return x.staffId===s.id;}), p=SP.filter(function(x){return x.staffId===s.id;});
+        var sum=function(t){return p.filter(function(x){return x.type===t;}).reduce(function(q,x){return q+(+x.amount||0);},0);};
+        if(!a.length&&!p.length&&!s.active)return '';
+        return '<tr><td>'+_esc(s.name)+'</td><td>'+_esc(s.role||'')+'</td><td class="n">'+a.filter(function(x){return x.status==='present';}).length+'</td><td class="n">'+a.filter(function(x){return x.status==='half';}).length+'</td><td class="n">'+a.filter(function(x){return x.status==='absent';}).length+'</td>'+
+          '<td class="n">'+_sAmt(sum('salary'))+'</td><td class="n">'+_sAmt(sum('advance'))+'</td><td class="n">'+_sAmt(sum('bonus'))+'</td><td class="n">'+_sAmt(p.reduce(function(q,x){return q+(+x.advanceDeducted||0);},0))+'</td></tr>';
+      }).join('')+'</tbody></table><p class="st-note">Attendance counts shifts marked (morning and night count separately).</p>');
+  }
+
+  // ── 7. Profit & loss ──
+  if(_stmtSecOn('pl')){
+    var line=function(l,v,cls){return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+l+'</td><td class="n">'+v+'</td></tr>';};
+    var neg=function(v){return '('+_sN(v)+')';};
+    var unk=P.fuelUncosted;
+    H.push('<h2>7. Profit &amp; loss for the period</h2><table class="st-t st-pl"><tbody>'+
+      line('Petrol sales, net of testing ('+_sL(P.soldMSDL)+' L)',_sN(P.sumMSDV-P.testValMSD))+
+      line('Diesel sales, net of testing ('+_sL(P.soldHSDL)+' L)',_sN(P.sumHSDV-P.testValHSD))+
+      (P.testHydro>0?line('less hydrometer draw',neg(P.testHydro)):'')+
+      line('Pack oil, loose oil and counter stock',_sN(P.revOilPack+P.revStock))+
+      line('<b>Revenue</b>','<b>'+_sN(P.revenue)+'</b>','st-tot')+
+      line('Cost of petrol sold — '+_sL(P.soldMSDL)+' L × ₹'+_sN(P.wacMSD)+' landed',unk?'not known':neg(P.soldMSDL*P.wacMSD))+
+      line('Cost of diesel sold — '+_sL(P.soldHSDL)+' L × ₹'+_sN(P.wacHSD)+' landed',unk?'not known':neg(P.soldHSDL*P.wacHSD))+
+      line('Cost of oil, packs and stock sold'+(P.cogsEstimated>0?' (₹'+_sN(P.cogsEstimated)+' estimated)':''),neg(P.cogsNonFuel))+
+      line('<b>Gross profit</b>'+(P.revenue>0&&!unk?' — '+(P.grossProfit/P.revenue*100).toFixed(2)+'%':''),'<b>'+(unk?'—':_sN(P.grossProfit))+'</b>','st-tot')+
+      line('Operating expenses (testing removed)',neg(P.opex))+
+      (X&&X.includeWages&&X.totalStaffCost>0?line('Staff wages',neg(X.totalStaffCost)):'')+
+      (X&&X.totalCreditDiscounts>0?line('Credit discounts (estimated)',neg(X.totalCreditDiscounts)):'')+
+      line('<b>Net profit</b>'+(P.revenue>0&&!unk?' — '+(net/P.revenue*100).toFixed(2)+'%':''),'<b>'+(unk?'—':_sN(net))+'</b>','st-tot st-grand')+
+      (X&&X.totalDrawings>0?line('Owner drawings (taken out of profit)',neg(X.totalDrawings)):'')+
+      '</tbody></table>'+
+      (X?'':'<p class="st-note">Wages and credit discounts follow the Reports page settings; open Reports for this same period to include them.</p>')+
+      '<p class="st-note">Revenue is recognised when fuel leaves the pump. Fuel is costed at the weighted average landed cost of all stock received up to '+_sD(to)+'. The full working of every figure is on Reports → Show workings.</p>');
+  }
+
+  // ── 8. Exceptions ──
+  if(_stmtSecOn('checks')&&typeof _plAuditChecks==='function'){
+    var chk=_plAuditChecks(from,to,recs,P,X||{totalCreditDiscounts:0});
+    var mark={ok:'✓',warn:'!',bad:'✗',info:'i'};
+    H.push('<h2>8. Exceptions — items needing attention</h2><table class="st-t"><tbody>'+
+      chk.map(function(c){return '<tr class="st-chk-'+c.st+'"><td style="width:22px;text-align:center"><b>'+mark[c.st]+'</b></td><td><b>'+_esc(c.t)+'</b><div class="st-sub">'+_esc(c.d)+'</div></td></tr>';}).join('')+
+      '</tbody></table>');
+  }
+
+  H.push('<div class="st-sign"><div>Prepared by<br><br>____________________</div><div>Verified by<br><br>____________________</div><div>Owner<br><br>____________________</div></div>'+
+    '<p class="st-foot">Computer-generated statement from ManiFuels records for '+_sD(from)+' – '+_sD(to)+'. It reflects the records as entered and synced at '+now.toLocaleString('en-IN')+'.</p>');
+  paper.innerHTML=H.join('');
+  var ps=document.getElementById('stmt-page-style');
+  if(!ps){ ps=document.createElement('style'); ps.id='stmt-page-style'; document.head.appendChild(ps); }
+  ps.textContent='@media print{@page{size:A4 '+orient+';margin:10mm 9mm 14mm 9mm;'+
+    '@bottom-left{content:"'+(String((bz.name||'Mani Fuels')).replace(/"/g,'')+' · Statement '+_sD(from)+' – '+_sD(to))+'";font:8px Arial,sans-serif;color:#777}'+
+    '@bottom-right{content:"Page " counter(page) " of " counter(pages);font:8px Arial,sans-serif;color:#777}}}';
+}
+
+function printStatement(){
+  var paper=document.getElementById('stmt_paper'); if(!paper)return;
+  var host=document.getElementById('stmt-print');
+  if(!host){ host=document.createElement('div'); host.id='stmt-print'; document.body.appendChild(host); }
+  host.innerHTML=paper.outerHTML;
+  host.firstChild.removeAttribute('id');
+  document.body.classList.add('printing-stmt');
+  var done=function(){ document.body.classList.remove('printing-stmt'); host.innerHTML=''; window.removeEventListener('afterprint',done); };
+  window.addEventListener('afterprint',done);
+  if(typeof logActivity==='function')logActivity('export_stmt','report',null,'Statement '+document.getElementById('stmt_from').value+' → '+document.getElementById('stmt_to').value);
+  setTimeout(function(){ window.print(); },250);
+}
+
+function stmtCsv(){
+  var q=function(s){ s=String(s==null?'':s); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
+  var out=[['Date','Ref','Particulars','Detail','Debit','Credit','Balance'].join(',')];
+  _stmtLastRows.forEach(function(x){
+    if(x.head||x.foot){ out.push([x.date,x.ref,x.desc,'','','',''].map(q).join(',')); return; }
+    out.push([x.date,x.ref,x.desc,x.sub||'',x.memo?'':(x.dr||''),x.memo?'':(x.cr||''),x.memo?'':(x.bal!=null?x.bal.toFixed(2):'')].map(q).join(','));
+  });
+  var blob=new Blob(['﻿'+out.join('\n')],{type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='ManiFuels_Statement_'+document.getElementById('stmt_from').value+'_to_'+document.getElementById('stmt_to').value+'.csv';
+  document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },500);
 }
 
 function renderPL(from, to, shiftRecs){
