@@ -1,3 +1,13 @@
+-- ═══ STOP (added with MF_AUTH_V2) ════════════════════════════════════════════
+-- This file grants the public key full access and turns row-level security
+-- OFF. Once the database is locked (stage2_lock.sql) it must never run again.
+do $$ begin
+  if to_regclass('mf_auth.members') is not null then
+    raise exception 'The database is locked with sign-in (stage2_lock.sql). This file would switch that security off — do not run it. Run only the specific migration you need.';
+  end if;
+end $$;
+-- ════════════════════════════════════════════════════════════════════════════
+
 -- ═══════════════════════════════════════════════════════════════════
 -- ManiFuels — apply_all.sql   (v3.1)
 --
