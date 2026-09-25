@@ -184,18 +184,90 @@ input::placeholder{color:var(--dim)}
 #page-history,#page-report,#page-stock{padding:16px}
 /* ── PRINT / PDF STYLES ── */
 #pdf-print-area{display:none}
+/* ── MF_PRINT_FIX_V1 — one print path for every document ─────────────────
+   The document to print sits in #pdf-print-area (a direct child of <body>).
+   body.printing-area hides every other child with display:none, so the
+   document flows normally across pages. The old approach (visibility:hidden
+   + position:fixed) stamped the same first screen onto every page. */
 @media print{
-  body *{visibility:hidden !important}
-  #pdf-print-area,#pdf-print-area *{visibility:visible !important}
-  #pdf-print-area{
-    display:block !important;
-    position:fixed;inset:0;
-    background:#fff;color:#000;
-    font-family:Arial,sans-serif;font-size:11px;
-    padding:20px;overflow:visible;
-  }
+  body.printing-area{background:#fff!important;color:#000!important;margin:0!important;padding:0!important;overflow:visible!important;height:auto!important;min-height:0!important}
+  body.printing-area > *:not(#pdf-print-area){display:none!important}
+  body.printing-area > #pdf-print-area{display:block!important;position:static!important;visibility:visible!important;
+    width:auto!important;height:auto!important;overflow:visible!important;padding:0!important;margin:0!important;
+    background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;font-size:11px}
+  body.printing-area #pdf-print-area *{visibility:visible!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body.printing-area #pdf-print-area thead{display:table-header-group}
+  body.printing-area #pdf-print-area tr,body.printing-area #pdf-print-area img{break-inside:avoid;page-break-inside:avoid}
+  body.printing-area #pdf-print-area button{display:none!important}
+  body.printing-area #pdf-print-area .pdf-keep{break-inside:avoid;page-break-inside:avoid}
   .pdf-page-break{page-break-before:always}
-  @page{margin:15mm;size:A4}
+}
+
+/* P&L workings on paper: a white CA-style document (was the dark screen UI) */
+#pdf-print-area .wk{background:#fff!important;border:0!important;border-radius:0!important;padding:0!important;margin:0!important;font-size:10px;color:#111}
+#pdf-print-area .wk *{font-family:Arial,Helvetica,sans-serif!important;color:#111!important;background:transparent!important;letter-spacing:normal!important}
+#pdf-print-area .wk-h{border-bottom:2px solid #111!important;padding-bottom:6px;margin-bottom:6px}
+#pdf-print-area .wk-title{font-size:16px!important;font-weight:800;letter-spacing:.5px!important}
+#pdf-print-area .wk-meta{font-size:9px!important;color:#555!important;margin-top:3px}
+#pdf-print-area .wk-p{font-size:9.5px!important;line-height:1.5;margin:6px 0}
+#pdf-print-area .wk-sec{font-size:11px!important;font-weight:800;letter-spacing:1.5px!important;border-bottom:1px solid #111;padding-bottom:3px;margin:16px 0 8px!important;break-after:avoid;page-break-after:avoid}
+#pdf-print-area .wk-tbl{width:100%;border-collapse:collapse;font-size:9.5px!important}
+#pdf-print-area .wk-tbl th{background:#ececec!important;color:#333!important;font-size:8px!important;font-weight:700;text-transform:uppercase;padding:4px 6px!important;border-bottom:1px solid #999!important;white-space:nowrap}
+#pdf-print-area .wk-tbl td{padding:3px 6px!important;border-bottom:1px solid #e2e2e2!important;vertical-align:top}
+#pdf-print-area .wk-tbl tr.wk-sub td{color:#555!important}
+#pdf-print-area .wk-tbl tr.wk-tot td{border-top:1px solid #666!important;font-weight:700}
+#pdf-print-area .wk-tbl tr.wk-grand td{border-top:1px solid #111!important;border-bottom:3px double #111!important;font-weight:800}
+#pdf-print-area .wk-stmt td:first-child{min-width:0}
+#pdf-print-area .wk-note{border:1px solid #bbb!important;border-radius:0!important;margin:0 0 10px!important}
+#pdf-print-area .wk-note>summary{display:block;list-style:none;background:#f2f2f2!important;border-bottom:1px solid #bbb;padding:5px 8px!important;font-size:11px!important;font-weight:800;break-after:avoid;page-break-after:avoid}
+#pdf-print-area summary::-webkit-details-marker{display:none}
+#pdf-print-area .wk-no{background:#111!important;color:#fff!important;border-radius:2px;font-size:9px!important}
+#pdf-print-area .wk-body{padding:6px 8px 8px!important}
+#pdf-print-area .wk-sched{margin:8px 0 4px}
+#pdf-print-area .wk-sched>summary{display:block;list-style:none;font-weight:700;font-size:9.5px!important;padding:2px 0!important;border-bottom:1px solid #ccc;break-after:avoid;page-break-after:avoid}
+#pdf-print-area .wk-f{font-size:8.5px!important;color:#555!important}
+#pdf-print-area .wk-nt{color:#333!important}
+#pdf-print-area .wk-tie{font-size:9px!important;padding:3px 7px!important;border-radius:0!important;border-left:3px solid #999;break-inside:avoid}
+#pdf-print-area .wk-tie.ok{border-left-color:#2e7d32!important;background:#eef7ef!important;color:#1b5e20!important}
+#pdf-print-area .wk-tie.bad{border-left-color:#c62828!important;background:#fdecea!important;color:#b71c1c!important}
+#pdf-print-area .wk-checks{gap:4px}
+#pdf-print-area .wk-chk{border:1px solid #ddd!important;border-left:3px solid #999!important;border-radius:0!important;padding:5px 8px!important;break-inside:avoid;page-break-inside:avoid}
+#pdf-print-area .wk-chk.ok{border-left-color:#2e7d32!important}#pdf-print-area .wk-chk.warn{border-left-color:#e09a00!important}
+#pdf-print-area .wk-chk.bad{border-left-color:#c62828!important}#pdf-print-area .wk-chk.info{border-left-color:#1565c0!important}
+#pdf-print-area .wk-chk.ok .wk-ico{color:#2e7d32!important}#pdf-print-area .wk-chk.warn .wk-ico{color:#b07800!important}
+#pdf-print-area .wk-chk.bad .wk-ico{color:#c62828!important}#pdf-print-area .wk-chk.info .wk-ico{color:#1565c0!important}
+#pdf-print-area .wk-chk-t{font-size:10px!important}#pdf-print-area .wk-chk-d{font-size:8.5px!important;color:#555!important}
+/* ── MF_PRINT_FIX_V1 · MOBILE — phone layout fixes (≤700px) ──────────────
+   Found by rendering every page at 390px:
+   • grid cells could not shrink below an input's natural width, so the
+     right-hand input ran past the card (meter CUR READING, pack/loose oil
+     closing, dip DIP (CM), order rules, fuel-load bill);
+   • the fuel-load bill grid was 4 columns wide (766px page on a 390px phone);
+   • the oil stock table and the activity filters pushed the page sideways;
+   • the ledger search box was squeezed to 30px next to the period buttons;
+   • dates in tables broke over two lines ("2026-" / "09-14"). */
+@media screen and (max-width:700px){
+  .rg>*,.cred-row>*,.cred-row-3>*,.fgrid>*,.mini-grid>*,.sum-grid>*,[style*="display:grid"]>*{min-width:0}
+  .rg input,.rg select,.fgrid input,.fgrid select,
+  [style*="display:grid"]>div>input:not([type=checkbox]):not([type=radio]),
+  [style*="display:grid"]>div>select,
+  [style*="display:grid"]>input:not([type=checkbox]):not([type=radio]),[style*="display:grid"]>select{width:100%;max-width:100%;box-sizing:border-box}
+  #page-fuelload [style*="grid-template-columns:1fr 1fr 1fr 1fr"],
+  #page-fuelload [style*="grid-template-columns:repeat(4,1fr)"]{grid-template-columns:1fr 1fr!important}
+  #page-fuelload [style*="grid-template-columns:1fr 1fr 1fr;"]{grid-template-columns:1fr 1fr!important}
+  #page-fuelload [style*="grid-template-columns:1fr 1fr 1fr;"]>div:nth-child(3){grid-column:1/-1;margin-top:0!important}
+  #page-stock .card:has(> table.stock-tbl){overflow-x:auto}
+  #page-stock .stock-tbl td:first-child input{min-width:130px}
+  #pack_stock_wrap .card-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px}
+  #pack_stock_wrap .stock-tbl{min-width:0!important}
+  #pack_stock_wrap .stock-tbl th:nth-child(2),#pack_stock_wrap .stock-tbl td:nth-child(2),
+  #pack_stock_wrap .stock-tbl th:nth-child(3),#pack_stock_wrap .stock-tbl td:nth-child(3),
+  #pack_stock_wrap .stock-tbl th:nth-child(4),#pack_stock_wrap .stock-tbl td:nth-child(4){display:none}
+  #pack_stock_wrap .stock-tbl td:first-child,#pack_stock_wrap .stock-tbl th{white-space:nowrap}
+  div:has(> #al_filter_user){flex-wrap:wrap}
+  #al_filter_user,#al_filter_action{flex:1 1 140px;min-width:0}
+  #led_search{flex:1 1 100%;width:auto!important;margin-left:0!important;order:10}
+  .data-tbl td:first-child{white-space:nowrap}
 }
 /* ── CREDIT LEDGER CARDS ──────────────────────────────────────────────────
    A grid item defaults to min-width:auto, so a card whose four buttons cannot
@@ -1938,7 +2010,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <table class="data-tbl" style="width:100%;min-width:900px">
         <thead><tr>
           <th>STAFF</th><th title="Days in the month this person was employed">ELIGIBLE</th>
-          <th>PRESENT</th><th>HALF</th><th>ABSENT</th>
+          <th title="Shifts marked present — two shifts in one day count twice here, once in DAYS PAID">PRESENT<br><small>shifts</small></th><th>HALF<br><small>shifts</small></th><th>ABSENT<br><small>shifts</small></th>
           <th title="Eligible days with no attendance mark at all">UNMARKED</th>
           <th title="Present + half-day value, after the double-shift rule">DAYS PAID</th>
           <th>PER DAY</th><th>EARNED</th><th>ADVANCE DUE</th><th>PAID THIS MONTH</th>
@@ -2754,6 +2826,7 @@ function generateCustomerInvoice(name){
   '</div>';
 
   document.getElementById('pdf-print-area').innerHTML=out;
+  _mfPrintArea((bizProfile.name||'Mani Fuels')+' · Invoice '+invNo+' · '+name);
   if(typeof logActivity==='function')
     logActivity('invoice','customer',name,invNo+' \u2014 '+money(total));
   setTimeout(function(){window.print();},400);
@@ -6380,21 +6453,65 @@ function renderPLWorkings(from,to,recs,P,X){
       '<div class="wk-sec">C. CHECKS — WHERE MONEY CAN LEAK '+
         '<span style="font-weight:400;letter-spacing:0">('+(bad?bad+' problem'+(bad!==1?'s':''):'no problems')+(warn?', '+warn+' to review':'')+')</span></div>'+checks+
     '</div>';
+  _mfAlignNums(box);
 }
 function togglePLWorkings(){
   localStorage.setItem('plWorkingsOpen',localStorage.getItem('plWorkingsOpen')==='1'?'0':'1');
   genReport();
 }
+// ── MF_PRINT_FIX_V1: print modes ───────────────────────────────────────
+// 'area' prints #pdf-print-area, 'stmt' prints #stmt-print. Each print sets
+// its own @page (size, margins, footer). Nothing is torn down on afterprint:
+// Android Chrome fires it before rendering, which printed blank pages.
+function _mfPrintMode(mode,pageCss){
+  var b=document.body;
+  b.classList.remove('printing-stmt','printing-area');
+  if(mode)b.classList.add(mode==='stmt'?'printing-stmt':'printing-area');
+  var old=document.getElementById('stmt-page-style'); if(old)old.parentNode.removeChild(old);
+  var ps=document.getElementById('mf-page-style');
+  if(!ps){ ps=document.createElement('style'); ps.id='mf-page-style'; document.head.appendChild(ps); }
+  ps.textContent=pageCss||'';
+  if(mode!=='stmt'){ var h=document.getElementById('stmt-print'); if(h)h.innerHTML=''; }
+}
+function _mfPageCss(title,orient,margin){
+  var t=String(title||'Mani Fuels').replace(/[\\"\n\r]/g,' ');
+  return '@media print{@page{size:A4 '+(orient||'portrait')+';margin:'+(margin||'12mm 10mm 14mm 10mm')+';'+
+    '@bottom-left{content:"'+t+'";font:8px Arial,sans-serif;color:#777}'+
+    '@bottom-right{content:"Page " counter(page) " of " counter(pages);font:8px Arial,sans-serif;color:#777}}}';
+}
+function _mfPrintArea(title,orient){
+  var a=document.getElementById('pdf-print-area');
+  if(a&&a.parentNode!==document.body)document.body.appendChild(a);
+  _mfPrintMode('area',_mfPageCss(title,orient));
+}
+// Right-align every table column whose cells are all numbers (₹, litres, %,
+// bracketed negatives), header included, so figures line up on the decimal.
+function _mfAlignNums(root){
+  if(!root)return;
+  var num=/^[(+\-−]?\s*₹?\s*[\d,]+(\.\d+)?\s*(L|%|ml|kg\/L|\/L)?\)?$/, blank=/^(—|-|–|)$/;
+  root.querySelectorAll('table').forEach(function(t){
+    var rows=[].slice.call(t.rows), n=0; if(!rows.length)return;
+    rows.forEach(function(r){ if(r.cells.length>n)n=r.cells.length; });
+    for(var c=1;c<n;c++){
+      var hit=0,miss=0;
+      rows.forEach(function(r){
+        if(r.cells.length!==n||r.cells[c].tagName==='TH')return;
+        var s=r.cells[c].textContent.trim();
+        if(blank.test(s))return; if(num.test(s))hit++; else miss++;
+      });
+      if(hit&&!miss)rows.forEach(function(r){ if(r.cells.length===n)r.cells[c].style.textAlign='right'; });
+    }
+  });
+}
 function printPLWorkings(){
   var doc=document.getElementById('wk_doc'); if(!doc)return;
   var c=doc.cloneNode(true);
+  c.removeAttribute('id');
   c.querySelectorAll('details').forEach(function(d){d.open=true;});
-  var area=document.getElementById('pdf-print-area');
-  area.innerHTML='<style>#pdf-print-area .wk *{color:#000!important;background:transparent!important;border-color:#bbb!important}'+
-    '#pdf-print-area .wk-tbl{width:100%;border-collapse:collapse;font-size:10px}'+
-    '#pdf-print-area .wk-tbl td,#pdf-print-area .wk-tbl th{border-bottom:1px solid #ddd!important;padding:3px 5px}'+
-    '#pdf-print-area .wk-note,#pdf-print-area .wk-sched{page-break-inside:avoid}'+
-    '#pdf-print-area summary{font-weight:700;list-style:none;margin:8px 0 4px}</style>'+c.outerHTML;
+  _mfAlignNums(c);
+  document.getElementById('pdf-print-area').innerHTML=c.outerHTML;
+  var L=window._lastPL||{};
+  _mfPrintArea((bizProfile&&bizProfile.name||'Mani Fuels')+' · P&L workings'+(L.from?' · '+_sD(L.from)+' – '+_sD(L.to):''));
   if(typeof logActivity==='function')logActivity('export_pl','report',null,'P&L workings printed');
   setTimeout(function(){window.print();},300);
 }
@@ -6787,9 +6904,7 @@ function renderStatement(){
   H.push('<div class="st-sign"><div>Prepared by<br><br>____________________</div><div>Verified by<br><br>____________________</div><div>Owner<br><br>____________________</div></div>'+
     '<p class="st-foot">Computer-generated statement from ManiFuels records for '+_sD(from)+' – '+_sD(to)+'. It reflects the records as entered and synced at '+now.toLocaleString('en-IN')+'.</p>');
   paper.innerHTML=H.join('');
-  var ps=document.getElementById('stmt-page-style');
-  if(!ps){ ps=document.createElement('style'); ps.id='stmt-page-style'; document.head.appendChild(ps); }
-  ps.textContent='@media print{@page{size:A4 '+orient+';margin:10mm 9mm 14mm 9mm;'+
+  window._stmtPageCss='@media print{@page{size:A4 '+orient+';margin:10mm 9mm 14mm 9mm;'+
     '@bottom-left{content:"'+(String((bz.name||'Mani Fuels')).replace(/"/g,'')+' · Statement '+_sD(from)+' – '+_sD(to))+'";font:8px Arial,sans-serif;color:#777}'+
     '@bottom-right{content:"Page " counter(page) " of " counter(pages);font:8px Arial,sans-serif;color:#777}}}';
 }
@@ -6800,9 +6915,7 @@ function printStatement(){
   if(!host){ host=document.createElement('div'); host.id='stmt-print'; document.body.appendChild(host); }
   host.innerHTML=paper.outerHTML;
   host.firstChild.removeAttribute('id');
-  document.body.classList.add('printing-stmt');
-  var done=function(){ document.body.classList.remove('printing-stmt'); host.innerHTML=''; window.removeEventListener('afterprint',done); };
-  window.addEventListener('afterprint',done);
+  _mfPrintMode('stmt',window._stmtPageCss||'');
   if(typeof logActivity==='function')logActivity('export_stmt','report',null,'Statement '+document.getElementById('stmt_from').value+' → '+document.getElementById('stmt_to').value);
   setTimeout(function(){ window.print(); },250);
 }
@@ -8024,9 +8137,9 @@ function renderOilReg(){
       <tr>
         <td style="padding-left:16px;color:var(--muted)">${it.name}</td>
         <td>${it.qty}</td>
-        <td style="color:var(--red)">&#8377;${it.buy.toLocaleString('en-IN')}</td>
-        <td style="color:var(--petrol)">&#8377;${it.sell.toLocaleString('en-IN')}</td>
-        <td style="color:${it.profit>=0?'var(--green)':'var(--red)'}">&#8377;${it.profit.toLocaleString('en-IN')}</td>
+        <td style="color:var(--red)">&#8377;${(+it.buy||0).toLocaleString('en-IN')}</td>
+        <td style="color:var(--petrol)">&#8377;${(+it.sell||0).toLocaleString('en-IN')}</td>
+        <td style="color:${(+it.profit||0)>=0?'var(--green)':'var(--red)'}">&#8377;${(it.profit!=null?+it.profit:((+it.sell||0)-(+it.buy||0))*(+it.qty||0)).toLocaleString('en-IN')}</td>
         <td></td>
       </tr>`).join('');
     const card=document.createElement('div');
@@ -9911,10 +10024,10 @@ function exportPDF(){
         </div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;font-size:10px">
           <div style="padding:8px 10px;border-right:1px solid #eee"><span style="color:#666">Volume</span><br><strong>${fmtN(l.vol)} L</strong></div>
-          <div style="padding:8px 10px;border-right:1px solid #eee"><span style="color:#666">Density</span><br><strong>${l.density} kg/L</strong></div>
+          <div style="padding:8px 10px;border-right:1px solid #eee"><span style="color:#666">Density</span><br><strong>${(l.density!=null&&l.density!=='')?l.density+' kg/L':'—'}</strong></div>
           <div style="padding:8px 10px;border-right:1px solid #eee"><span style="color:#666">Purchase ₹/L</span><br><strong>${fmtR(l.buy)}</strong></div>
           <div style="padding:8px 10px"><span style="color:#666">Selling ₹/L</span><br><strong>${fmtR(l.sell)}</strong></div>
-          <div style="padding:8px 10px;border-right:1px solid #eee;border-top:1px solid #eee"><span style="color:#666">GST %</span><br><strong>${l.gstPct}%</strong></div>
+          <div style="padding:8px 10px;border-right:1px solid #eee;border-top:1px solid #eee"><span style="color:#666">GST %</span><br><strong>${(l.gstPct!=null&&l.gstPct!=='')?l.gstPct+'%':'—'}</strong></div>
           <div style="padding:8px 10px;border-right:1px solid #eee;border-top:1px solid #eee"><span style="color:#666">GST Amount</span><br><strong style="color:#e65100">${fmtR(l.gstAmt||0)}</strong></div>
           <div style="padding:8px 10px;border-right:1px solid #eee;border-top:1px solid #eee"><span style="color:#666">Total Cost</span><br><strong style="color:#c62828">${fmtR(l.totalCost)}</strong></div>
           <div style="padding:8px 10px;border-top:1px solid #eee"><span style="color:#666">Expected Profit</span><br><strong style="color:${l.profit>=0?'#2e7d32':'#c62828'}">${fmtR(l.profit)}</strong></div>
@@ -9975,6 +10088,12 @@ function exportPDF(){
   const totalRevenue=totalRight;
   const totalCosts=totalFuelCost+totalOilCost+totalExp;
   const grossProfit=totalRevenue-totalCosts;
+  let _accNet=null,_accNote='';
+  try{
+    const _ds=records.map(r=>r.date).filter(Boolean).sort();
+    if(_ds.length){ const _P=_plCore(records,_ds[0],_ds[_ds.length-1]); _accNet=_P.netProfit;
+      _accNote='Accrual basis, '+_ds[0]+' to '+_ds[_ds.length-1]+': revenue − cost of the fuel actually sold − expenses. Same figure as Reports → Profit &amp; Loss.'; }
+  }catch(e){ _accNet=null; }
   out+=`<table style="width:100%;border-collapse:collapse;margin-bottom:20px">
     <tbody>
       <tr style="background:#e8f5e9"><td colspan="2" style="padding:8px 12px;border:1px solid #ddd;font-weight:800;font-size:12px;letter-spacing:1px">INCOME</td></tr>
@@ -9990,10 +10109,14 @@ function exportPDF(){
       <tr><td style="padding:6px 12px;border:1px solid #ddd;font-size:11px;color:#555">Fuel Amount Still Due to Suppliers</td><td style="padding:6px 12px;border:1px solid #ddd;font-size:11px;text-align:right;color:#e65100">${fmtR(totalFuelDue)}</td></tr>
       <tr><td style="padding:6px 12px;border:1px solid #ddd;font-size:11px;color:#555">Oil Amount Still Due to Suppliers</td><td style="padding:6px 12px;border:1px solid #ddd;font-size:11px;text-align:right;color:#e65100">${fmtR(totalOilDue)}</td></tr>
       <tr><td style="padding:6px 12px;border:1px solid #ddd;font-size:11px;color:#555">Credit Still Outstanding (customers owe us)</td><td style="padding:6px 12px;border:1px solid #ddd;font-size:11px;text-align:right;color:#e65100">${fmtR(outstandingCredit)}</td></tr>
-      <tr style="background:${grossProfit>=0?'#e8f5e9':'#fdecea'}">
-        <td style="padding:10px 12px;border:1px solid #ddd;font-weight:900;font-size:13px">NET PROFIT / LOSS</td>
-        <td style="padding:10px 12px;border:1px solid #ddd;font-weight:900;font-size:16px;text-align:right;color:${grossProfit>=0?'#2e7d32':'#c62828'}">${grossProfit>=0?'+':''}${fmtR(grossProfit)}</td>
+      <tr>
+        <td style="padding:8px 12px;border:1px solid #ddd;font-weight:700;font-size:11px">Cash position — revenue minus ALL purchases &amp; expenses<div style="font-weight:400;font-size:9px;color:#666;margin-top:2px">Not profit: fuel and oil still in stock were paid for but not sold yet.</div></td>
+        <td style="padding:8px 12px;border:1px solid #ddd;font-weight:700;font-size:12px;text-align:right;color:${grossProfit>=0?'#2e7d32':'#c62828'}">${grossProfit>=0?'+':''}${fmtR(grossProfit)}</td>
       </tr>
+      ${_accNet===null?'':`<tr style="background:${_accNet>=0?'#e8f5e9':'#fdecea'}">
+        <td style="padding:10px 12px;border:1px solid #ddd;font-weight:900;font-size:13px">NET PROFIT / LOSS<div style="font-weight:400;font-size:9px;color:#666;margin-top:2px">${_accNote}</div></td>
+        <td style="padding:10px 12px;border:1px solid #ddd;font-weight:900;font-size:16px;text-align:right;color:${_accNet>=0?'#2e7d32':'#c62828'}">${_accNet>=0?'+':''}${fmtR(Math.round(_accNet*100)/100)}</td>
+      </tr>`}
     </tbody>
   </table>`;
 
@@ -10004,6 +10127,7 @@ function exportPDF(){
   </div>`;
 
   document.getElementById('pdf-print-area').innerHTML=out;
+  _mfPrintArea('Mani Fuels · Business data report · '+date);
   setTimeout(()=>{window.print();},400);
 }
 
@@ -10168,6 +10292,7 @@ function generateCustomerStatement(name){
 
   // Use the existing PDF print area
   document.getElementById('pdf-print-area').innerHTML=out;
+  _mfPrintArea('Mani Fuels · Account statement · '+name+' · '+dateStr);
   if(typeof logActivity==='function')logActivity('export_stmt','customer',name,'Statement PDF generated');
   setTimeout(()=>{window.print();},400);
 }
@@ -10720,10 +10845,10 @@ function payrollPayslips(){
       '</div>'+
       '<table style="width:100%;border-collapse:collapse;margin-top:16px;font-size:11px">'+
         '<thead><tr>'+
-        ['ATTENDANCE','DAYS'].map(function(h){return '<th style="background:#1a1a2e;color:#00d4a0;padding:7px 10px;text-align:left;font-size:9px;letter-spacing:1px;border:1px solid #333">'+h+'</th>';}).join('')+
+        ['ATTENDANCE','COUNT'].map(function(h){return '<th style="background:#1a1a2e;color:#00d4a0;padding:7px 10px;text-align:left;font-size:9px;letter-spacing:1px;border:1px solid #333">'+h+'</th>';}).join('')+
         '</tr></thead><tbody>'+
-        [['Days employed in period',r.eligible],['Present',r.present],['Half days',r.half],
-         ['Absent',r.absent],['Not marked',r.unmarked],['<b>Days paid</b>','<b>'+r.worked+'</b>']]
+        [['Days employed in period',r.eligible],['Shifts present',r.present],['Half shifts',r.half],
+         ['Shifts absent',r.absent],['Days not marked',r.unmarked],['<b>Days paid</b>','<b>'+r.worked+'</b>']]
          .map(function(x){return '<tr><td style="padding:6px 10px;border:1px solid #ddd">'+x[0]+'</td>'+
            '<td style="padding:6px 10px;border:1px solid #ddd;text-align:right">'+x[1]+'</td></tr>';}).join('')+
         '</tbody></table>'+
@@ -10750,6 +10875,7 @@ function payrollPayslips(){
     '</div>';
   });
   document.getElementById('pdf-print-area').innerHTML=out;
+  _mfPrintArea('Mani Fuels · Payslips · '+R.label);
   if(typeof logActivity==='function')logActivity('payroll_payslip','staff',null,R.label+' \u2014 '+rows.length+' payslips');
   setTimeout(function(){window.print();},400);
 }
