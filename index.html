@@ -649,6 +649,32 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
 .wk-tbl tr.wk-tot td{border-top:1px solid var(--border2)}
 .wk-tbl tr.wk-grand td{border-bottom:3px double var(--border2);color:var(--petrol)}
 .wk-stmt td:first-child{min-width:230px}
+/* MF_WK_MOBILE_V1 MF_WK_MOBILE_V2 — phones: one amount column, notes scroll sideways */
+@media(max-width:700px){
+  #pl_workings .wk{padding:12px 10px;border-radius:12px}
+  #pl_workings .wk-title{font-size:13px;letter-spacing:1px}
+  #pl_workings .wk-body{padding:4px 6px 10px}
+  #pl_workings .wk-note>summary{padding:9px 8px}
+  #pl_workings .wk-stmt th:nth-child(3),#pl_workings .wk-stmt td:nth-child(3){display:none}
+  #pl_workings .wk-stmt tr.wk-a td:nth-child(3){display:table-cell}
+  #pl_workings .wk-stmt tr.wk-a td:nth-child(4){display:none}
+  #pl_workings .wk-stmt td:first-child{min-width:0}
+  #pl_workings .wk-stmt td,#pl_workings .wk-stmt th{padding:6px 4px;font-size:11px}
+  #pl_workings .wk-body .wk-tbl{min-width:540px}
+  #pl_workings .wk-body .wk-tbl td:first-child{white-space:nowrap}
+  /* Business Statement on a phone: keep the A4 layout, scroll / pinch-zoom it like a PDF */
+  #stmtOverlay .stmt{min-width:760px;padding:22px 24px}
+  #stmtOverlay .st-head{flex-direction:row}#stmtOverlay .st-doc{text-align:right}
+  #stmtOverlay .st-kv{margin-left:auto}#stmtOverlay .st-kv td{text-align:right;padding:1px 0 1px 12px}
+  #stmtOverlay .st-sum td{display:table-cell;width:25%}
+  #stmtOverlay .stmt-scroll{padding:10px 8px 40px}
+  #stmtOverlay .stmt-bar{padding:6px 8px;gap:4px}
+  #stmtOverlay .stmt-bar-row{gap:6px}
+  #stmtOverlay .stmt-bar-row label{font-size:10px}
+  #stmtOverlay #stmt_secs{display:none}
+  #stmtOverlay.secs-open #stmt_secs{display:flex}
+  #stmtOverlay .stmt-secbtn{display:inline-block!important}
+}
 .wk-nt{color:var(--blue);text-align:center}
 .wk-note{border:1px solid var(--border);border-radius:6px;margin-bottom:8px;background:var(--s1)}
 .wk-note>summary{cursor:pointer;padding:9px 12px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px}
@@ -6118,7 +6144,7 @@ function renderPLWorkings(from,to,recs,P,X){
 
   // ── A. STATEMENT ─────────────────────────────────────────────────────
   var st=[];
-  var sl=function(lbl,no,a,b,cls){ st.push('<tr'+(cls?' class="'+cls+'"':'')+'><td>'+lbl+'</td><td class="wk-nt">'+(no||'')+'</td><td '+rowS+'>'+(a==null?'':a)+'</td><td '+rowS+'>'+(b==null?'':b)+'</td></tr>'); };
+  var sl=function(lbl,no,a,b,cls){ if(a!=null&&b==null)cls=(cls?cls+' ':'')+'wk-a'; st.push('<tr'+(cls?' class="'+cls+'"':'')+'><td>'+lbl+'</td><td class="wk-nt">'+(no||'')+'</td><td '+rowS+'>'+(a==null?'':a)+'</td><td '+rowS+'>'+(b==null?'':b)+'</td></tr>'); };
   sl('<b>I. Revenue from operations</b>','1',null,'<b>'+fmt(P.revenue)+'</b>');
   sl('II. Less: Cost of goods sold','2',null,fuelUnc?'not known':_wkM(-P.totalCOGS));
   sl('&nbsp;&nbsp;&nbsp;Fuel (MSD + HSD)','2A',fuelUnc?'—':fmt(P.cogsFuel),null,'wk-sub');
@@ -6134,7 +6160,7 @@ function renderPLWorkings(from,to,recs,P,X){
   sl('VIII. Appropriation: owner drawings','6',null,X.totalDrawings>0?_wkM(-X.totalDrawings):'—');
   if(!X.includeWages&&X.staffCashOut>0)sl('IX. Cash paid to staff (wages not in VII)','4',null,_wkM(-X.staffCashOut));
   sl('<b>Retained in the business</b>',null,null,'<b>'+(fuelUnc?'—':_wkM(X.cashAfterDrawings))+'</b>','wk-tot');
-  var stmt='<table class="wk-tbl wk-stmt"><thead><tr><th>PARTICULARS</th><th>NOTE</th><th '+rowS+'>₹</th><th '+rowS+'>₹</th></tr></thead><tbody>'+st.join('')+'</tbody></table>';
+  var stmt='<div style="overflow-x:auto"><table class="wk-tbl wk-stmt"><thead><tr><th>PARTICULARS</th><th>NOTE</th><th '+rowS+'>₹</th><th '+rowS+'>₹</th></tr></thead><tbody>'+st.join('')+'</tbody></table></div>';
 
   // ── NOTE 1 — REVENUE ─────────────────────────────────────────────────
   var rateM=P.totalMSDL>0?sumMV/P.totalMSDL:0, rateH=P.totalHSDL>0?sumHV/P.totalHSDL:0;
@@ -6531,6 +6557,7 @@ function openStatement(){
           '<label title="Cash in hand + bank at the start of the period, if you know it">Opening balance ₹ <input type="number" id="stmt_open" step="0.01" placeholder="0" style="width:110px" oninput="renderStatement()"></label>'+
           '<label>Paper <select id="stmt_orient" onchange="renderStatement()" style="padding:4px 6px"><option value="portrait">A4 portrait</option><option value="landscape">A4 landscape</option></select></label>'+
           '<span style="margin-left:auto;display:flex;gap:6px">'+
+            '<button class="btn btn-g stmt-secbtn" style="display:none" onclick="document.getElementById(\'stmtOverlay\').classList.toggle(\'secs-open\')">SECTIONS ▾</button>'+
             '<button class="btn btn-g" onclick="stmtCsv()">⬇ CSV</button>'+
             '<button class="save-btn" style="margin:0;padding:7px 16px" onclick="printStatement()">🖨 PRINT / SAVE PDF</button>'+
             '<button class="btn btn-g" onclick="closeStatement()">✕</button></span>'+
