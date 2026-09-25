@@ -147,6 +147,19 @@ input::placeholder{color:var(--dim)}
 .add-btn:hover{border-color:var(--petrol);color:var(--petrol)}
 .rm-btn{background:transparent;border:none;color:var(--red);cursor:pointer;font-size:15px;padding:2px 5px;opacity:.7}
 .rm-btn:hover{opacity:1}
+/* MF_SHIFT_CLOCK_V1 — staff-on-duty card */
+.sa-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)}
+.sa-row:last-child{border-bottom:none}
+.sa-name{flex:1;min-width:0;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sa-sub{display:block;font-family:'JetBrains Mono',monospace;font-weight:400;font-size:10px;color:var(--muted)}
+.sa-chips{display:flex;gap:4px;flex-shrink:0}
+.sa-chip{font-family:'Syne',sans-serif;font-weight:700;font-size:10px;letter-spacing:1px;min-width:38px;padding:6px 8px;border-radius:4px;border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s}
+.sa-chip:hover{color:var(--text);border-color:var(--text)}
+.sa-chip.on.p{background:rgba(61,220,132,.15);border-color:var(--green);color:var(--green)}
+.sa-chip.on.h{background:rgba(77,166,255,.15);border-color:var(--blue);color:var(--blue)}
+.sa-chip.on.a{background:rgba(255,77,106,.15);border-color:var(--red);color:var(--red)}
+.sa-chip:disabled{opacity:.35;cursor:not-allowed}
+.sa-row.unmarked .sa-name{color:var(--diesel)}
 .sum-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 .sbox{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:12px;text-align:center}
 .sb-t{font-family:'Syne',sans-serif;font-weight:700;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:5px}
@@ -781,9 +794,11 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
 <div class="page" id="page-entry">
   <div class="top-bar">
     <span class="lbl">DATE</span>
-    <input type="date" class="date-inp" id="shiftDate" onchange="setShiftId();calc()">
+    <input type="date" class="date-inp" id="shiftDate" onchange="_slotManual=true;setShiftId();calc()">
     <span class="lbl" style="margin-left:10px">SHIFT ID</span>
     <span class="chip" id="shiftId">—</span>
+    <span class="chip" id="shiftWindow" title="Shift window: morning 9 AM–6 PM, night 6 PM–9 AM next day">—</span>
+    <button class="btn btn-g" onclick="mfJumpToDueShift()" title="Open the shift that is due now (earliest unsaved)">&#9201; DUE SHIFT</button>
     <button class="btn btn-g" style="margin-left:auto" onclick="carryForwardMeters()"
       title="Copy the closing readings of the last saved shift into the opening fields">
       &#8631; CARRY OPENING</button>
@@ -1011,6 +1026,20 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <div class="res"><span class="res-lbl">Stock Items</span><span class="res-val" style="color:var(--purple)" id="r_stock">₹0</span></div>
         <div class="res"><span class="res-lbl">Credit Payments Back</span><span class="res-val d" id="r_credback">₹0</span></div>
         <div class="total-row"><span class="total-lbl">TOTAL RIGHT (EXPECTED)</span><span class="total-val" style="color:var(--green)" id="total_right">₹0</span></div>
+      </div>
+      <div class="sec" style="display:flex;align-items:center;justify-content:space-between"><span><span class="dot db"></span>STAFF ON DUTY — ATTENDANCE</span>
+        <span id="sa_summary" style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0;text-transform:none;color:var(--muted)"></span>
+      </div>
+      <div class="card" id="sa_card">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+          <button class="btn btn-g" style="padding:4px 10px;font-size:10px" onclick="saMarkAll('present')">&#10003; ALL PRESENT</button>
+          <button class="btn btn-g" style="padding:4px 10px;font-size:10px" onclick="saMarkRest('absent')">&#10005; REST ABSENT</button>
+          <button class="btn btn-g" style="padding:4px 10px;font-size:10px;margin-left:auto" onclick="saCopyPrev()" title="Copy the marks from the previous shift">&#8631; SAME AS LAST SHIFT</button>
+        </div>
+        <div id="sa_list"></div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:6px;line-height:1.5">
+          P = present · ½ = half · A = absent. Tap a mark again to clear it. Marks are written to the attendance register when the shift is saved.
+        </div>
       </div>
       <div class="sec"><span class="dot" style="background:var(--dpu, #b48cff)"></span>SHIFT TAG (OPTIONAL)</div>
       <div class="card">
@@ -2352,6 +2381,12 @@ let plCI=null,collCI=null;
 
 document.getElementById('shiftDate').value=_isoLocal();
 setShiftId();setDateTime();setInterval(setDateTime,30000);
+// Open on the shift that is due. Deferred: staffList is declared further down
+// this script, and the on-duty card needs it.
+setTimeout(function(){
+  try{ const _s=mfDueSlot(); document.getElementById('shiftDate').value=_s.date; setShift(_s.shift,true); _slotManual=false; }catch(e){console.warn('shift clock init:',e);}
+  renderShiftAttendance();
+},0);
 let ledger=JSON.parse(localStorage.getItem('fuelLedger')||'[]');
 // ── PAYMENT EVENTS ────────────────────────────────────────────────────
 // paid_back on a bill is a running total and nothing else was kept, so a
@@ -3010,12 +3045,227 @@ function setShiftId(){
   const id=d.replace(/-/g,'')+'_'+shift.toUpperCase();
   document.getElementById('shiftId').textContent=id;
   const t=document.getElementById('tally_id');if(t)t.textContent=id;
+  // calc() calls this on every keystroke — only redraw when the slot changes.
+  const w=document.getElementById('shiftWindow');
+  if(w)w.textContent=(shift==='night'?'🌙 ':'☀ ')+mfSlotLabel({date:d,shift:shift});
+  if(id!==_saSlotId){ _saSlotId=id; renderShiftAttendance(); }
 }
-function setShift(s){
+function setShift(s,auto){
   shift=s;
+  if(!auto)_slotManual=true;
   document.querySelectorAll('.shift-btn').forEach(b=>b.classList.remove('active'));
   document.querySelector('.shift-btn.'+s).classList.add('active');
   setShiftId();
+}
+
+// ═══════════════════════════════════════════════════
+// SHIFT CLOCK — MF_SHIFT_CLOCK_V1
+// MORNING 09:00→18:00. NIGHT 18:00→09:00 next day, filed under the date it
+// STARTS. So 02:00 on the 26th is still the NIGHT shift of the 25th. The old
+// form defaulted to "today + MORNING" and, after a save, to "today + same
+// shift" — saving the 25th's night shift at 9 AM jumped the form to the 26th's
+// NIGHT instead of the 26th's MORNING.
+// ═══════════════════════════════════════════════════
+// A function, not a const: setShiftId() runs at boot, above this line, and a
+// const would still be in its temporal dead zone there.
+function _mfH(sh){return sh==='night'?18:9;}   // morning starts 09:00, night 18:00
+var _slotManual=false;     // user picked the date/shift by hand — don't override
+var _saSlotId=null;        // slot the on-duty card is currently drawn for
+
+function _slotDateObj(iso,h){const p=iso.split('-');return new Date(+p[0],+p[1]-1,+p[2],h||0,0,0,0);}
+function _slotShiftDays(iso,n){const d=_slotDateObj(iso);d.setDate(d.getDate()+n);return _isoLocal(d);}
+function mfSlotAt(now){
+  now=now||new Date();
+  const h=now.getHours();
+  if(h>=_mfH('night'))return {date:_isoLocal(now),shift:'night'};
+  if(h>=_mfH('morning'))return {date:_isoLocal(now),shift:'morning'};
+  const y=new Date(now);y.setDate(y.getDate()-1);
+  return {date:_isoLocal(y),shift:'night'};
+}
+function mfSlotStart(s){return _slotDateObj(s.date,_mfH(s.shift));}
+function mfSlotEnd(s){
+  return s.shift==='morning' ? _slotDateObj(s.date,_mfH('night'))
+                             : _slotDateObj(_slotShiftDays(s.date,1),_mfH('morning'));
+}
+function mfNextSlot(s){return s.shift==='morning'?{date:s.date,shift:'night'}:{date:_slotShiftDays(s.date,1),shift:'morning'};}
+function mfPrevSlot(s){return s.shift==='night'?{date:s.date,shift:'morning'}:{date:_slotShiftDays(s.date,-1),shift:'night'};}
+function mfSlotId(s){return s.date.replace(/-/g,'')+'_'+s.shift.toUpperCase();}
+function mfSlotSaved(s){const id=mfSlotId(s);return records.some(r=>r.id===id);}
+function _hm(d){const h=d.getHours(),m=d.getMinutes();return ((h%12)||12)+(m?':'+String(m).padStart(2,'0'):'')+(h<12?' AM':' PM');}
+function _dm(d){return d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'});}
+function mfSlotLabel(s){
+  const a=mfSlotStart(s),b=mfSlotEnd(s);
+  return _dm(a)+' '+_hm(a)+' → '+(_isoLocal(a)===_isoLocal(b)?'':_dm(b)+' ')+_hm(b);
+}
+// The shift the form should be on: shifts are closed in order, so the earliest
+// unsaved of (previous, current) comes first. If both are closed, the next one
+// is offered only when it starts within 3 h; otherwise stay on the current one.
+function mfDueSlot(now){
+  now=now||new Date();
+  const cur=mfSlotAt(now), prev=mfPrevSlot(cur), next=mfNextSlot(cur);
+  if(!mfSlotSaved(prev))return prev;
+  if(!mfSlotSaved(cur))return cur;
+  if(!mfSlotSaved(next)&&(mfSlotStart(next)-now)<=3*3600*1000)return next;
+  return cur;
+}
+function mfApplySlot(s){
+  document.getElementById('shiftDate').value=s.date;
+  setShift(s.shift,true);
+  if(typeof calc==='function')calc();
+}
+function mfJumpToDueShift(){
+  const s=mfDueSlot();
+  _slotManual=false;
+  mfApplySlot(s);
+  showToast((s.shift==='night'?'🌙 NIGHT ':'☀ MORNING ')+mfSlotLabel(s)+(mfSlotSaved(s)?' — already saved':''));
+}
+function _entryPristine(){
+  const ids=['msd1_cur','msd2_cur','hsd1_cur','hsd2_cur','p_cash','p_gpay','p_paytm'];
+  if(ids.some(id=>{const e=document.getElementById(id);return e&&String(e.value).trim()!=='';}))return false;
+  let any=false;document.querySelectorAll('.cred-amt,.credback-amt').forEach(e=>{if(e.value)any=true;});
+  return !any;
+}
+// Page shown: if the form is untouched and nobody chose a shift by hand, move
+// it to the shift that is due (the app may have been open since yesterday).
+function mfOnEntryShown(){
+  if(!_slotManual&&_entryPristine()){
+    const s=mfDueSlot();
+    if(mfSlotId(s)!==document.getElementById('shiftId').textContent)mfApplySlot(s);
+  }
+  renderShiftAttendance();
+}
+// After a save: next shift in sequence if it has started (or starts within
+// 1 h); a back-filled old shift instead returns the form to the shift due now.
+function mfAdvanceAfterSave(rec){
+  const next=mfNextSlot({date:rec.date,shift:rec.shift});
+  const s=(!mfSlotSaved(next)&&(mfSlotStart(next)-new Date())<=3600*1000)?next:mfDueSlot();
+  _slotManual=false;
+  document.getElementById('shiftDate').value=s.date;
+  setShift(s.shift,true);
+}
+
+// ── STAFF ON DUTY ─────────────────────────────────────────────────────────
+// Marks are staged per slot and written with the shift, so the register and
+// the shift are recorded together. A slot never touched in the form leaves the
+// register exactly as it is (the ATTENDANCE tab keeps working on its own).
+var _saDrafts={};   // { 'YYYY-MM-DD|shift': { staffId: 'present'|'half'|'absent'|'' } }
+function _saKey(date,sh){return date+'|'+sh;}
+function _saCurSlot(){return {date:document.getElementById('shiftDate').value||_isoLocal(),shift:shift};}
+function _saActiveStaff(){
+  try{ return staffList.filter(s=>s.active); }catch(e){ return null; }   // not declared yet during boot
+}
+function _saSaved(date,sh,staffId){
+  const a=staffAttendance.find(x=>x.staffId===staffId&&x.date===date&&x.shift===sh);
+  return a?a.status:'';
+}
+function _saMark(date,sh,staffId){
+  const d=_saDrafts[_saKey(date,sh)];
+  if(d&&Object.prototype.hasOwnProperty.call(d,staffId))return d[staffId];
+  return _saSaved(date,sh,staffId);
+}
+function _saSet(staffId,status){
+  const s=_saCurSlot(), k=_saKey(s.date,s.shift);
+  if(!_saDrafts[k])_saDrafts[k]={};
+  _saDrafts[k][staffId]=status;
+}
+function saMark(staffId,status){
+  if(_lockedRec(document.getElementById('shiftId').textContent))return;
+  const s=_saCurSlot();
+  _saSet(staffId,_saMark(s.date,s.shift,staffId)===status?'':status);
+  renderShiftAttendance();
+}
+function saMarkAll(status){
+  const st=_saActiveStaff()||[];st.forEach(x=>_saSet(x.id,status));renderShiftAttendance();
+}
+function saMarkRest(status){
+  const s=_saCurSlot(),st=_saActiveStaff()||[];
+  st.forEach(x=>{if(!_saMark(s.date,s.shift,x.id))_saSet(x.id,status);});
+  renderShiftAttendance();
+}
+function saCopyPrev(){
+  const s=_saCurSlot(),p=mfPrevSlot(s),st=_saActiveStaff()||[];
+  let n=0;
+  st.forEach(x=>{const m=_saMark(p.date,p.shift,x.id);if(m){_saSet(x.id,m);n++;}});
+  renderShiftAttendance();
+  showToast(n?'Copied '+n+' mark'+(n!==1?'s':'')+' from '+p.shift.toUpperCase()+' '+p.date:'Nothing marked on the previous shift');
+}
+function _saCounts(date,sh){
+  const st=_saActiveStaff()||[];
+  const c={present:0,half:0,absent:0,unmarked:0,unmarkedNames:[],total:st.length};
+  st.forEach(x=>{const m=_saMark(date,sh,x.id);if(m)c[m]++;else{c.unmarked++;c.unmarkedNames.push(x.name);}});
+  return c;
+}
+function renderShiftAttendance(){
+  const list=document.getElementById('sa_list'), sum=document.getElementById('sa_summary');
+  if(!list)return;
+  const st=_saActiveStaff();
+  if(st===null)return;
+  if(!st.length){
+    list.innerHTML='<div style="padding:10px 0;color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:11px">No active staff. <span style="color:var(--petrol);cursor:pointer" onclick="showPage(\'staff\')">Add staff →</span></div>';
+    if(sum)sum.textContent='';return;
+  }
+  const s=_saCurSlot(), p=mfPrevSlot(s);
+  const locked=_lockedRec(mfSlotId(s));
+  const lbl={present:'P',half:'½',absent:'A'}, cls={present:'p',half:'h',absent:'a'};
+  list.innerHTML=st.map(x=>{
+    const m=_saMark(s.date,s.shift,x.id), pm=_saMark(p.date,p.shift,x.id);
+    const prevNote=(pm==='present'||pm==='half')?' · on previous shift too':'';
+    return '<div class="sa-row'+(m?'':' unmarked')+'"><div class="sa-name">'+_esc(x.name)+
+      '<span class="sa-sub">'+_esc(x.role||'')+prevNote+'</span></div><div class="sa-chips">'+
+      ['present','half','absent'].map(k=>'<button class="sa-chip '+cls[k]+(m===k?' on':'')+'"'+
+        (locked?' disabled':'')+' onclick="saMark('+x.id+',\''+k+'\')">'+lbl[k]+'</button>').join('')+
+      '</div></div>';
+  }).join('')+(locked?'<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--muted);padding-top:6px">🔒 Shift is locked — change marks on the ATTENDANCE tab.</div>':'');
+  const c=_saCounts(s.date,s.shift);
+  if(sum){
+    sum.innerHTML='<span style="color:var(--green)">'+c.present+' P</span> · <span style="color:var(--blue)">'+c.half+
+      ' ½</span> · <span style="color:var(--red)">'+c.absent+' A</span>'+
+      (c.unmarked?' · <span style="color:var(--diesel)">'+c.unmarked+' unmarked</span>':'');
+  }
+}
+// Problems the save-review modal should raise. Shape matches meter issues.
+function _saIssues(){
+  const st=_saActiveStaff();
+  if(!st||!st.length)return [];
+  const s=_saCurSlot(), c=_saCounts(s.date,s.shift), out=[];
+  if(c.unmarked)out.push({level:'warn',machine:'Attendance',
+    msg:c.unmarked+' staff not marked — '+c.unmarkedNames.slice(0,4).map(_esc).join(', ')+(c.unmarked>4?'…':'')+
+        '. Payroll will count '+(c.unmarked!==1?'these':'this')+' as unmarked.'});
+  if(!c.unmarked&&c.present+c.half===0)out.push({level:'warn',machine:'Attendance',
+    msg:'Nobody is marked present on this shift.'});
+  return out;
+}
+// Write the staged marks for a slot to the register. Returns what changed.
+function _saCommit(date,sh){
+  const k=_saKey(date,sh), d=_saDrafts[k];
+  const res={present:0,half:0,absent:0,cleared:0,changed:0};
+  if(!d)return res;
+  Object.keys(d).forEach(sid=>{
+    const staffId=Number(sid), status=d[sid];
+    const idx=staffAttendance.findIndex(a=>a.staffId===staffId&&a.date===date&&a.shift===sh);
+    const cur=idx>=0?staffAttendance[idx].status:'';
+    if(status)res[status]++;
+    if(status===cur)return;
+    res.changed++;
+    if(!status){
+      staffAttendance.splice(idx,1);res.cleared++;
+      if(_currentUser&&typeof sbDeleteAttendance==='function')sbDeleteAttendance(staffId,date,sh).catch(console.error);
+      return;
+    }
+    let row;
+    if(idx>=0){row=staffAttendance[idx];row.status=status;}
+    else{row={id:_newId(),staffId:staffId,date:date,shift:sh,status:status,notes:''};staffAttendance.push(row);}
+    _tombDel('staff_attendance',_attKey(row));
+    if(_currentUser&&typeof sbSaveAttendance==='function')sbSaveAttendance(row).catch(console.error);
+  });
+  delete _saDrafts[k];
+  if(res.changed){
+    saveAttLS();
+    if(typeof logActivity==='function')logActivity('attendance','shift',mfSlotId({date:date,shift:sh}),
+      sh.toUpperCase()+' '+date+': '+res.present+' present, '+res.half+' half, '+res.absent+' absent'+(res.cleared?', '+res.cleared+' cleared':''));
+    if(typeof _currentStaffTab!=='undefined'&&typeof renderAttendance==='function'&&document.getElementById('att_body'))renderAttendance();
+  }
+  return res;
 }
 const PAGE_LABELS={
   dashboard:'🏠 DASHBOARD',
@@ -3045,6 +3295,7 @@ function showPage(p){
   if(lbl){const parts=PAGE_LABELS[p]?.split(' ')||[p];
     lbl.innerHTML=`<span>${parts[0]}</span> ${parts.slice(1).join(' ')}`;}
   if(p==='dashboard')renderDashboard();
+  if(p==='entry'&&typeof mfOnEntryShown==='function')mfOnEntryShown();
   if(p==='tally')updateTally();
   if(p==='history')renderHistory();
   if(p==='stock')renderMasterStock();
@@ -3210,7 +3461,9 @@ function _r2(n){return Math.round(((parseFloat(n)||0)+Number.EPSILON)*100)/100;}
 
 // ── IDs: Date.now()+Math.random() collides when several rows are written in the
 // same millisecond (saving a shift with 4 credit lines does exactly that).
-var _idSeq=0;
+// Random start: every device began at 0, so two devices writing in the same
+// millisecond minted identical ids and one row silently replaced the other.
+var _idSeq=Math.floor(Math.random()*1000);
 function _newId(){_idSeq=(_idSeq+1)%1000;return Date.now()*1000+_idSeq;}
 
 // An older build minted ids as Date.now()+Math.random(), so rows created then
@@ -3551,16 +3804,19 @@ function computeAlerts(){
   if(typeof _dipAlerts==='function')Array.prototype.push.apply(alerts,_dipAlerts());
   const today=_todayISO();
 
-  // No shift saved today
-  const todayRecs = records.filter(r=>r.date===today);
-  const hasMorning = todayRecs.some(r=>r.shift==='morning');
-  const hasNight = todayRecs.some(r=>r.shift==='night');
-  const h = new Date().getHours();
-  if(h>=14 && !hasMorning){
-    alerts.push({type:'warn',icon:'⏰',title:"Morning shift not saved",desc:"No morning shift recorded for today",action:'ENTER',page:'entry'});
-  }
-  if(h>=22 && !hasNight){
-    alerts.push({type:'warn',icon:'🌙',title:"Night shift not saved",desc:"No night shift recorded for today",action:'ENTER',page:'entry'});
+  // Shifts that have ENDED (plus 1 h grace) but were never saved. The old check
+  // flagged the night shift at 22:00, four hours into an eleven-hour shift.
+  if(records.length){
+    const _now=new Date();
+    let _s=mfPrevSlot(mfSlotAt(_now));
+    for(let i=0;i<2;i++){
+      if(_now-mfSlotEnd(_s)>=3600*1000 && !mfSlotSaved(_s)){
+        alerts.push({type:'warn',icon:_s.shift==='night'?'🌙':'⏰',
+          title:(_s.shift==='night'?'Night':'Morning')+' shift not saved',
+          desc:mfSlotLabel(_s)+' — shift has ended',action:'ENTER',page:'entry'});
+      }
+      _s=mfPrevSlot(_s);
+    }
   }
 
   // Cash shortages in last 3 shifts
@@ -4718,6 +4974,7 @@ function saveShift(){
   calc();
   const c=getCalcVals();
   const meterIssues = (typeof validateAllMeters==='function') ? validateAllMeters() : [];
+  if(typeof _saIssues==='function')Array.prototype.push.apply(meterIssues,_saIssues());
   const bal=c.bal||0;
   const isShortage = bal < -50;
   const hasMeterIssues = meterIssues.length > 0;
@@ -4897,6 +5154,7 @@ function _doSaveShift(){
   if(idx>=0)records[idx]=rec;else records.unshift(rec);
   localStorage.setItem('fuelRecords',JSON.stringify(records));
   if(_currentUser)sbSaveRecord(rec).catch(console.error);
+  const _att=(typeof _saCommit==='function')?_saCommit(rec.date,rec.shift):null;
   shiftSales={};renderStockSales();renderMasterStock();
   // Reset all entry fields
   ['msd1_prev','msd1_cur','msd2_prev','msd2_cur',
@@ -4921,11 +5179,14 @@ function _doSaveShift(){
   document.getElementById('credback_list').innerHTML='';
   creditCount=0;credbackCount=0;
   addCredit();addCredBack();
-  // Advance date to today (keep shift same)
-  document.getElementById('shiftDate').value=_isoLocal();
+  // Move to the next shift in sequence (morning D → night D → morning D+1).
+  // The old "today + same shift" sent a 9 AM night-shift save to tonight's night.
+  if(typeof mfAdvanceAfterSave==='function')mfAdvanceAfterSave(rec);
+  else document.getElementById('shiftDate').value=_isoLocal();
   calc();
   if(typeof logActivity==='function')logActivity('save_shift','shift',rec.id,rec.shift.toUpperCase()+' '+rec.date+' • bal: '+(rec.bal>=0?'+':'')+Math.round(rec.bal));
-  showToast(rec.bal>=0?'✓ Shift saved — cash over '+fmt(rec.bal):'✓ Shift saved — cash short '+fmt(Math.abs(rec.bal)));
+  const _attTxt=(_att&&(_att.present+_att.half+_att.absent))?' · '+(_att.present+_att.half)+' on duty':'';
+  showToast((rec.bal>=0?'✓ Shift saved — cash over '+fmt(rec.bal):'✓ Shift saved — cash short '+fmt(Math.abs(rec.bal)))+_attTxt);
   if(typeof renderPackReg==='function')renderPackReg();
   renderHistory();
 }
@@ -5954,6 +6215,10 @@ function markPaid(id){
 }
 function delLedger(id){
   if(!confirm('Delete this transaction?'))return;
+  const _gone=ledger.find(x=>x.id===id);
+  if(_gone&&typeof logActivity==='function')logActivity('del_ledger','ledger',id,
+    _gone.customer+' • '+_gone.date+' • '+(_gone.amount<0?'advance ':'credit ')+fmt(Math.abs(_gone.amount||0))+
+    (_gone.paidBack?' (paid '+fmt(_gone.paidBack)+')':''));
   ledger=ledger.filter(x=>x.id!==id);
   saveLedger();
   if(_currentUser)sbDeleteLedgerEntry(id).catch(console.error);
@@ -6096,7 +6361,9 @@ function renderLedger(){
     // Over a few years most customers are settled and only clutter the page.
     const _match=!_q||name.toLowerCase().indexOf(_q.toLowerCase())>=0;
     if(!_match){ return; }
-    if(_hideSettled&&Math.abs(netBalance)<0.5){ hidden++; return; }
+    // Searching by name always finds the customer, settled or not — hiding a
+    // settled customer from a search looked exactly like the customer vanishing.
+    if(_hideSettled&&!_q&&Math.abs(netBalance)<0.5){ hidden++; return; }
     shown++;
 
     const card=document.createElement('div');
@@ -6320,6 +6587,9 @@ function deleteCustomer(name){
   // Remove from the server too, or the next sync merges every row back in.
   rows.forEach(function(e){ _sbRemove('ledger_entries', _intId(e.id), 'id'); });
   if(customerProfiles[name]) _sbRemove('customer_profiles', name, 'customer_name');
+  // _sbRemove only remembers id-keyed deletes; without this the profile of a
+  // deleted customer was merged straight back from another device.
+  _tombAdd('customer_profiles', name);
 
   ledger=ledger.filter(e=>e.customer!==name);
   delete customerProfiles[name];
@@ -6446,6 +6716,20 @@ function viewShiftDetail(id){
     html2+=`<div style="background:var(--s3);border:1px solid var(--border);border-radius:6px;padding:12px">
       <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">NOTES</div>
       <div style="font-size:13px;color:var(--text);line-height:1.6;white-space:pre-wrap">${r.notes}</div>
+    </div>`;
+  }
+  {
+    const _on=staffAttendance.filter(a=>a.date===r.date&&a.shift===r.shift);
+    const _nm=id=>{const s=staffList.find(x=>x.id===id);return s?_esc(s.name):'#'+id;};
+    const _grp=k=>_on.filter(a=>a.status===k).map(a=>_nm(a.staffId)).join(', ');
+    const _p=_grp('present'),_h=_grp('half'),_a=_grp('absent');
+    html2+=`<div style="background:var(--s3);border:1px solid var(--border);border-radius:6px;padding:12px;margin-top:10px">
+      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">STAFF ON DUTY · ${mfSlotLabel(r)}</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.7">${_on.length?
+        (_p?`<span style="color:var(--green)">Present:</span> ${_p}<br>`:'')+
+        (_h?`<span style="color:var(--blue)">Half:</span> ${_h}<br>`:'')+
+        (_a?`<span style="color:var(--red)">Absent:</span> ${_a}`:''):
+        '<span style="color:var(--diesel)">No attendance marked for this shift</span>'}</div>
     </div>`;
   }
   document.getElementById('smd_body').innerHTML=html2;
@@ -8665,7 +8949,8 @@ function staffShowTab(tab){
   });
   if(tab==='list')renderStaff();
   else if(tab==='attendance'){
-    const d=document.getElementById('att_date');if(d&&!d.value)d.value=_isoLocal();
+    const d=document.getElementById('att_date');
+    if(d&&!d.value){const _cs=mfSlotAt();d.value=_cs.date;const _as=document.getElementById('att_shift');if(_as)_as.value=_cs.shift;}
     renderAttendance();
   } else if(tab==='payments') renderPayments();
   else if(tab==='report') renderStaffReport();
@@ -9426,8 +9711,10 @@ function setAttendance(staffId,date,shift,status){
   } else {
     if(idx>=0){staffAttendance[idx].status=status;}
     else {staffAttendance.push({id:_newId(),staffId,date,shift,status,notes:''});}
+    if(typeof _tombDel==='function')_tombDel('staff_attendance',String(staffId)+'|'+date+'|'+shift);
   }
   saveAttLS();
+  if(typeof renderShiftAttendance==='function')renderShiftAttendance();
   if(_currentUser&&typeof sbSaveAttendance==='function'){
     if(idx<0&&status)sbSaveAttendance(staffAttendance[staffAttendance.length-1]).catch(console.error);
     else if(idx>=0&&status)sbSaveAttendance(staffAttendance[idx]).catch(console.error);
@@ -9816,7 +10103,10 @@ async function sbLoadStaffAll(){
     }
     // 2000 was under a year for four staff on two shifts. Older marks were
     // dropped by the server AND wiped locally, taking the payroll with them.
-    const aR=await _supa.from('staff_attendance').select('*').eq('user_id',_currentUser.id).order('date',{ascending:false}).limit(8000);
+    // .limit(8000) was capped at the server's 1000 rows — about five months
+    // of attendance for three staff. Paged now.
+    const aR=await _sbSelectAll('staff_attendance',q=>q.eq('user_id',_currentUser.id)
+      .order('date',{ascending:false}).order('staff_id',{ascending:true}).order('shift',{ascending:true}));
     if(aR.error){console.warn('staff_attendance read rejected:',aR.error.message);}
     else if(aR.data){
       const remoteAtt=aR.data.map(r=>({
@@ -9827,7 +10117,8 @@ async function sbLoadStaffAll(){
       staffAttendance=mA.merged; saveAttLS();
       for(const a of mA.localOnly){ try{ await sbSaveAttendance(a); }catch(e){} }
     }
-    const pR=await _supa.from('staff_payments').select('*').eq('user_id',_currentUser.id).order('date',{ascending:false}).limit(2000);
+    const pR=await _sbSelectAll('staff_payments',q=>q.eq('user_id',_currentUser.id)
+      .order('date',{ascending:false}).order('id',{ascending:true}));
     if(pR.error){console.warn('staff_payments read rejected:',pR.error.message);}
     else if(pR.data){
       const remotePay=_dropDeleted('staff_payments',pR.data).map(r=>({
@@ -10647,6 +10938,12 @@ function _tombHas(table,id){
   var t=_tombRead();
   return !!(t[table]&&t[table][_tombKey(id)]);
 }
+// A slot cleared and then marked again must lose its tombstone, or the next
+// merge treats the new server row as deleted and removes it.
+function _tombDel(table,id){
+  var t=_tombRead(), k=_tombKey(id);
+  if(t[table]&&t[table][k]){ delete t[table][k]; _tombWrite(t); }
+}
 function _tombPrune(){
   var t=_tombRead(), cut=Date.now()-MF_TOMB_DAYS*86400000, changed=false;
   Object.keys(t).forEach(function(tab){
@@ -10936,7 +11233,77 @@ async function sbSaveAllStock() {
   } catch(e){ console.error('Save stock failed:',e.message); }
 }
 
-async function sbSaveLedgerEntry(entry) {
+// ══════════════════════════════════════════════════════════════════
+// LEDGER INTEGRITY — MF_LEDGER_INTEGRITY_V1
+// ══════════════════════════════════════════════════════════════════
+// PAGED READ. Supabase answers at most 1000 rows per request (API → Max rows),
+// whatever .limit() asks for. An un-paged select of a bigger table silently
+// loses its oldest rows. Pages until an empty page, so it is correct for any
+// server cap. `build` adds filters and a STABLE order (range paging on a
+// non-unique order can skip or repeat rows at page edges).
+async function _sbSelectAll(table, build){
+  let from=0, all=[];
+  for(let guard=0; guard<500; guard++){
+    const r=await build(_supa.from(table).select('*')).range(from, from+999);
+    if(r.error) return {data:null, error:r.error};
+    const rows=r.data||[];
+    if(!rows.length) break;
+    all=all.concat(rows);
+    from+=rows.length;
+  }
+  // Soft-deleted rows. Every caller maps rows to camelCase WITHOUT deleted_at
+  // before _dropDeleted sees them, so the flag never arrived and a delete made
+  // on one device never reached the others. Tombstone them here and hand back
+  // live rows only; the merge then drops this device's copy too.
+  const live=[];
+  all.forEach(function(r){
+    if(r&&r.deleted_at){ if(r.id!=null)_tombAdd(table, r.id); }
+    else live.push(r);
+  });
+  return {data:live, error:null};
+}
+
+// CHANGE TRACKING. saveLedger() used to upsert EVERY row on every change, so a
+// device that had not synced pushed stale copies over newer server rows —
+// payments recorded on another phone were undone. Each row's content
+// signature at the time it was last known to be on the server is kept here;
+// only rows whose content differs are uploaded.
+var _ledSig=_ledSig||null;
+function _ledSigMap(){
+  if(!_ledSig){
+    let raw=null;
+    try{ raw=localStorage.getItem('mf_led_sig'); }catch(e){}
+    if(raw){ try{ _ledSig=JSON.parse(raw)||{}; }catch(e){ _ledSig={}; } }
+    else{
+      // First run after this change: take the device's ledger as the baseline.
+      // Anything it holds that the server lacks is found and uploaded by the
+      // next sync's merge (localOnly), so nothing is skipped by seeding.
+      _ledSig={};
+      try{ (ledger||[]).forEach(function(e){ if(e&&e.id!=null)_ledSig[String(_intId(e.id))]=_ledRowSig(e); }); }catch(e){}
+      _ledSigSave();
+    }
+  }
+  return _ledSig;
+}
+function _ledSigSave(){ try{ localStorage.setItem('mf_led_sig', JSON.stringify(_ledSig||{})); }catch(e){} }
+function _ledRowSig(e){
+  const s=[e.date,e.customer,e.shift,e.fuel,_r2(e.amount),_r2(e.paidBack||0),
+           e.kind||'',e.notes||'',e.shiftId||''].join('\u0001');
+  let h=5381; for(let i=0;i<s.length;i++) h=((h<<5)+h+s.charCodeAt(i))|0;
+  return (h>>>0).toString(36)+s.length.toString(36);
+}
+function _ledMarkSynced(rows){
+  const m=_ledSigMap();
+  (rows||[]).forEach(function(e){ if(e&&e.id!=null) m[String(_intId(e.id))]=_ledRowSig(e); });
+  _ledSigSave();
+}
+// Take the baseline NOW, at load — before anything can be added. Taken lazily
+// at the first save, it would include the row being saved and skip it.
+try{ _ledSigMap(); }catch(e){}
+
+// keepStamp: re-uploads during sync must NOT re-stamp the row as "edited now",
+// or an old copy outranks a genuinely newer edit made on another device.
+async function sbSaveLedgerEntry(entry, keepStamp) {
   if (!_currentUser) return;   // no _supa: _sbUpsert queues it
   try {
     const id = _intId(entry.id);
@@ -10946,9 +11313,11 @@ async function sbSaveLedgerEntry(entry) {
       fuel: entry.fuel, amount: entry.amount, paid_back: entry.paidBack||0,
       kind: entry.kind || (entry.amount<0?'advance':'credit'),
       notes: entry.notes || '', shift_id: entry.shiftId || null,
-      updated_at: _touch(entry).updatedAt,
+      updated_at: keepStamp ? _ledgerStamp(entry) : _touch(entry).updatedAt,
       created_by: _currentUser.username, updated_by: _currentUser.username
     });
+    // _sbUpsert parks failures in the outbox, so the row is on its way either way.
+    _ledMarkSynced([entry]);
   } catch(e){ console.error('Save ledger entry failed:', e.message); }
 }
 
@@ -10986,7 +11355,11 @@ async function sbSaveLedgerPayment(p){
 async function sbSaveAllLedger() {
   if (!_currentUser) return;   // no _supa: _sbUpsert queues it
   try {
-  const rows = ledger.map(e => ({
+  // Changed rows only — see _ledRowSig. Computed synchronously, before any await.
+  const _sig = _ledSigMap();
+  const _dirty = ledger.filter(e => e && e.id!=null && _sig[String(_intId(e.id))] !== _ledRowSig(e));
+  if (!_dirty.length) return;
+  const rows = _dirty.map(e => ({
     id: _intId(e.id), user_id: _currentUser.id,
     date: e.date, customer: e.customer, shift: e.shift,
     fuel: e.fuel, amount: e.amount, paid_back: e.paidBack || 0,
@@ -11002,6 +11375,7 @@ async function sbSaveAllLedger() {
     created_by: _currentUser.username, updated_by: _currentUser.username
   }));
   if (rows.length) await _sbUpsert('ledger_entries', rows);
+  _ledMarkSynced(_dirty);
   } catch(e){ console.error('Save ledger failed:',e.message); }
 }
 
@@ -11058,33 +11432,54 @@ async function sbSaveSettings() {
 }
 
 // ── CUSTOMER PROFILES (per-customer fixed discount rate) ──
-async function sbSaveCustProfile(name) {
+// null = unknown, false = the server has no `billing` column (db/012 missing).
+var MF_BILLING_COL=null;
+function _hasBilling(b){
+  return !!(b && Object.keys(b).some(function(k){ return String(b[k]||'').trim()!==''; }));
+}
+async function sbSaveCustProfile(name, keepStamp) {
   if (!_currentUser) return;   // no _supa: _sbUpsert queues it
-  const p = customerProfiles[name] || {};
+  if (!customerProfiles[name]) customerProfiles[name] = {};
+  const p = customerProfiles[name];
+  // Stamped so the merge on load can tell a local edit from a stale copy.
+  if (!keepStamp || !p.updatedAt) { p.updatedAt = new Date().toISOString(); saveCustProfiles(); }
+  // A profile saved again after its customer was deleted is a new profile.
+  if (typeof _tombDel === 'function') _tombDel('customer_profiles', name);
   const base = {
     customer_name: name,
     user_id: _currentUser.id,
     discount_per_l: p.discountPerL || 0,
     notes: p.notes || '',
-    updated_at: new Date().toISOString(),
+    updated_at: p.updatedAt,
     updated_by: _currentUser.username
   };
-  // `billing` is a newer column. Until db/012_billing.sql is applied the row is
-  // rejected outright, which would take the discount rate down with it:
-  //   alter table customer_profiles add column if not exists billing jsonb default '{}'::jsonb;
+  // `billing` is a newer column (db/012_billing.sql). Without it the whole row
+  // is rejected, which would take the discount rate down with it.
   const full = Object.assign({ billing: p.billing || {} }, base);
+  const row = (MF_BILLING_COL === false) ? base : full;
   if (!_supa || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
-    await _sbUpsert('customer_profiles', full);
+    await _sbUpsert('customer_profiles', row);
     return;
   }
   try {
     const { error } = await _supa.from('customer_profiles')
-      .upsert(full, { onConflict: 'customer_name' });
+      .upsert(row, { onConflict: 'customer_name' });
     if (error) throw error;
+    if (row === full) MF_BILLING_COL = true;
   } catch(e){
-    console.warn('customer_profiles rejected billing column, retrying without it:', e.message);
-    try { await _sbUpsert('customer_profiles', base); }
-    catch(e2){ console.error('Save customer profile failed:', e2.message); }
+    const msg = String((e && e.message) || e);
+    if (row === full && (/billing/i.test(msg) || _isMissingCol(msg))) {
+      // Genuinely no column. Save the rest; billing stays on this device.
+      MF_BILLING_COL = false;
+      console.warn('customer_profiles has no billing column — apply db/012_billing.sql. '+
+                   'Billing details are kept on this device only until then.');
+      await _sbUpsert('customer_profiles', base);
+    } else {
+      // Anything else (network, timeout): queue the WHOLE row. The old code
+      // retried without billing here, which lost billing for good.
+      console.warn('Customer profile queued for retry:', msg);
+      _outboxQueue('customer_profiles', 'upsert', [row], null, msg);
+    }
   }
 }
 
@@ -11093,16 +11488,34 @@ async function sbLoadCustProfiles() {
   try {
     const r = await _supa.from('customer_profiles').select('*').eq('user_id', _currentUser.id);
     if (r.error) { console.warn('customer_profiles read rejected:', r.error.message); return; }
-    if (r.data && r.data.length) {
-      customerProfiles = {};
+    // MERGE, not replace. Replacing wiped every profile this device had not
+    // uploaded yet, and every billing block the server could not store.
+    if (r.data) {
+      const local = customerProfiles || {}, next = {}, pushUp = [];
+      if (r.data.length && MF_BILLING_COL === null && !('billing' in r.data[0])) MF_BILLING_COL = false;
       r.data.forEach(p => {
-        customerProfiles[p.customer_name] = {
-          discountPerL: p.discount_per_l || 0,
-          notes: p.notes || '',
-          billing: p.billing || {}
-        };
+        const n = p.customer_name;
+        if (p.deleted_at) { _tombAdd('customer_profiles', n); return; }
+        if (_tombHas('customer_profiles', n)) return;
+        const srv = { discountPerL: p.discount_per_l || 0, notes: p.notes || '',
+                      billing: p.billing || {}, updatedAt: p.updated_at || '' };
+        const loc = local[n];
+        if (loc && loc.updatedAt && String(loc.updatedAt) > String(srv.updatedAt)) {
+          next[n] = loc; pushUp.push(n);                      // edited here, not uploaded yet
+        } else {
+          if (loc && _hasBilling(loc.billing) && !_hasBilling(srv.billing)) {
+            srv.billing = loc.billing;                        // never let an empty block erase one
+            if (MF_BILLING_COL !== false) pushUp.push(n);
+          }
+          next[n] = srv;
+        }
       });
+      Object.keys(local).forEach(n => {
+        if (!next[n] && !_tombHas('customer_profiles', n)) { next[n] = local[n]; pushUp.push(n); }
+      });
+      customerProfiles = next;
       saveCustProfiles();
+      for (const n of pushUp) { try { await sbSaveCustProfile(n, true); } catch(e){} }
     }
   } catch(e){ console.error('Load customer profiles failed:', e.message); }
 }
@@ -11206,21 +11619,24 @@ async function loadAllFromSupabase(silent) {
     if(_sent && !silent) showToast('✓ '+_sent+' queued change'+(_sent>1?'s':'')+' sent');
 
     // Run individually so one failure doesn't block others
-    const recRes   = await _supa.from('shift_records').select('*').eq('user_id', uid).order('date', { ascending: false });
-    const stockRes  = await _supa.from('stock_items').select('*').eq('user_id', uid).order('id');
-    const ledRes   = await _supa.from('ledger_entries').select('*').eq('user_id', uid).order('date', { ascending: false });
-    const oilRes   = await _supa.from('oil_invoices').select('*').eq('user_id', uid).order('date', { ascending: false });
-    const flRes    = await _supa.from('fuel_loads').select('*').eq('user_id', uid).order('date', { ascending: false });
+    // Paged: an un-paged select stops at the server's 1000-row cap and the
+    // oldest rows (old credit, old shifts) never reach a fresh device.
+    const _byDate = q => q.eq('user_id', uid).order('date', { ascending: false }).order('id', { ascending: true });
+    const recRes   = await _sbSelectAll('shift_records',  _byDate);
+    const stockRes = await _sbSelectAll('stock_items',    q => q.eq('user_id', uid).order('id'));
+    const ledRes   = await _sbSelectAll('ledger_entries', _byDate);
+    const oilRes   = await _sbSelectAll('oil_invoices',   _byDate);
+    const flRes    = await _sbSelectAll('fuel_loads',     _byDate);
     const setRes   = await _supa.from('app_settings').select('*').eq('user_id', uid).maybeSingle();
     let dipRes = {data:null};
-    try{ dipRes = await _supa.from('dip_readings').select('*').eq('user_id', uid).order('date',{ascending:false}); }
+    try{ dipRes = await _sbSelectAll('dip_readings', _byDate); }
     catch(e){ console.warn('Dip readings table not present yet'); }
     // Payment history. Tolerant of the table being absent, like dip_readings:
     // paid_back on the bill is still authoritative, so a missing table costs
     // the history and nothing else.
     let payRes = {data:null};
     try{
-      payRes = await _supa.from('ledger_payments').select('*').eq('user_id', uid).order('date',{ascending:false});
+      payRes = await _sbSelectAll('ledger_payments', _byDate);
       if(payRes.error){
         MF_PAYTBL_OK=false;
         console.warn('ledger_payments not available ('+payRes.error.message+
@@ -11299,7 +11715,10 @@ async function loadAllFromSupabase(silent) {
       const mrgL = _mergeById(ledger, _dropDeleted('ledger_entries',remoteLed), 'updatedAt', 'ledger_entries');
       ledger = _normaliseIds(mrgL.merged,'updatedAt').rows;
       localStorage.setItem('fuelLedger', JSON.stringify(ledger));
-      for (const e of mrgL.localOnly) { await sbSaveLedgerEntry(e); }
+      // What the server just returned is what the server has. Rebuilding the
+      // map here also drops signatures of rows deleted since.
+      _ledSig = {}; _ledMarkSynced(ledger);
+      for (const e of mrgL.localOnly) { await sbSaveLedgerEntry(e, true); }
     }
 
     if (oilRes.data) {
