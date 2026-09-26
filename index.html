@@ -1263,7 +1263,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
     <input type="date" class="date-inp" id="shiftDate" onchange="_slotManual=true;setShiftId();calc()">
     <span class="lbl" style="margin-left:10px">SHIFT ID</span>
     <span class="chip" id="shiftId">—</span>
-    <span class="chip" id="shiftWindow" title="Shift window: morning 9 AM–6 PM, night 6 PM–9 AM next day">—</span>
+    <span class="chip" id="shiftWindow" title="Shifts are dated by the day they close: MORNING 6 PM (day before) → 9 AM, NIGHT 9 AM → 6 PM">—</span>
     <button class="btn btn-g" onclick="mfJumpToDueShift()" title="Open the shift that is due now (earliest unsaved)">&#9201; DUE SHIFT</button>
     <button class="btn btn-g" style="margin-left:auto" onclick="carryForwardMeters()"
       title="Copy the closing readings of the last saved shift into the opening fields">
@@ -3537,16 +3537,16 @@ function setShift(s,auto){
 }
 
 // ═══════════════════════════════════════════════════
-// SHIFT CLOCK — MF_SHIFT_CLOCK_V1
-// MORNING 09:00→18:00. NIGHT 18:00→09:00 next day, filed under the date it
-// STARTS. So 02:00 on the 26th is still the NIGHT shift of the 25th. The old
-// form defaulted to "today + MORNING" and, after a save, to "today + same
-// shift" — saving the 25th's night shift at 9 AM jumped the form to the 26th's
-// NIGHT instead of the 26th's MORNING.
+// SHIFT CLOCK — MF_SHIFT_CLOCK_V1 + MF_SHIFT_CLOCK_V2
+// A shift is named and dated by when it CLOSES (station convention):
+//   MORNING of D = (D-1) 18:00 → D 09:00   e.g. 25 Sep 6 PM → 26 Sep 9 AM = 26th MORNING
+//   NIGHT   of D =  D    09:00 → D 18:00   e.g. 26 Sep 9 AM → 26 Sep 6 PM = 26th NIGHT
+// So 20:00 on the 25th is already the 26th's MORNING shift. Inside a day the
+// order is still morning → night, so ids, sorting and prev/next are unchanged.
 // ═══════════════════════════════════════════════════
 // A function, not a const: setShiftId() runs at boot, above this line, and a
 // const would still be in its temporal dead zone there.
-function _mfH(sh){return sh==='night'?18:9;}   // morning starts 09:00, night 18:00
+function _mfH(sh){return sh==='night'?18:9;}   // closing hour: morning 09:00, night 18:00
 var _slotManual=false;     // user picked the date/shift by hand — don't override
 var _saSlotId=null;        // slot the on-duty card is currently drawn for
 
@@ -3555,16 +3555,16 @@ function _slotShiftDays(iso,n){const d=_slotDateObj(iso);d.setDate(d.getDate()+n
 function mfSlotAt(now){
   now=now||new Date();
   const h=now.getHours();
-  if(h>=_mfH('night'))return {date:_isoLocal(now),shift:'night'};
-  if(h>=_mfH('morning'))return {date:_isoLocal(now),shift:'morning'};
-  const y=new Date(now);y.setDate(y.getDate()-1);
-  return {date:_isoLocal(y),shift:'night'};
+  if(h<_mfH('morning'))return {date:_isoLocal(now),shift:'morning'};   // 00:00–08:59 → today's morning
+  if(h<_mfH('night'))return {date:_isoLocal(now),shift:'night'};       // 09:00–17:59 → today's night
+  const t=new Date(now);t.setDate(t.getDate()+1);                       // 18:00–23:59 → tomorrow's morning
+  return {date:_isoLocal(t),shift:'morning'};
 }
-function mfSlotStart(s){return _slotDateObj(s.date,_mfH(s.shift));}
-function mfSlotEnd(s){
-  return s.shift==='morning' ? _slotDateObj(s.date,_mfH('night'))
-                             : _slotDateObj(_slotShiftDays(s.date,1),_mfH('morning'));
+function mfSlotStart(s){
+  return s.shift==='morning' ? _slotDateObj(_slotShiftDays(s.date,-1),_mfH('night'))
+                             : _slotDateObj(s.date,_mfH('morning'));
 }
+function mfSlotEnd(s){return _slotDateObj(s.date,_mfH(s.shift));}
 function mfNextSlot(s){return s.shift==='morning'?{date:s.date,shift:'night'}:{date:_slotShiftDays(s.date,1),shift:'morning'};}
 function mfPrevSlot(s){return s.shift==='night'?{date:s.date,shift:'morning'}:{date:_slotShiftDays(s.date,-1),shift:'night'};}
 function mfSlotId(s){return s.date.replace(/-/g,'')+'_'+s.shift.toUpperCase();}
@@ -12372,6 +12372,41 @@ function installApp(){
   document.getElementById('install-banner').classList.remove('show');
   if(deferredPrompt){deferredPrompt.prompt();deferredPrompt.userChoice.then(()=>{deferredPrompt=null})}
 }
+// MF_DEVICES_V1: install from the user menu at any time (the banner can be
+// dismissed and never comes back). Uses the browser's own prompt when it has
+// offered one; otherwise says where the browser keeps the install option.
+function _mfInstalled(){
+  try{ return (window.matchMedia&&(window.matchMedia('(display-mode: standalone)').matches||window.matchMedia('(display-mode: window-controls-overlay)').matches))||navigator.standalone===true; }catch(e){ return false; }
+}
+function mfInstallHelp(){
+  if(_mfInstalled()){ showToast('✓ Already running as the installed app'); return; }
+  if(deferredPrompt){ installApp(); return; }
+  var ua=navigator.userAgent||'', t;
+  if(/iPhone|iPad|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1))
+    t='In <b>Safari</b>: tap <b>Share</b> (□↑) → <b>Add to Home Screen</b> → <b>Add</b>. Open ManiFuels from the new icon.';
+  else if(/Android/.test(ua))
+    t='In <b>Chrome</b>: tap <b>⋮</b> (top right) → <b>Install app</b> (or <b>Add to Home screen</b> → <b>Install</b>). '+
+      'If it only offers a shortcut, close every ManiFuels tab, reopen manifuels.vercel.app, wait a few seconds and try again.';
+  else if(/Edg\//.test(ua))
+    t='In <b>Edge</b>: click the <b>App available</b> icon in the address bar, or <b>…</b> → <b>Apps</b> → <b>Install ManiFuels</b>.';
+  else if(/Firefox/.test(ua))
+    t='Firefox on a computer cannot install web apps. Open manifuels.vercel.app in <b>Chrome</b> or <b>Edge</b> to install it (Firefox still gets notifications).';
+  else if(/Chrome/.test(ua))
+    t='In <b>Chrome</b>: click the <b>install</b> icon (⊕ / 🖥↓) at the right end of the address bar, or <b>⋮</b> → <b>Cast, save and share</b> → <b>Install page as app</b>.';
+  else if(/Safari/.test(ua))
+    t='In <b>Safari</b> on a Mac (macOS 14+): <b>File</b> → <b>Add to Dock</b>.';
+  else
+    t='Open manifuels.vercel.app in Chrome or Edge and use the browser menu → <b>Install app</b>.';
+  var ov=document.createElement('div'); ov.id='mf-install';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:950;display:flex;align-items:flex-start;justify-content:center;padding:60px 12px';
+  ov.onclick=function(e){ if(e.target===ov)ov.remove(); };
+  ov.innerHTML='<div style="background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:18px;width:100%;max-width:460px;font-family:\'JetBrains Mono\',monospace;font-size:12px;line-height:1.7">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-family:\'Syne\',sans-serif;font-weight:800;letter-spacing:2px">⬇ INSTALL MANIFUELS</div>'+
+    '<button class="btn btn-g" style="padding:4px 10px" onclick="document.getElementById(\'mf-install\').remove()">✕</button></div>'+
+    '<div>'+t+'</div><div style="color:var(--muted);margin-top:10px;font-size:10px">The installed app opens in its own window, starts faster and works offline.</div></div>';
+  var old=document.getElementById('mf-install'); if(old)old.remove();
+  document.body.appendChild(ov);
+}
 
 function toggleUserMenu(){
   var ex=document.getElementById('user-dropdown');if(ex){ex.remove();return;}
@@ -12385,6 +12420,7 @@ function toggleUserMenu(){
   h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="syncNow()">&#8635; SYNC NOW</button>';
   h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="this.closest(\'#user-dropdown\').remove();showSyncHealth()">&#9877; SYNC HEALTH</button>';
   h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="mfOpenNotify()">&#128276; NOTIFICATIONS</button>';
+  if(!_mfInstalled())h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="this.closest(\'#user-dropdown\').remove();mfInstallHelp()">&#11015; INSTALL APP</button>';
   h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="mfChangePassword()">&#128273; CHANGE PASSWORD</button>';
   if(_isOwner)h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="mfOpenMembers()">&#128101; MEMBERS</button>';
   h+='<button class="nav-tab" style="width:100%;padding:8px;color:var(--red)" onclick="signOut()">&#9211; SIGN OUT</button>';
@@ -13960,7 +13996,7 @@ var MF_PUSH_CATS={
   missed:{icon:'⏰', label:'Shift not saved',      hint:'1 hour after the shift ended'},
   dip:   {icon:'📏', label:'Dip variation',        hint:'Outside the tank tolerance'},
   stock: {icon:'📦', label:'Low stock',            hint:'Oil items and packs, once per drop'},
-  digest:{icon:'📊', label:'Morning report',       hint:"Yesterday's sales and position, from 10 AM"}
+  digest:{icon:'📊', label:'Day report',           hint:"The day's sales and position, once the 6 PM shift is saved"}
 };
 function _mfPushSupported(){
   return typeof window!=='undefined'&&('serviceWorker' in navigator)&&('PushManager' in window)&&('Notification' in window);
@@ -13979,13 +14015,21 @@ function _mfKeyBytes(b64){
   var s=String(b64).replace(/-/g,'+').replace(/_/g,'/'); s+='='.repeat((4-s.length%4)%4);
   var bin=atob(s), out=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i); return out;
 }
+// MF_DEVICES_V1: 'phone' or 'computer', for the wording in the panel.
+function _mfIsPhone(){
+  var ua=navigator.userAgent||'';
+  if(/Android|Mobi|iPhone|iPad|iPod/.test(ua)||_mfIsIOS())return true;
+  if(/Windows|Macintosh|CrOS/.test(ua))return false;
+  try{ return !!(window.matchMedia&&window.matchMedia('(pointer: coarse)').matches); }catch(e){ return false; }
+}
+function _mfDev(){ return _mfIsPhone()?'phone':'computer'; }
 function _mfSubB64(buf){
   var b=new Uint8Array(buf), s=''; for(var i=0;i<b.length;i++)s+=String.fromCharCode(b[i]);
   return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 }
 function _mfDeviceLabel(){
   var ua=navigator.userAgent||'';
-  var os=/Android/.test(ua)?'Android':(_mfIsIOS()?'iPhone':(/Windows/.test(ua)?'Windows':(/Mac/.test(ua)?'Mac':'Phone')));
+  var os=/Android/.test(ua)?'Android':(_mfIsIOS()?'iPhone':(/Windows/.test(ua)?'Windows':(/Mac/.test(ua)?'Mac':(/CrOS/.test(ua)?'Chromebook':(/Linux/.test(ua)?'Linux':'Device')))));
   var br=/Edg\//.test(ua)?'Edge':(/Firefox/.test(ua)?'Firefox':(/Chrome/.test(ua)?'Chrome':(/Safari/.test(ua)?'Safari':'Browser')));
   return os+' · '+br;
 }
@@ -14030,12 +14074,12 @@ async function mfPushEnable(){
   var r=await _mfRpc('mf_push_subscribe',_mfSubPayload(sub,null));
   if(!r.ok){ showToast('✗ '+r.msg); return; }
   if(typeof logActivity==='function')logActivity('push_on','user',_currentUser&&_currentUser.username,_mfDeviceLabel());
-  mfOpenNotify('✓ Notifications are on for this phone. Tap "Send a test" to check.');
+  mfOpenNotify('✓ Notifications are on for this '+_mfDev()+'. '+(_mfIsPhone()?'Tap':'Click')+' "Send a test" to check.');
 }
 async function mfPushDisable(){
   var sub=await _mfPushSub();
   if(sub){ await _mfRpc('mf_push_unsubscribe',{p_endpoint:sub.endpoint}); try{ await sub.unsubscribe(); }catch(e){} }
-  mfOpenNotify('Notifications are off for this phone.');
+  mfOpenNotify('Notifications are off for this '+_mfDev()+'.');
 }
 async function mfPushSetCat(cat,on){
   var sub=await _mfPushSub(); if(!sub)return;
@@ -14079,7 +14123,7 @@ async function mfOpenNotify(note){
   if(_mfIsIOS()&&!_mfStandalone()){
     return msg('On iPhone, notifications work only in the installed app: tap <b>Share</b> → <b>Add to Home Screen</b>, open ManiFuels from the home screen, then come back here.');
   }
-  if(!_mfPushSupported())return msg('This browser cannot receive notifications. Use Chrome on Android, or the installed app on iPhone (iOS 16.4 or newer).');
+  if(!_mfPushSupported())return msg('This browser cannot receive notifications. Use Chrome, Edge or Firefox (phone or computer), Safari on a Mac, or the installed app on iPhone (iOS 16.4 or newer).');
   msg('Loading…');
   var sub=await _mfPushSub();
   var st=await _mfRpc('mf_push_status',{p_endpoint:sub?sub.endpoint:''});
@@ -14096,12 +14140,15 @@ async function mfOpenNotify(note){
   var on=!!(sub&&s.subscribed);
   var h='';
   if(perm==='denied'){
-    h+='<div style="color:var(--red);margin-bottom:10px">Notifications are blocked for this app. Allow them in the phone settings (App info → Notifications), then reopen this panel.</div>';
+    h+='<div style="color:var(--red);margin-bottom:10px">Notifications are blocked for this app. '+(_mfIsPhone()
+        ?'Allow them in the phone settings (App info → Notifications), then reopen this panel.'
+        :'Click the icon at the left of the address bar (🔒 or ⚙) → <b>Notifications</b> → <b>Allow</b>, reload, then reopen this panel.')+'</div>';
   }else if(!on){
-    h+='<div style="color:var(--muted);margin-bottom:12px">Get alerts on this phone even when the app is closed. Only this phone can read them.</div>'+
-       '<button class="save-btn" style="margin:0 0 6px;width:100%" onclick="mfPushEnable()">TURN ON FOR THIS PHONE</button>';
+    h+='<div style="color:var(--muted);margin-bottom:12px">Get alerts on this '+_mfDev()+' even when the app is closed. Only this '+_mfDev()+' can read them.'+
+       (_mfIsPhone()?'':' On a computer they arrive while the browser is running — minimised or in the background is fine.')+'</div>'+
+       '<button class="save-btn" style="margin:0 0 6px;width:100%" onclick="mfPushEnable()">TURN ON FOR THIS '+_mfDev().toUpperCase()+'</button>';
   }else{
-    h+='<div style="color:var(--green);margin-bottom:8px">● On for this phone'+(s.phones>1?' · '+s.phones+' phones in total':'')+'</div>'+
+    h+='<div style="color:var(--green);margin-bottom:8px">● On for this '+_mfDev()+(s.phones>1?' · '+s.phones+' devices in total':'')+'</div>'+
        '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin:10px 0 6px;font-weight:700">SEND ME</div>';
     (s.allowed||[]).forEach(function(c){
       var m=MF_PUSH_CATS[c]; if(!m)return;
@@ -14135,7 +14182,7 @@ async function mfOpenNotify(note){
          '<div>'+lab('Flag cash over from ₹')+'<input id="mfn_over" type="number" min="0" step="50" value="'+x.over_alert+'" style="'+fs+'"></div>'+
          '<div>'+lab('Quiet from')+hr('mfn_qf',x.quiet_from_hour)+'</div>'+
          '<div>'+lab('Quiet until')+hr('mfn_qt',x.quiet_to_hour)+'</div>'+
-         '<div>'+lab('Morning report from')+hr('mfn_dg',x.digest_from_hour)+'</div>'+
+         '<div>'+lab('Day report from')+hr('mfn_dg',x.digest_from_hour)+'</div>'+
        '</div>'+
        '<button class="save-btn" style="margin:12px 0 0;width:100%" onclick="mfPushSaveSettings()">SAVE</button></div>';
   }
