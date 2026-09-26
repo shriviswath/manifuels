@@ -1,4 +1,4 @@
-// ManiFuels Service Worker — v8
+// ManiFuels Service Worker — v11
 // Scope: served from the repo root on GitHub Pages, so './' resolves to
 // /manifuels/. Registered from index.html as a real file (a blob: URL is
 // rejected by Chrome, which is why offline never worked before v4).
@@ -8,7 +8,7 @@
 // network left `window.supabase` undefined, `_supa` null, and every write
 // parked in the outbox labelled "offline" while the app reported it was online
 // and the sync dot stayed green.
-const CACHE = 'manifuels-v10';   // v10: phone notifications (MF_PUSH_V1); v9: secure sign-in
+const CACHE = 'manifuels-v11';   // v11: real app icons (installable), shift clock V2; v10: notifications; v9: secure sign-in
 const PRECACHE = [
   './',
   './index.html',
@@ -17,6 +17,9 @@ const PRECACHE = [
   './icon-180.png',
   './icon-192.png',
   './icon-512.png',
+  './icon-maskable-192.png',
+  './icon-maskable-512.png',
+  './badge-96.png',
   // The only write path the app has. If this is missing on a cold offline
   // start, nothing can reach Supabase for the whole session.
   './vendor/supabase.min.js',
@@ -144,7 +147,7 @@ self.addEventListener('push', e => {
     renotify: urgent,
     requireInteraction: d.cat === 'cash',     // a cash shortage stays until it is seen
     icon: './icon-192.png',
-    badge: './icon-192.png',
+    badge: './badge-96.png',
     data: { page: d.page || 'dashboard' }
   }));
 });
