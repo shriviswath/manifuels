@@ -1,15 +1,19 @@
 -- ════════════════════════════════════════════════════════════════════════════
--- ManiFuels — phone notifications                                  MF_PUSH_V1
+-- ManiFuels — phone notifications                   MF_PUSH_V1 + MF_SHIFT_CLOCK_V2
 --
 -- Push notifications to the installed app on each phone — no third party
 -- reads them: the message is encrypted for that phone before it leaves
 -- Supabase (standard Web Push). Every 5 minutes the database checks:
 --   • a shift saved             → summary; 🔴 cash short / 🟡 over beyond a limit
---   • a shift not saved 1 h after it ended (morning 7 PM, night 10 AM)
+--   • a shift not saved 1 h after it ended (morning 10 AM, night 7 PM)
 --   • a dip outside the tank tolerance
 --   • an oil item or pack size dropping to low / out (once per drop)
---   • yesterday's report each morning (after the night shift is saved,
---     from 10 AM; by 1 PM regardless)
+--   • the day's report each evening (once the night shift is saved, from
+--     6 PM; by 9 PM regardless). Yesterday's goes out the next morning if it
+--     was never sent.
+-- Shifts are dated by the day they CLOSE:
+--   MORNING of D = (D-1) 6 PM → D 9 AM,   NIGHT of D = D 9 AM → D 6 PM.
+-- Safe to run again (the upgrade from the first version is just a re-run).
 -- Owners and managers can get all of these; staff get missed-shift and stock
 -- reminders. Each person picks what they want on their phone.
 --
@@ -39,8 +43,8 @@ create table if not exists mf_alert.settings(
   station             text    not null default 'manifuels',
   short_alert         numeric not null default 200,   -- ₹ cash short that is flagged 🔴
   over_alert          numeric not null default 500,   -- ₹ cash over that is flagged 🟡
-  digest_from_hour    int     not null default 10,    -- IST, once the night shift is in
-  digest_latest_hour  int     not null default 13,    -- IST, send anyway by this hour
+  digest_from_hour    int     not null default 18,    -- IST, once the day's night shift (9 AM–6 PM) is in
+  digest_latest_hour  int     not null default 21,    -- IST, send anyway by this hour
   quiet_from_hour     int     not null default 23,    -- IST: hold notifications from…
   quiet_to_hour       int     not null default 6,     -- …until
   overdue_days        int     not null default 14,
@@ -56,6 +60,11 @@ alter table mf_alert.settings add column if not exists last_ping_error  text;
 alter table mf_alert.settings add column if not exists last_ping_at     timestamptz;
 alter table mf_alert.settings add column if not exists last_sent_at     timestamptz;
 insert into mf_alert.settings(id) values (1) on conflict (id) do nothing;
+-- MF_SHIFT_CLOCK_V2: the day now closes at 6 PM, so the report moved from the
+-- next morning (10 AM / 1 PM) to the same evening. Only the old defaults move.
+alter table mf_alert.settings alter column digest_from_hour set default 18, alter column digest_latest_hour set default 21;
+update mf_alert.settings set digest_from_hour = 18 where digest_from_hour = 10 and digest_latest_hour = 13;
+update mf_alert.settings set digest_latest_hour = 21 where digest_latest_hour = 13;
 update mf_alert.settings set
   fn_url = coalesce(fn_url, 'https://hiapuixdmhibimbinlri.supabase.co/functions/v1/mf-push'),
   fn_key = coalesce(fn_key, 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhpYXB1aXhkbWhpYmltYmlubHJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwNzk1NDIsImV4cCI6MjA4OTY1NTU0Mn0.4F7tWfrq2J4A426AesIHAEvVqthNja7mUhpTikWSuFc')
@@ -258,10 +267,11 @@ begin
     return next;
   end loop;
 
-  -- 2. Shifts not saved 1 h after they ended (last 30 h)
+  -- 2. Shifts not saved 1 h after they ended (last 30 h). A shift is dated by
+  --    the day it closes: MORNING of D ends D 09:00, NIGHT of D ends D 18:00.
   for sl in
     select g.d, g.sh,
-           case g.sh when 'morning' then g.d + time '18:00' else g.d + 1 + time '09:00' end as ends
+           case g.sh when 'morning' then g.d + time '09:00' else g.d + time '18:00' end as ends
       from generate_series(now_::date - 2, now_::date, interval '1 day') gd(dd),
            lateral (select gd.dd::date d) dd, lateral (values (dd.d, 'morning'), (dd.d, 'night')) g(d, sh)
   loop
@@ -315,7 +325,7 @@ begin
   end loop;
 end $$;
 
--- ── yesterday's report ─────────────────────────────────────────────────────
+-- ── the day's report (morning + night shift of one date) ───────────────────
 drop function if exists mf_alert.digest(date);
 create or replace function mf_alert.digest(day date) returns json language plpgsql stable as $$
 declare
@@ -497,7 +507,9 @@ create or replace function mf_alert.run(dry boolean default false) returns json 
 declare
   s mf_alert.settings := mf_alert.cfg();
   h int := extract(hour from mf_alert.ist());
-  yday date := mf_alert.ist()::date - 1;
+  today date := mf_alert.ist()::date;
+  yday date := today - 1;
+  rday date;
   quiet boolean; dg json; n int := 0; out json;
 begin
   if not s.enabled and not dry then return json_build_object('status', 'disabled'); end if;
@@ -510,10 +522,17 @@ begin
   insert into _mf_c select * from mf_alert.collect();
   delete from _mf_c where key is not null and exists (select 1 from mf_alert.sent where sent.key = _mf_c.key);
 
-  if not exists (select 1 from mf_alert.sent where key = 'digest:' || yday) and h >= s.digest_from_hour
-     and (h >= s.digest_latest_hour or exists (select 1 from mf_alert.shifts() x where x.d = yday and x.shift = 'night')) then
-    dg := mf_alert.digest(yday);
-    insert into _mf_c values ('digest', 'digest:' || yday, dg->>'title', dg->>'body', 'dashboard', null, null);
+  -- The day closes at 6 PM with its NIGHT shift (9 AM–6 PM). Today's report goes
+  -- once that shift is saved (from digest_from_hour) or by digest_latest_hour
+  -- anyway; yesterday's goes the next morning only if it was never sent.
+  rday := case when h >= s.digest_from_hour
+                and (h >= greatest(s.digest_latest_hour, s.digest_from_hour)
+                     or exists (select 1 from mf_alert.shifts() x where x.d = today and x.shift = 'night'))
+               then today else yday end;
+  if not exists (select 1 from mf_alert.sent where key = 'digest:' || rday)
+     and (rday = today or h < s.digest_from_hour) then
+    dg := mf_alert.digest(rday);
+    insert into _mf_c values ('digest', 'digest:' || rday, dg->>'title', dg->>'body', 'dashboard', null, null);
   end if;
 
   if dry then
