@@ -197,7 +197,9 @@ revoke all on all tables    in schema public from anon;
 revoke all on all sequences in schema public from anon;
 revoke execute on all functions in schema public from anon;
 grant execute on function public.mf_invite_check(text, text) to anon;
-revoke all on public.users from anon, authenticated;
+do $$ begin
+  if to_regclass('public.users') is not null then execute 'revoke all on public.users from anon, authenticated'; end if;
+end $$;
 alter default privileges in schema public revoke all on tables    from anon;
 alter default privileges in schema public revoke all on sequences from anon;
 alter default privileges in schema public revoke execute on functions from anon;
