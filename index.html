@@ -515,6 +515,7 @@ async function _mfSignOutQuiet(){
 }
 
 async function signIn(u,p){
+  if(window._mfSignOutP){ try{ await window._mfSignOutP; }catch(e){} window._mfSignOutP=null; }
   var c=_mfClient();
   if(!c){ _mfLoginMsg('No connection to the server.'); return; }
   var r; try{ r=await c.auth.signInWithPassword({email:_mfEmail(u),password:p}); }catch(e){ r={error:e}; }
@@ -551,7 +552,12 @@ async function doLogin(){
 }
 function signOut(){
   if(typeof logActivity==='function'&&_currentUser)logActivity('logout','user',_currentUser.username,'Signed out');
-  _mfSignOutQuiet();
+  // This phone stops getting this person's notifications (MF_PUSH_V1), then the
+  // session ends. A sign-in started meanwhile waits for this to finish first.
+  window._mfSignOutP=(async function(){
+    try{ if(typeof mfPushSignOut==='function')await Promise.race([mfPushSignOut(),new Promise(function(r){setTimeout(r,2500);})]); }catch(e){}
+    await _mfSignOutQuiet();
+  })();
   try{ localStorage.removeItem('mf_profile'); sessionStorage.removeItem('mf_user'); }catch(e){}
   _currentUser=null;_isOwner=false;
   var d=document.getElementById('user-dropdown'); if(d)d.remove();
@@ -12378,6 +12384,7 @@ function toggleUserMenu(){
   h+='<div style="border-top:1px solid var(--border);padding-top:10px">';
   h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="syncNow()">&#8635; SYNC NOW</button>';
   h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="this.closest(\'#user-dropdown\').remove();showSyncHealth()">&#9877; SYNC HEALTH</button>';
+  h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="mfOpenNotify()">&#128276; NOTIFICATIONS</button>';
   h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="mfChangePassword()">&#128273; CHANGE PASSWORD</button>';
   if(_isOwner)h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="mfOpenMembers()">&#128101; MEMBERS</button>';
   h+='<button class="nav-tab" style="width:100%;padding:8px;color:var(--red)" onclick="signOut()">&#9211; SIGN OUT</button>';
@@ -13941,5 +13948,251 @@ function stopAllSync(){
 </script>
 
 </div>
+<script>
+// ── MF_PUSH_V1 — phone notifications ─────────────────────────────────────
+// Each phone turns notifications on for itself (user menu → Notifications).
+// The server (mf-push) encrypts every message for that phone only. What a
+// person may receive is decided on the server by their role: owners and
+// managers can get everything, staff get missed-shift and stock reminders.
+var MF_PUSH_CATS={
+  cash:  {icon:'🔴', label:'Cash short / over',   hint:'Beyond the limit set below'},
+  shift: {icon:'✅', label:'Every saved shift',    hint:'Litres, sales, credit, cash result'},
+  missed:{icon:'⏰', label:'Shift not saved',      hint:'1 hour after the shift ended'},
+  dip:   {icon:'📏', label:'Dip variation',        hint:'Outside the tank tolerance'},
+  stock: {icon:'📦', label:'Low stock',            hint:'Oil items and packs, once per drop'},
+  digest:{icon:'📊', label:'Morning report',       hint:"Yesterday's sales and position, from 10 AM"}
+};
+function _mfPushSupported(){
+  return typeof window!=='undefined'&&('serviceWorker' in navigator)&&('PushManager' in window)&&('Notification' in window);
+}
+function _mfIsIOS(){
+  return /iPad|iPhone|iPod/.test(navigator.userAgent||'')||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);   // iPadOS says "Mac"
+}
+var _mfPushKey=null, _mfPushRegC=null;     // loaded when the panel opens, so the tap itself awaits nothing
+function _mfSubKey(sub){
+  try{ var k=sub&&sub.options&&sub.options.applicationServerKey; return k?_mfSubB64(k):null; }catch(e){ return null; }
+}
+function _mfStandalone(){
+  try{ return (window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true; }catch(e){ return false; }
+}
+function _mfKeyBytes(b64){
+  var s=String(b64).replace(/-/g,'+').replace(/_/g,'/'); s+='='.repeat((4-s.length%4)%4);
+  var bin=atob(s), out=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i); return out;
+}
+function _mfSubB64(buf){
+  var b=new Uint8Array(buf), s=''; for(var i=0;i<b.length;i++)s+=String.fromCharCode(b[i]);
+  return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function _mfDeviceLabel(){
+  var ua=navigator.userAgent||'';
+  var os=/Android/.test(ua)?'Android':(_mfIsIOS()?'iPhone':(/Windows/.test(ua)?'Windows':(/Mac/.test(ua)?'Mac':'Phone')));
+  var br=/Edg\//.test(ua)?'Edge':(/Firefox/.test(ua)?'Firefox':(/Chrome/.test(ua)?'Chrome':(/Safari/.test(ua)?'Safari':'Browser')));
+  return os+' · '+br;
+}
+async function _mfPushReg(){
+  if(!_mfPushSupported())return null;
+  try{
+    // getRegistration answers at once; .ready never resolves if registration failed
+    var r=await navigator.serviceWorker.getRegistration(); if(r)return r;
+    return await Promise.race([navigator.serviceWorker.ready, new Promise(function(res){ setTimeout(function(){ res(null); },3000); })]);
+  }catch(e){ return null; }
+}
+async function _mfPushSub(){
+  var reg=await _mfPushReg(); if(!reg||!reg.pushManager)return null;
+  try{ return await reg.pushManager.getSubscription(); }catch(e){ return null; }
+}
+async function _mfRpc(fn,args){
+  try{ var r=await _mfClient().rpc(fn,args||{}); if(r.error)throw r.error; return {ok:true,data:r.data}; }
+  catch(e){
+    var m=String((e&&e.message)||e);
+    return {ok:false, msg:(typeof _mfNetErr==='function'&&_mfNetErr(e))?'No internet.':m, missing:new RegExp(fn).test(m)&&/find|exist/i.test(m)};
+  }
+}
+function _mfSubPayload(sub,cats){
+  var j=sub.toJSON?sub.toJSON():sub;
+  return {p_endpoint:j.endpoint, p_p256dh:j.keys.p256dh, p_auth:j.keys.auth, p_label:_mfDeviceLabel(), p_cats:cats||null};
+}
+
+async function mfPushEnable(){
+  // iPhone shows the permission question only when asked directly inside the
+  // tap — so nothing is awaited before subscribe() (it asks for permission itself).
+  var key=_mfPushKey, reg=_mfPushRegC;
+  if(!key||!reg||!reg.pushManager){ showToast('Still loading — tap again in a moment'); return mfOpenNotify(); }
+  var sub=null, err=null;
+  try{ sub=await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:_mfKeyBytes(key)}); }
+  catch(e){ err=e; }
+  if(!sub){
+    var perm=(window.Notification&&Notification.permission)||'default';
+    if(perm==='denied')return mfOpenNotify();
+    if(perm==='default')return mfOpenNotify('You closed the question without answering. Tap <b>Turn on</b> again and choose <b>Allow</b>.');
+    showToast('✗ Could not turn on: '+((err&&err.message)||err)); return;
+  }
+  var r=await _mfRpc('mf_push_subscribe',_mfSubPayload(sub,null));
+  if(!r.ok){ showToast('✗ '+r.msg); return; }
+  if(typeof logActivity==='function')logActivity('push_on','user',_currentUser&&_currentUser.username,_mfDeviceLabel());
+  mfOpenNotify('✓ Notifications are on for this phone. Tap "Send a test" to check.');
+}
+async function mfPushDisable(){
+  var sub=await _mfPushSub();
+  if(sub){ await _mfRpc('mf_push_unsubscribe',{p_endpoint:sub.endpoint}); try{ await sub.unsubscribe(); }catch(e){} }
+  mfOpenNotify('Notifications are off for this phone.');
+}
+async function mfPushSetCat(cat,on){
+  var sub=await _mfPushSub(); if(!sub)return;
+  var boxes=document.querySelectorAll('#mf-notify input[data-cat]'), cats=[];
+  boxes.forEach(function(b){ if(b.checked)cats.push(b.getAttribute('data-cat')); });
+  var r=await _mfRpc('mf_push_subscribe',_mfSubPayload(sub,cats));
+  if(!r.ok)showToast('✗ '+r.msg);
+}
+async function mfPushTest(){
+  var r=await _mfRpc('mf_push_test');
+  if(!r.ok){ showToast('✗ '+r.msg); return; }
+  showToast(r.data>0?'Test sent — it should arrive in a few seconds':(r.data<0?'One test a minute — try again shortly':'Turn notifications on first'));
+}
+async function mfPushSaveSettings(){
+  var g=function(id){ var e=document.getElementById(id); return e?String(e.value).trim():''; };
+  var p={enabled:!!(document.getElementById('mfn_on')||{}).checked};
+  // an empty or invalid box leaves that setting as it is
+  [['short_alert','mfn_short'],['over_alert','mfn_over'],['quiet_from_hour','mfn_qf'],['quiet_to_hour','mfn_qt'],['digest_from_hour','mfn_dg']]
+    .forEach(function(x){ var v=g(x[1]); if(v!==''&&isFinite(+v)&&+v>=0)p[x[0]]=+v; });
+  var r=await _mfRpc('mf_notify_settings',{p:p});
+  if(!r.ok){ showToast('✗ '+r.msg); return; }
+  if(typeof logActivity==='function')logActivity('notify_settings','settings',null,JSON.stringify(p));
+  showToast('✓ Saved for everyone');
+}
+
+async function mfOpenNotify(note){
+  var d=document.getElementById('user-dropdown'); if(d)d.remove();
+  var ov=document.getElementById('mf-notify');
+  if(!ov){
+    ov=document.createElement('div'); ov.id='mf-notify';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:950;display:flex;align-items:flex-start;justify-content:center;padding:40px 12px;overflow:auto';
+    ov.onclick=function(e){ if(e.target===ov)ov.remove(); };
+    document.body.appendChild(ov);
+  }
+  var box='background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:18px;width:100%;max-width:520px;font-family:\'JetBrains Mono\',monospace;font-size:12px;line-height:1.6';
+  var head='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
+    '<div style="font-family:\'Syne\',sans-serif;font-weight:800;letter-spacing:2px">🔔 NOTIFICATIONS</div>'+
+    '<button class="btn btn-g" style="padding:4px 10px" onclick="document.getElementById(\'mf-notify\').remove()">✕</button></div>'+
+    (note?'<div style="background:var(--s3);border-left:3px solid var(--green);padding:9px 11px;margin-bottom:12px">'+note+'</div>':'');
+  var msg=function(t){ ov.innerHTML='<div style="'+box+'">'+head+'<div style="color:var(--muted)">'+t+'</div></div>'; };
+  if(_mfIsIOS()&&!_mfStandalone()){
+    return msg('On iPhone, notifications work only in the installed app: tap <b>Share</b> → <b>Add to Home Screen</b>, open ManiFuels from the home screen, then come back here.');
+  }
+  if(!_mfPushSupported())return msg('This browser cannot receive notifications. Use Chrome on Android, or the installed app on iPhone (iOS 16.4 or newer).');
+  msg('Loading…');
+  var sub=await _mfPushSub();
+  var st=await _mfRpc('mf_push_status',{p_endpoint:sub?sub.endpoint:''});
+  if(!st.ok)return msg(st.missing?'Notifications are not set up on the server yet — the owner follows <b>docs/NOTIFICATIONS_SETUP.md</b>.':'✗ '+_esc(st.msg));
+  var s=st.data||{};
+  if(!s.ready)return msg('The server is almost ready — the <b>mf-push</b> function has not run yet. The owner follows <b>docs/NOTIFICATIONS_SETUP.md</b> step 3.');
+  var kr=await _mfRpc('mf_push_key'); _mfPushKey=kr.ok?kr.data:null; _mfPushRegC=await _mfPushReg();
+  // a subscription made with an older server key can never be delivered to: replace it
+  if(sub&&_mfPushKey&&_mfSubKey(sub)&&_mfSubKey(sub)!==_mfPushKey){
+    await _mfRpc('mf_push_unsubscribe',{p_endpoint:sub.endpoint}); try{ await sub.unsubscribe(); }catch(e){}
+    sub=null; s.subscribed=false;
+  }
+  var perm=(window.Notification&&Notification.permission)||'default';
+  var on=!!(sub&&s.subscribed);
+  var h='';
+  if(perm==='denied'){
+    h+='<div style="color:var(--red);margin-bottom:10px">Notifications are blocked for this app. Allow them in the phone settings (App info → Notifications), then reopen this panel.</div>';
+  }else if(!on){
+    h+='<div style="color:var(--muted);margin-bottom:12px">Get alerts on this phone even when the app is closed. Only this phone can read them.</div>'+
+       '<button class="save-btn" style="margin:0 0 6px;width:100%" onclick="mfPushEnable()">TURN ON FOR THIS PHONE</button>';
+  }else{
+    h+='<div style="color:var(--green);margin-bottom:8px">● On for this phone'+(s.phones>1?' · '+s.phones+' phones in total':'')+'</div>'+
+       '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin:10px 0 6px;font-weight:700">SEND ME</div>';
+    (s.allowed||[]).forEach(function(c){
+      var m=MF_PUSH_CATS[c]; if(!m)return;
+      var chk=(s.cats||[]).indexOf(c)>=0?' checked':'';
+      h+='<label style="display:flex;gap:10px;align-items:flex-start;padding:7px 2px;border-bottom:1px solid var(--border);cursor:pointer">'+
+         '<input type="checkbox" data-cat="'+c+'"'+chk+' onchange="mfPushSetCat(\''+c+'\',this.checked)" style="margin-top:3px">'+
+         '<span><b>'+m.icon+' '+m.label+'</b><br><span style="color:var(--muted);font-size:10px">'+m.hint+'</span></span></label>';
+    });
+    if((s.allowed||[]).length<6)h+='<div style="color:var(--muted);font-size:10px;margin-top:6px">Sales and cash alerts go to owners and managers.</div>';
+    h+='<div style="display:flex;gap:8px;margin-top:12px">'+
+       '<button class="btn btn-g" style="flex:1;padding:8px" onclick="mfPushTest()">SEND A TEST</button>'+
+       '<button class="btn btn-d" style="flex:1;padding:8px" onclick="mfPushDisable()">TURN OFF HERE</button></div>';
+  }
+  if(s.health){
+    var hh=s.health, warn=[];
+    if(hh.last_ping_status&&(hh.last_ping_status<200||hh.last_ping_status>299))warn.push('The sender answered '+hh.last_ping_status+(hh.last_ping_error?': '+_esc(hh.last_ping_error):'')+'.');
+    if(hh.oldest_unsent_min>15)warn.push('Notifications have been waiting '+hh.oldest_unsent_min+' min — check the <b>mf-push</b> function.');
+    if(hh.expired_24h>0)warn.push(hh.expired_24h+' notification'+(hh.expired_24h>1?'s':'')+' expired unsent in the last 24 h.');
+    h+='<div style="margin-top:14px;padding:8px 10px;border-radius:6px;background:var(--s3);border-left:3px solid '+(warn.length?'var(--red)':'var(--green)')+'">'+
+       (warn.length?'⚠ '+warn.join('<br>⚠ '):'Sending: working'+(hh.last_sent_at?' · last delivered '+new Date(hh.last_sent_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):' · nothing delivered yet'))+'</div>';
+  }
+  if(s.settings){
+    var x=s.settings, fs='background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 9px;font-family:inherit;font-size:12px;width:100%;box-sizing:border-box';
+    var hr=function(id,v){ var o=''; for(var i=0;i<24;i++)o+='<option value="'+i+'"'+(i===+v?' selected':'')+'>'+(i===0?'12 AM':i<12?i+' AM':i===12?'12 PM':(i-12)+' PM')+'</option>'; return '<select id="'+id+'" style="'+fs+'">'+o+'</select>'; };
+    var lab=function(t){ return '<div style="font-size:10px;color:var(--muted);margin:8px 0 4px">'+t+'</div>'; };
+    h+='<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">'+
+       '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:4px;font-weight:700">FOR EVERYONE (OWNER)</div>'+
+       '<label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="checkbox" id="mfn_on"'+(x.enabled?' checked':'')+'> Notifications switched on for the station</label>'+
+       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+         '<div>'+lab('Flag cash short from ₹')+'<input id="mfn_short" type="number" min="0" step="50" value="'+x.short_alert+'" style="'+fs+'"></div>'+
+         '<div>'+lab('Flag cash over from ₹')+'<input id="mfn_over" type="number" min="0" step="50" value="'+x.over_alert+'" style="'+fs+'"></div>'+
+         '<div>'+lab('Quiet from')+hr('mfn_qf',x.quiet_from_hour)+'</div>'+
+         '<div>'+lab('Quiet until')+hr('mfn_qt',x.quiet_to_hour)+'</div>'+
+         '<div>'+lab('Morning report from')+hr('mfn_dg',x.digest_from_hour)+'</div>'+
+       '</div>'+
+       '<button class="save-btn" style="margin:12px 0 0;width:100%" onclick="mfPushSaveSettings()">SAVE</button></div>';
+  }
+  ov.innerHTML='<div style="'+box+'">'+head+h+'</div>';
+}
+
+// Signing out: this phone stops getting that person's notifications.
+async function mfPushSignOut(){
+  var sub=await _mfPushSub(); if(!sub)return;
+  await _mfRpc('mf_push_unsubscribe',{p_endpoint:sub.endpoint});
+  try{ await sub.unsubscribe(); }catch(e){}
+}
+// After opening the app: if the browser still holds a subscription the server
+// lost (moved phone, rotated keys), register it again with the default kinds.
+async function mfPushRefresh(){
+  if(!_currentUser||!_mfPushSupported()||Notification.permission!=='granted')return;
+  var sub=await _mfPushSub(); if(!sub)return;
+  var st=await _mfRpc('mf_push_status',{p_endpoint:sub.endpoint});
+  if(!(st.ok&&st.data&&st.data.ready))return;
+  var kr=await _mfRpc('mf_push_key');
+  if(kr.ok&&kr.data&&_mfSubKey(sub)&&_mfSubKey(sub)!==kr.data){          // server key changed
+    await _mfRpc('mf_push_unsubscribe',{p_endpoint:sub.endpoint}); try{ await sub.unsubscribe(); }catch(e){}
+    var reg=await _mfPushReg(); if(!reg)return;
+    try{ sub=await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:_mfKeyBytes(kr.data)}); }catch(e){ return; }
+    await _mfRpc('mf_push_subscribe',_mfSubPayload(sub,st.data.cats&&st.data.cats.length?st.data.cats:null));
+    return;
+  }
+  if(!st.data.subscribed)await _mfRpc('mf_push_subscribe',_mfSubPayload(sub,null));
+}
+// Tapping a notification opens its page (#page=… when the app was closed,
+// a message from sw.js when it was already open).
+function _mfOpenPage(p){
+  var ok=['dashboard','entry','history','report','dip','stock','ledger','fuelload','staff'];
+  if(ok.indexOf(p)<0||!_currentUser)return false;
+  try{ showPage(p); return true; }catch(e){ return false; }
+}
+(function(){
+  if(typeof navigator!=='undefined'&&navigator.serviceWorker&&navigator.serviceWorker.addEventListener){
+    navigator.serviceWorker.addEventListener('message',function(e){
+      if(e.data&&e.data.type==='mf-open')_mfOpenPage(e.data.page);
+    });
+  }
+  window.addEventListener('hashchange',function(){
+    var m=/[#&]page=([a-z]+)/.exec(location.hash||'');
+    if(m&&_mfOpenPage(m[1]))history.replaceState(null,'',location.pathname+location.search);
+  });
+  var tries=0;
+  var t=setInterval(function(){
+    tries++;
+    if(_currentUser&&document.getElementById('app-wrapper')&&document.getElementById('app-wrapper').style.display!=='none'){
+      clearInterval(t);
+      var m=/[#&]page=([a-z]+)/.exec(location.hash||'');
+      if(m&&_mfOpenPage(m[1]))history.replaceState(null,'',location.pathname+location.search);
+      setTimeout(mfPushRefresh,3000);
+    }else if(tries>120)clearInterval(t);
+  },500);
+})();
+</script>
 </body>
 </html>
