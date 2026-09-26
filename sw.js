@@ -8,7 +8,7 @@
 // network left `window.supabase` undefined, `_supa` null, and every write
 // parked in the outbox labelled "offline" while the app reported it was online
 // and the sync dot stayed green.
-const CACHE = 'manifuels-v8';
+const CACHE = 'manifuels-v10';   // v10: phone notifications (MF_PUSH_V1); v9: secure sign-in
 const PRECACHE = [
   './',
   './index.html',
@@ -58,7 +58,8 @@ self.addEventListener('activate', e => {
 
 // Let the page ask for an immediate update (used by the "update available" prompt)
 self.addEventListener('message', e => {
-  if (e.data === 'SKIP_WAITING') self.skipWaiting();
+  // The page sends {type:'SKIP_WAITING'}; older builds sent the bare string.
+  if (e.data === 'SKIP_WAITING' || (e.data && e.data.type === 'SKIP_WAITING')) self.skipWaiting();
 });
 
 // Is this a request to the Supabase API itself?
@@ -128,4 +129,38 @@ self.addEventListener('fetch', e => {
     caches.match(e.request).then(cached => cached ||
       fetch(e.request).catch(() => new Response('', { status: 503 })))
   );
+});
+
+// ── Phone notifications (MF_PUSH_V1) ────────────────────────────────────────
+// mf-push sends {title, body, tag, page, cat}, encrypted for this phone only.
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; }
+  catch (err) { d = { title: 'ManiFuels', body: e.data ? e.data.text() : '' }; }
+  const urgent = d.cat === 'cash' || d.cat === 'missed';
+  e.waitUntil(self.registration.showNotification(d.title || 'ManiFuels', {
+    body: d.body || '',
+    tag: d.tag || d.cat || 'manifuels',       // a newer alert for the same thing replaces the old one
+    renotify: urgent,
+    requireInteraction: d.cat === 'cash',     // a cash shortage stays until it is seen
+    icon: './icon-192.png',
+    badge: './icon-192.png',
+    data: { page: d.page || 'dashboard' }
+  }));
+});
+
+// Tap → open the app on the right page (or bring it forward if it is open).
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const page = (e.notification.data && e.notification.data.page) || 'dashboard';
+  const url = new URL('./index.html#page=' + encodeURIComponent(page), self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+    for (const c of list) {
+      if (c.url.indexOf(self.registration.scope) === 0 && 'focus' in c) {
+        c.postMessage({ type: 'mf-open', page });
+        return c.focus();
+      }
+    }
+    return self.clients.openWindow(url);
+  }));
 });
