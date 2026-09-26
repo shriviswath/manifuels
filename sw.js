@@ -8,7 +8,7 @@
 // network left `window.supabase` undefined, `_supa` null, and every write
 // parked in the outbox labelled "offline" while the app reported it was online
 // and the sync dot stayed green.
-const CACHE = 'manifuels-v11';   // v11: real app icons (installable), shift clock V2; v10: notifications; v9: secure sign-in
+const CACHE = 'manifuels-v12';   // v12: Mani Fuels logo icons; v11: installable icons, shift clock V2; v10: notifications; v9: secure sign-in
 const PRECACHE = [
   './',
   './index.html',
