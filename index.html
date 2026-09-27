@@ -3929,22 +3929,37 @@ function renderWeeklyPL(){
         ((ahead>=0?'On track — ahead by ':'Behind by ')+fmtFn(Math.abs(ahead))+' · need '+fmtFn(need)+' per day for '+daysLeft+' day'+(daysLeft!==1?'s':'')+
          (avg!=null?' (your average so far: '+fmtFn(avg)+'/day)':'')))+'</div></div>';
   };
-  const lastMonthL=(function(){const f=new Date(now.getFullYear(),now.getMonth()-1,1);const e=new Date(now.getFullYear(),now.getMonth(),0);
-    return litres(P(iso(f),iso(e)));})();
+  // MF_TARGET_SPLIT_V1 — MSD and HSD targets are separate.
+  const LM=(function(){const f=new Date(now.getFullYear(),now.getMonth()-1,1);const e=new Date(now.getFullYear(),now.getMonth(),0);
+    const x=P(iso(f),iso(e)); return {msd:x.soldMSDL||0, hsd:x.soldHSDL||0};})();
+  const sugg=n=>n>0?Math.round(n*1.05/100)*100:'';
+  const daysDone=Math.max(1,dayNo-(mfSlotEnd({date:todayIso,shift:'night'})>now?1:0));
+  const mMSD=Pm.soldMSDL||0, mHSD=Pm.soldHSDL||0;
+  const anyT=T.msd||T.hsd||T.litres||T.profit;
   html+=band('MONTHLY TARGET — '+now.toLocaleDateString('en-IN',{month:'long',year:'numeric'}).toUpperCase()+
-    ' &nbsp;<span onclick="_mfEditTarget()" style="cursor:pointer;color:var(--petrol);letter-spacing:1px">✎ '+((T.litres||T.profit)?'CHANGE':'SET')+' TARGET</span>');
+    ' &nbsp;<span onclick="_mfEditTarget()" style="cursor:pointer;color:var(--petrol);letter-spacing:1px">✎ '+(anyT?'CHANGE':'SET')+' TARGET</span>');
   html+='<div style="'+box+'">';
-  html+='<div id="mfTargetEdit" style="display:none;margin-bottom:10px;font-size:11px">'+
-    'Litres per month <input id="mfTgtL" type="number" min="0" step="100" style="width:110px" value="'+(T.litres||'')+'" placeholder="'+(lastMonthL>0?Math.round(lastMonthL*1.05/100)*100:'')+'"> &nbsp; '+
-    'Profit per month ₹ <input id="mfTgtP" type="number" min="0" step="1000" style="width:120px" value="'+(T.profit||'')+'"> &nbsp; '+
+  const inp=(id,val,ph,w)=>'<input id="'+id+'" type="number" min="0" step="100" style="width:'+(w||110)+'px" value="'+(val||'')+'" placeholder="'+ph+'">';
+  html+='<div id="mfTargetEdit" style="display:none;margin-bottom:10px;font-size:11px;line-height:2.2">'+
+    '<span style="color:var(--petrol);font-weight:700">MSD</span> litres / month '+inp('mfTgtM',T.msd,sugg(LM.msd))+' &nbsp; '+
+    '<span style="color:var(--diesel);font-weight:700">HSD</span> litres / month '+inp('mfTgtH',T.hsd,sugg(LM.hsd))+' &nbsp; '+
+    'Profit / month ₹ '+inp('mfTgtP',T.profit,'',120)+' &nbsp; '+
     '<button class="btn btn-g" style="padding:3px 10px;font-size:10px" onclick="_mfSaveTarget()">SAVE</button>'+
-    (lastMonthL>0?'<div style="color:var(--muted);font-size:10px;margin-top:4px">Last month you sold '+Lfmt(lastMonthL)+'. Leave a box empty to not track it. Same target every month until you change it; syncs to every phone.</div>':'')+
+    '<div style="color:var(--muted);font-size:10px;line-height:1.5">'+
+      ((LM.msd||LM.hsd)?'Last month: MSD '+Lfmt(LM.msd)+' · HSD '+Lfmt(LM.hsd)+' (grey figures = last month + 5%). ':'')+
+      'Leave a box empty to not track it. Same target every month until you change it; syncs to every phone.</div>'+
     '</div>';
-  if(!T.litres&&!T.profit){
+  if(!anyT){
     html+='<div style="font-size:11px;color:var(--muted)">No target set yet. Tap <b style="color:var(--petrol)">✎ SET TARGET</b> above'+
-      (lastMonthL>0?' — last month you sold '+Lfmt(lastMonthL)+'.':'.')+' So far this month: '+Lfmt(mL)+(mKnown?' · profit '+R0(Pm.netProfit):'')+'</div>';
+      ((LM.msd||LM.hsd)?' — last month you sold MSD '+Lfmt(LM.msd)+' and HSD '+Lfmt(LM.hsd)+'.':'.')+
+      ' So far this month: MSD '+Lfmt(mMSD)+' · HSD '+Lfmt(mHSD)+(mKnown?' · profit '+R0(Pm.netProfit):'')+'</div>';
   } else {
-    if(T.litres)html+=tgtRow('Litres sold',mL,T.litres,Lfmt,Pm.shifts?mL/Math.max(1,dayNo-(mfSlotEnd({date:todayIso,shift:'night'})>now?1:0)):null);
+    if(T.msd)html+=tgtRow('<span style="color:var(--petrol)">MSD</span> (petrol) litres',mMSD,T.msd,Lfmt,Pm.shifts?mMSD/daysDone:null);
+    if(T.hsd)html+=tgtRow('<span style="color:var(--diesel)">HSD</span> (diesel) litres',mHSD,T.hsd,Lfmt,Pm.shifts?mHSD/daysDone:null);
+    if(T.litres&&!T.msd&&!T.hsd){
+      html+=tgtRow('Litres sold (MSD + HSD)',mL,T.litres,Lfmt,Pm.shifts?mL/daysDone:null);
+      html+='<div style="font-size:10px;color:var(--diesel);margin:-4px 0 8px">Tap ✎ CHANGE TARGET to set MSD and HSD separately.</div>';
+    }
     if(T.profit)html+=mKnown?tgtRow('Profit',Pm.netProfit,T.profit,k,null)
                             :'<div style="font-size:10px;color:var(--muted)">Profit target: needs fuel cost on record.</div>';
     html+='<div style="font-size:9px;color:var(--muted)">White line = where you should be today.</div>';
@@ -3961,18 +3976,19 @@ function renderWeeklyPL(){
   const both=wA.known&&wB.known, fair=!wA.miss.length&&!wB.miss.length;
   const cmp=(a,b,f,higherGood)=>{if(!both)return '<td style="text-align:right;color:var(--muted)">—</td>';
     const d=a-b, c=!fair?AMBER:((d>=0)===(higherGood!==false)?GREEN:RED);
+    if(Math.abs(d)<0.005)return '<td style="text-align:right;padding:2px 0 2px 8px;color:var(--muted)">no change</td>';   // MF_TARGET_SPLIT_V1
     return '<td style="text-align:right;padding:2px 0 2px 8px;white-space:nowrap;color:'+c+';font-family:\'JetBrains Mono\',monospace">'+(d>=0?'▲ ':'▼ ')+f(Math.abs(d))+'</td>';};
   const td=(v,c)=>'<td style="text-align:right;padding:2px 0 2px 8px;white-space:nowrap;font-family:\'JetBrains Mono\',monospace;color:'+(c||TEXT)+'">'+v+'</td>';
   const wkName=w=>dm(w.from)+' – '+dm(w.to);
-  html+=band('LAST WEEK vs THE WEEK BEFORE (MON–SUN, COMPLETE WEEKS ONLY)');
+  html+=band('WEEK BEFORE → LAST WEEK (MON–SUN, COMPLETE WEEKS ONLY)');
   html+='<div style="'+box+';overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">'+
-    '<tr style="color:var(--muted);font-size:10px"><td></td><td style="text-align:right;padding-left:8px">'+wkName(wA)+'</td><td style="text-align:right;padding-left:8px">'+wkName(wB)+'</td><td style="text-align:right;padding-left:8px">CHANGE</td></tr>'+
-    '<tr><td>Profit</td>'+td(wA.known?R0(wA.P.netProfit):'—',wA.P.netProfit<0?RED:null)+td(wB.known?R0(wB.P.netProfit):'—',wB.P.netProfit<0?RED:null)+cmp(wA.P.netProfit,wB.P.netProfit,R0)+'</tr>'+
-    '<tr><td>Profit per litre</td>'+td(wA.known?perL(wA.perL):'—')+td(wB.known?perL(wB.perL):'—')+cmp(wA.perL,wB.perL,perL)+'</tr>'+
-    '<tr><td>Litres sold</td>'+td(Lfmt(wA.L))+td(Lfmt(wB.L))+cmp(wA.L,wB.L,Lfmt)+'</tr>'+
-    '<tr><td>Revenue</td>'+td(k(wA.P.revenue))+td(k(wB.P.revenue))+cmp(wA.P.revenue,wB.P.revenue,k)+'</tr>'+
-    '<tr><td>Running expenses</td>'+td(R0(wA.P.opex))+td(R0(wB.P.opex))+cmp(wA.P.opex,wB.P.opex,R0,false)+'</tr>'+
-    '<tr><td>Shifts saved</td>'+td(wA.P.shifts+' / 14',wA.miss.length?AMBER:null)+td(wB.P.shifts+' / 14',wB.miss.length?AMBER:null)+'<td></td></tr>'+
+    '<tr style="color:var(--muted);font-size:10px"><td></td><td style="text-align:right;padding-left:8px">'+wkName(wB)+'</td><td style="text-align:right;padding-left:8px">'+wkName(wA)+'</td><td style="text-align:right;padding-left:8px">CHANGE</td></tr>'+
+    '<tr><td>Profit</td>'+td(wB.known?R0(wB.P.netProfit):'—',wB.P.netProfit<0?RED:null)+td(wA.known?R0(wA.P.netProfit):'—',wA.P.netProfit<0?RED:null)+cmp(wA.P.netProfit,wB.P.netProfit,R0)+'</tr>'+
+    '<tr><td>Profit per litre</td>'+td(wB.known?perL(wB.perL):'—')+td(wA.known?perL(wA.perL):'—')+cmp(wA.perL,wB.perL,perL)+'</tr>'+
+    '<tr><td>Litres sold</td>'+td(Lfmt(wB.L))+td(Lfmt(wA.L))+cmp(wA.L,wB.L,Lfmt)+'</tr>'+
+    '<tr><td>Revenue</td>'+td(k(wB.P.revenue))+td(k(wA.P.revenue))+cmp(wA.P.revenue,wB.P.revenue,k)+'</tr>'+
+    '<tr><td>Running expenses</td>'+td(R0(wB.P.opex))+td(R0(wA.P.opex))+cmp(wA.P.opex,wB.P.opex,R0,false)+'</tr>'+
+    '<tr><td>Shifts saved</td>'+td(wB.P.shifts+' / 14',wB.miss.length?AMBER:null)+td(wA.P.shifts+' / 14',wA.miss.length?AMBER:null)+'<td></td></tr>'+
     '</table>'+(fair?'':small('⚠ Shifts missing ('+wA.miss.concat(wB.miss).slice(0,4).map(slotTxt).join(', ')+(wA.miss.length+wB.miss.length>4?' …':'')+') — totals are not a fair comparison; profit per litre still is.',AMBER))+'</div>';
 
   // ── 4. MONEY LEAKS & PROBLEMS (last 7 days) ─────────────────────────
@@ -4054,18 +4070,20 @@ function renderWeeklyPL(){
 function _mfTarget(){
   var t=null; try{ t=JSON.parse(localStorage.getItem('monthTarget')||'null'); }catch(e){}
   t=(t&&typeof t==='object')?t:{};
-  return {litres:parseFloat(t.litres)||0, profit:parseFloat(t.profit)||0, updatedAt:t.updatedAt||''};
+  return {msd:parseFloat(t.msd)||0, hsd:parseFloat(t.hsd)||0,   // MF_TARGET_SPLIT_V1
+          litres:parseFloat(t.litres)||0, profit:parseFloat(t.profit)||0, updatedAt:t.updatedAt||''};
 }
 function _mfEditTarget(){
   var e=document.getElementById('mfTargetEdit'); if(!e)return;
   e.style.display=e.style.display==='none'?'block':'none';
 }
 function _mfSaveTarget(){
-  var L=parseFloat((document.getElementById('mfTgtL')||{}).value)||0;
-  var Pr=parseFloat((document.getElementById('mfTgtP')||{}).value)||0;
-  localStorage.setItem('monthTarget',JSON.stringify({litres:L,profit:Pr,updatedAt:new Date().toISOString()}));
+  var num=function(id){return parseFloat((document.getElementById(id)||{}).value)||0;};
+  var M=num('mfTgtM'), H=num('mfTgtH'), Pr=num('mfTgtP');   // MF_TARGET_SPLIT_V1
+  localStorage.setItem('monthTarget',JSON.stringify({msd:M,hsd:H,profit:Pr,updatedAt:new Date().toISOString()}));
   if(typeof queueSettingsSave==='function')queueSettingsSave();
-  if(typeof logActivity==='function')logActivity('set_target','settings',null,'Monthly target: '+(L?L+' L':'—')+' / '+(Pr?'₹'+Pr:'—'));
+  if(typeof logActivity==='function')logActivity('set_target','settings',null,
+    'Monthly target: MSD '+(M?M+' L':'—')+' · HSD '+(H?H+' L':'—')+' · profit '+(Pr?'₹'+Pr:'—'));
   if(typeof showToast==='function')showToast('✓ Monthly target saved');
   renderWeeklyPL();
 }
