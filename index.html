@@ -1178,7 +1178,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
     <!-- WEEKLY PROFIT/LOSS SUMMARY -->
     <div class="dash-card" style="margin-bottom:14px">
       <div class="dash-card-head">
-        <div class="dash-card-title"><span class="dot dpu"></span>PROFIT vs LOSS — THIS WEEK vs LAST WEEK</div>
+        <div class="dash-card-title"><span class="dot dpu"></span>BUSINESS PULSE — THIS MONTH · LAST 7 DAYS · MONEY</div>
         <div class="dash-card-link" onclick="showPage('report')">FULL REPORTS →</div>
       </div>
       <div id="dashWeeklyPL" style="margin-top:8px"></div>
@@ -3852,100 +3852,151 @@ function _removedRenderTankLoss(){
 }
 
 function renderWeeklyPL(){
-  // MF_WEEKLY_CARD_V2 — compare like with like. The old card set a partial
-  // week (unsaved or lost shifts) against a full one and printed "-325% worse",
-  // so it was red almost every time. The headline is now profit per litre,
-  // which missing shifts cannot distort, and an incomplete week is amber.
+  // MF_DASH_PULSE_V3 — month-to-date, a 7-day strip and money health.
+  // Replaces the week-vs-week card, which compared a partial week with a full
+  // one and was red almost every time. Same engine as Reports (_plCore).
   const el=document.getElementById('dashWeeklyPL');
   if(!el)return;
   const now=new Date();
-  const today=new Date(now);
-  const startThis=new Date(today);startThis.setDate(today.getDate()-6);
-  const startLast=new Date(today);startLast.setDate(today.getDate()-13);
-  const endLast=new Date(today);endLast.setDate(today.getDate()-7);
   const iso=d=>_isoLocal(d);
-  const inRange=(d,from,to)=>d>=iso(from)&&d<=iso(to);
-
-  const recsThis=records.filter(r=>inRange(r.date,startThis,today));
-  const recsLast=records.filter(r=>inRange(r.date,startLast,endLast));
-
-  // Each period costed at its OWN period end.
-  const _tw=_plCore(recsThis, iso(startThis), iso(today));
-  const _lw=_plCore(recsLast, iso(startLast), iso(endLast));
-  const shape=c=>{
-    const L=(c.soldMSDL||0)+(c.soldHSDL||0);
-    return {revenue:c.revenue, profit:c.netProfit, costKnown:!c.fuelUncosted,
-            margin:c.netMarginPct, msdL:c.soldMSDL, hsdL:c.soldHSDL,
-            litres:L, perL:L>0?c.netProfit/L:0, shifts:c.shifts};
-  };
-  const tw=shape(_tw), lw=shape(_lw);
-
-  // Shifts that have CLOSED in each window, and which of them are not saved.
-  const _slots=(from,to)=>{
-    const out=[]; const d=new Date(from);
-    while(iso(d)<=iso(to)){
-      ['morning','night'].forEach(function(sh){
-        const s={date:iso(d),shift:sh};
-        if(mfSlotEnd(s)<=now)out.push(s);
-      });
+  const GREEN='var(--green)', RED='var(--red)', AMBER='var(--diesel)', MUTED='var(--muted)';
+  const dm=s=>{const p=s.split('-');return new Date(+p[0],+p[1]-1,+p[2]).toLocaleDateString('en-IN',{day:'numeric',month:'short'});};
+  const k=n=>{const a=Math.abs(n),sg=n<0?'−':'';
+    return a>=100000?sg+'₹'+(a/100000).toFixed(2)+'L':(a>=1000?sg+'₹'+(a/1000).toFixed(1)+'k':sg+'₹'+Math.round(a));};
+  const perLtxt=n=>(n<0?'−':'')+'₹'+Math.abs(n).toFixed(2)+'/L';
+  const litres=P=>(P.soldMSDL||0)+(P.soldHSDL||0);
+  const slotTxt=s=>{const p=s.date.split('-');return p[2]+'/'+p[1]+' '+(s.shift==='morning'?'MOR':'NIGHT');};
+  // Closed shift slots in a date range, and which of them are not saved.
+  const slots=(fromIso,toIso)=>{
+    const out=[]; const p=fromIso.split('-'); const d=new Date(+p[0],+p[1]-1,+p[2]);
+    while(iso(d)<=toIso){
+      ['morning','night'].forEach(function(sh){const s={date:iso(d),shift:sh}; if(mfSlotEnd(s)<=now)out.push(s);});
       d.setDate(d.getDate()+1);
     }
     return out;
   };
-  const closedThis=_slots(startThis,today);
-  const missingThis=closedThis.filter(s=>!mfSlotSaved(s));
-  const closedLast=_slots(startLast,endLast);
-  const missingLast=closedLast.filter(s=>!mfSlotSaved(s));
-  const incomplete=missingThis.length>0||missingLast.length>0;
-  const _slotTxt=s=>{const p=s.date.split('-');return p[2]+'/'+p[1]+' '+(s.shift==='morning'?'MOR':'NIGHT');};
+  const recsIn=(a,b)=>records.filter(r=>r.date>=a&&r.date<=b);
+  const tile=(label,val,valCol,sub,subCol,extra)=>
+    '<div style="padding:12px 14px;background:var(--s3);border:1px solid '+(extra&&extra.border||'var(--border2)')+';border-radius:8px'+(extra&&extra.click?';cursor:pointer':'')+'"'+
+    (extra&&extra.click?' onclick="'+extra.click+'"':'')+'>'+
+    '<div style="font-family:\'Syne\',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px">'+label+'</div>'+
+    '<div style="font-family:\'JetBrains Mono\',monospace;font-size:20px;font-weight:800;color:'+valCol+'">'+val+'</div>'+
+    '<div style="font-size:10px;color:'+(subCol||MUTED)+';margin-top:4px;line-height:1.5">'+sub+'</div></div>';
+  const band=t=>'<div style="font-family:\'Syne\',sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted);margin:14px 0 8px">'+t+'</div>';
+  const grid='display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px';
 
-  const _known=tw.costKnown&&lw.costKnown&&tw.litres>0&&lw.litres>0;
-  const dPerL=tw.perL-lw.perL;
-  const dProfit=tw.profit-lw.profit;
-  const dRev=tw.revenue-lw.revenue;
-  const AMBER='var(--diesel)', GREEN='var(--green)', RED='var(--red)', MUTED='var(--muted)';
-  // Colour of the comparison: amber whenever either week is incomplete.
-  const cmpCol=!_known?MUTED:(incomplete?AMBER:(dPerL>=0?GREEN:RED));
-  const cmpBg =!_known?'var(--s3)':(incomplete?'rgba(255,176,32,.06)':(dPerL>=0?'rgba(61,220,132,.05)':'rgba(255,77,106,.05)'));
-  const arrow=dPerL>=0?'▲':'▼';
-  const perL=n=>(n<0?'−':'')+'₹'+Math.abs(n).toFixed(2)+'/L';
-  const profitCol=!_known?MUTED:(tw.profit>=0?GREEN:RED);
+  // ── B. THIS MONTH ──────────────────────────────────────────────────────
+  const todayIso=iso(now);
+  const mStart=todayIso.slice(0,8)+'01';
+  const lmFirst=new Date(now.getFullYear(),now.getMonth()-1,1);
+  const lmLastDay=new Date(now.getFullYear(),now.getMonth(),0).getDate();
+  const lmStart=iso(lmFirst);
+  const lmEnd=iso(new Date(lmFirst.getFullYear(),lmFirst.getMonth(),Math.min(now.getDate(),lmLastDay)));
+  const Pm=_plCore(recsIn(mStart,todayIso),mStart,todayIso);
+  const Pl=_plCore(recsIn(lmStart,lmEnd),lmStart,lmEnd);
+  const mKnown=!Pm.fuelUncosted&&Pm.shifts>0;
+  const lKnown=!Pl.fuelUncosted&&Pl.shifts>0;
+  const mMiss=slots(mStart,todayIso).filter(s=>!mfSlotSaved(s));
+  const lMiss=slots(lmStart,lmEnd).filter(s=>!mfSlotSaved(s));
+  const mL=litres(Pm), lL=litres(Pl);
+  const mPerL=mL>0?Pm.netProfit/mL:0, lPerL=lL>0?Pl.netProfit/lL:0;
+  const dim=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
+  // Projection per SAVED shift, so a missing shift does not drag it down.
+  const perShift=Pm.shifts>0?Pm.netProfit/Pm.shifts:0;
+  const proj=perShift*dim*2;
+  const early=Pm.shifts<8;
+  const mRange=dm(mStart)+' – '+dm(todayIso), lRange=dm(lmStart)+' – '+dm(lmEnd);
+  const cmpOk=mKnown&&lKnown;
+  const cmpIncomplete=mMiss.length>0||lMiss.length>0;
+  const diff=Pm.netProfit-Pl.netProfit;
+  const cmpCol=!cmpOk?MUTED:(cmpIncomplete?AMBER:(diff>=0?GREEN:RED));
 
-  const missNote=missingThis.length
-    ? missingThis.length+' closed shift'+(missingThis.length>1?'s':'')+' not saved: '+
-      missingThis.slice(0,3).map(_slotTxt).join(', ')+(missingThis.length>3?' …':'')
-    : 'all '+closedThis.length+' closed shifts saved';
+  let html=band('THIS MONTH — '+mRange.toUpperCase());
+  html+='<div style="'+grid+'">'+
+    tile('PROFIT SO FAR', mKnown?fmt(Pm.netProfit):'—', mKnown?(Pm.netProfit>=0?GREEN:RED):MUTED,
+      mKnown?('Revenue '+k(Pm.revenue)+' · margin '+Pm.netMarginPct.toFixed(2)+'%'+
+              (Pm.netProfit<0?'<br><span style="color:var(--red)">loss — open Full Reports to see which line</span>':''))
+            :(Pm.shifts?'No fuel load costed yet — record a tanker':'No shift saved this month yet'),
+      null)+
+    tile('vs SAME DATES LAST MONTH', cmpOk?((diff>=0?'▲ ':'▼ ')+fmt(Math.abs(diff))):'—', cmpCol,
+      lKnown?(lRange+': '+fmt(Pl.netProfit)+(cmpIncomplete?'<br>shifts missing — not a fair comparison yet':'')):'No costed data for '+lRange,
+      cmpOk&&cmpIncomplete?AMBER:null, {border:cmpOk?cmpCol:null})+
+    tile('PROJECTED FULL MONTH', (mKnown&&!early)?fmt(proj):'—', (mKnown&&!early)?(proj>=0?'var(--text)':RED):MUTED,
+      !mKnown?'needs costed shifts':(early?'Too early — needs about 4 days of shifts':
+        (k(perShift)+' per shift × '+(dim*2)+' shifts in the month')),
+      null)+
+    tile('PROFIT PER LITRE', mKnown&&mL>0?perLtxt(mPerL):'—', mKnown&&mL>0?(mPerL>=0?GREEN:RED):MUTED,
+      mKnown&&mL>0?(Math.round(mL).toLocaleString('en-IN')+' L sold'+(lKnown&&lL>0?' · last month '+perLtxt(lPerL):'')):'—',
+      null)+
+  '</div>';
+  if(mMiss.length){
+    html+='<div style="font-size:10px;color:'+AMBER+';margin-top:6px">⚠ '+mMiss.length+' closed shift'+(mMiss.length>1?'s':'')+
+      ' this month not saved: '+mMiss.slice(0,4).map(slotTxt).join(', ')+(mMiss.length>4?' …':'')+'</div>';
+  }
 
-  el.innerHTML=`
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
-      <div style="padding:14px;background:var(--s3);border:1px solid var(--border2);border-radius:8px">
-        <div style="font-family:'Syne',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px">PROFIT THIS WEEK</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:800;color:${profitCol}">${_known?fmt(tw.profit):'—'}</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:4px">${_known
-          ?('Last week: '+fmt(lw.profit)+(tw.profit<0?' &nbsp;·&nbsp; <span style="color:var(--red)">loss — open Full Reports to see which line</span>':''))
-          :'No fuel load costed yet — record a tanker to see profit'}</div>
-      </div>
-      <div style="padding:14px;background:${cmpBg};border:1px solid ${cmpCol};border-radius:8px">
-        <div style="font-family:'Syne',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px">PROFIT PER LITRE vs LAST WEEK</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:800;color:${cmpCol}">${_known?(arrow+' ₹'+Math.abs(dPerL).toFixed(2)+'/L'):'—'}</div>
-        <div style="font-size:10px;color:${_known?cmpCol:MUTED};margin-top:4px">${_known
-          ?(perL(tw.perL)+' this week vs '+perL(lw.perL)+' last week'+
-            (incomplete?' &nbsp;·&nbsp; incomplete — totals not comparable':' &nbsp;·&nbsp; total '+(dProfit>=0?'+':'−')+fmt(Math.abs(dProfit))))
-          :'profit needs a cost per litre'}</div>
-      </div>
-      <div style="padding:14px;background:var(--s3);border:1px solid var(--border2);border-radius:8px">
-        <div style="font-family:'Syne',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px">REVENUE THIS WEEK</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:800;color:var(--text)">${fmt(tw.revenue)}</div>
-        <div style="font-size:10px;color:${incomplete?AMBER:(dRev>=0?GREEN:RED)};margin-top:4px">Last week ${fmt(lw.revenue)}${incomplete?' — this week is missing shifts':''}</div>
-      </div>
-      <div style="padding:14px;background:var(--s3);border:1px solid var(--border2);border-radius:8px">
-        <div style="font-family:'Syne',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px">VOLUMES THIS WEEK</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--petrol);font-weight:700">MSD: ${tw.msdL.toFixed(0)}L</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--diesel);font-weight:700">HSD: ${tw.hsdL.toFixed(0)}L</div>
-        <div style="font-size:10px;color:${missingThis.length?AMBER:MUTED};margin-top:4px">${tw.shifts} of ${closedThis.length} closed shifts saved${missingThis.length?'<br>'+missNote:''}</div>
-      </div>
-    </div>
-  `;
+  // ── A. LAST 7 CLOSED DAYS ──────────────────────────────────────────────
+  // A day counts once its night shift has closed (6 PM).
+  const lastClosed=new Date(now); if(mfSlotEnd({date:iso(now),shift:'night'})>now)lastClosed.setDate(lastClosed.getDate()-1);
+  const days=[];
+  for(let i=6;i>=0;i--){
+    const d=new Date(lastClosed); d.setDate(lastClosed.getDate()-i);
+    const di=iso(d), R=recsIn(di,di), P=_plCore(R,di,di), L=litres(P);
+    const saved=['morning','night'].filter(sh=>mfSlotSaved({date:di,shift:sh})).length;
+    days.push({date:di, wd:d.toLocaleDateString('en-IN',{weekday:'short'}), dn:d.getDate(),
+      saved:saved, known:!P.fuelUncosted&&R.length>0, profit:P.netProfit, perL:L>0?P.netProfit/L:0});
+  }
+  const maxAbs=Math.max(0.5,...days.filter(d=>d.known).map(d=>Math.abs(d.perL)));
+  const H=54;   // px for the tallest bar on either side of zero
+  const anyNeg=days.some(d=>d.known&&d.perL<0);
+  const bars=days.map(function(d){
+    const h=d.known?Math.max(3,Math.round(Math.abs(d.perL)/maxAbs*H)):0;
+    const col=!d.known?MUTED:(d.saved<2?AMBER:(d.perL>=0?GREEN:RED));
+    const up=d.known&&d.perL>=0;
+    const tip=d.date+' — '+(d.known?(perLtxt(d.perL)+', profit '+fmt(d.profit)):'no costed shifts')+(d.saved<2?' ('+d.saved+'/2 shifts saved)':'');
+    return '<div title="'+_esc(tip)+'" onclick="_dashOpenDay(\''+d.date+'\')" style="flex:1;min-width:0;cursor:pointer;text-align:center">'+
+      '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;color:'+col+';height:14px">'+(d.known?perLtxt(d.perL).replace('/L',''):'—')+'</div>'+
+      '<div style="height:'+H+'px;display:flex;align-items:flex-end;justify-content:center">'+(up?'<div style="width:62%;height:'+h+'px;background:'+col+';border-radius:3px 3px 0 0;opacity:.85"></div>':'')+'</div>'+
+      '<div style="height:1px;background:var(--border2)"></div>'+
+      (anyNeg?'<div style="height:'+H+'px;display:flex;align-items:flex-start;justify-content:center">'+((!up&&d.known)?'<div style="width:62%;height:'+h+'px;background:'+col+';border-radius:0 0 3px 3px;opacity:.85"></div>':'')+'</div>':'')+
+      '<div style="font-size:10px;color:var(--text);margin-top:4px">'+d.wd+' '+d.dn+'</div>'+
+      '<div style="font-size:9px;color:'+(d.saved<2?AMBER:MUTED)+'">'+(d.saved<2?d.saved+'/2 shifts':(d.known?k(d.profit):'—'))+'</div>'+
+    '</div>';
+  }).join('');
+  html+=band('LAST 7 DAYS — PROFIT PER LITRE (TAP A DAY TO OPEN IT)');
+  html+='<div style="display:flex;gap:6px;padding:10px 8px;background:var(--s3);border:1px solid var(--border2);border-radius:8px">'+bars+'</div>';
+  html+='<div style="font-size:9px;color:var(--muted);margin-top:4px">Green = profit · Red = loss · Amber = a shift not saved (the day is not complete)</div>';
+
+  // ── D. MONEY ───────────────────────────────────────────────────────────
+  const w0=iso(new Date(lastClosed.getFullYear(),lastClosed.getMonth(),lastClosed.getDate()-6));
+  const wRecs=recsIn(w0,iso(lastClosed));
+  const shorts=wRecs.filter(r=>(r.bal||0)<-50).sort((a,b)=>(a.bal||0)-(b.bal||0));
+  const shortSum=wRecs.reduce((s,r)=>s+Math.min(0,r.bal||0),0);
+  const overSum=wRecs.reduce((s,r)=>s+Math.max(0,r.bal||0),0);
+  const cp=(typeof _cashPosition==='function')?_cashPosition():{supplierDue:0,creditOut:0};
+  const custOwing=new Set(ledger.filter(e=>(e.amount||0)>0&&(e.amount||0)>(e.paidBack||0)).map(e=>e.customer)).size;
+  html+=band('MONEY');
+  html+='<div style="'+grid+'">'+
+    tile('CASH SHORT — LAST 7 DAYS', shortSum<-0.5?fmt(Math.abs(shortSum)):'₹0', shortSum<-500?RED:(shortSum<-0.5?AMBER:GREEN),
+      (shorts.length?shorts.slice(0,3).map(r=>slotTxt({date:r.date,shift:r.shift})+' −'+k(Math.abs(r.bal))).join(' · ')+(shorts.length>3?' …':'')
+                    :'No shift short by more than ₹50')+
+      (overSum>0.5?'<br>Cash over: '+fmt(overSum):'')+
+      '<br><span style="color:var(--muted)">Not included in profit</span>',
+      null,{border:shortSum<-500?RED:null})+
+    tile('CREDIT OUTSTANDING', fmt(cp.creditOut), cp.creditOut>0?AMBER:GREEN,
+      custOwing+' customer'+(custOwing!==1?'s':'')+' owe you · tap to open the ledger', null, {click:"showPage('ledger')"})+
+    tile('YOU OWE SUPPLIERS', fmt(cp.supplierDue), cp.supplierDue>0?AMBER:GREEN,
+      'Fuel loads + oil invoices not yet paid · tap to open', null, {click:"showPage('fuelload')"})+
+  '</div>';
+
+  el.innerHTML=html;
+}
+// Open one day in Reports (profit & loss with workings).
+function _dashOpenDay(d){
+  const f=document.getElementById('rep_from'), t=document.getElementById('rep_to');
+  if(f)f.value=d; if(t)t.value=d;
+  showPage('report');
+  if(typeof genReport==='function'&&document.getElementById('page-report')&&
+     document.getElementById('page-report').classList.contains('active'))genReport();
 }
 
 // ── DATE: always work in LOCAL time. toISOString() is UTC, so in IST every
