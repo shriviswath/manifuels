@@ -28,7 +28,7 @@ when the connection comes back.
 ## What it does
 
 ### Shift operations
-- **Two shifts a day.** Morning is 9 AM – 6 PM; night is 6 PM – 9 AM and is filed under the date it starts. The app opens on the shift that is due and warns an hour after a shift ends if it has not been saved.
+- **Two shifts a day, dated by when they close.** Morning of a date runs 6 PM the evening before → 9 AM; night runs 9 AM → 6 PM the same day (so 8 PM on the 25th is the 26th's MORNING shift). The app opens on the shift that is due and warns an hour after a shift ends if it has not been saved.
 - **Meter readings per machine** (MSD M1/M2, HSD M1/M2). Readings carry forward from the previous shift and are checked for continuity. A price change mid-shift splits the litres.
 - **Testing fuel and hydrometer draws** are metered in litres and returned to the tank, so they leave neither revenue nor stock wrong.
 - **Collections:** cash, GPay, Paytm, customer credit, credit repaid, cash handed over, and expenses by head (tea/food, items, chit fund, other).

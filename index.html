@@ -321,6 +321,9 @@ input::placeholder{color:var(--dim)}
 <script src="vendor/supabase.min.js"></script>
 <script>if(typeof supabase==='undefined')document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.min.js"><\/script>');</script>
 <script>
+// MF_AUDIT_FIX_V1: Chart.js comes from a CDN. If it never loaded (offline before
+// it was cached) every page that draws a chart crashed, the P&L included.
+if(typeof Chart==='undefined'){window.Chart=function(){return {destroy:function(){},update:function(){},resize:function(){}};};window.Chart.__stub=true;}
 var _currentUser=null,_isOwner=false,_supa=null,_syncInProgress=false;
 var fuelOpeningMSD=0,fuelOpeningHSD=0;
 // Sign-in: see MF_AUTH_V1 below. No passwords live in this file.
@@ -372,7 +375,7 @@ function showApp(){
     if(!_supa)_supa=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
   }
   setTimeout(function(){
-    if(typeof loadAllFromSupabase==='function') loadAllFromSupabase().then(function(){ if(typeof initMultiDeviceSync==='function') initMultiDeviceSync(); });
+    if(typeof loadAllFromSupabase==='function') loadAllFromSupabase().then(function(){ if(typeof initMultiDeviceSync==='function') initMultiDeviceSync(); if(typeof renderDashboard==='function'&&document.getElementById('page-dashboard')&&document.getElementById('page-dashboard').classList.contains('active')) renderDashboard(); });
     setTimeout(function(){
       if(typeof renderDashboard==='function')renderDashboard();
       if(typeof renderGlobalAlertBell==='function')renderGlobalAlertBell();
@@ -5664,7 +5667,22 @@ function _doSaveShift(){
     showToast('🔒 '+_shiftIdStr+' is locked — an owner must unlock it to re-save');
     return;
   }
-  const _isResave=records.findIndex(r=>r.id===_shiftIdStr)>=0;
+  // MF_AUDIT_FIX_V1 — re-saving a saved shift used to overwrite its numbers
+  // while its old credit rows and stock deductions stayed, so the shift and the
+  // ledger disagreed. The old entry is now undone first, then this one applied.
+  const _prevRec=records.find(r=>r.id===_shiftIdStr);
+  if(_prevRec){
+    const _up=_shiftUndoPlan(_prevRec);
+    if(_up.blocked.length){
+      alert(_shiftIdStr+' is already saved and cannot be replaced, because money has moved since:\n\n• '+
+        _up.blocked.join('\n• ')+'\n\nCorrect it in the Credit Ledger instead, or delete the shift in History first.');
+      return;
+    }
+    if(!confirm(_shiftIdStr+' is already saved.\n\nReplace it with what is on screen now? The saved entry is undone first:\n\n• '+
+      (_up.lines.length?_up.lines.join('\n• '):'(nothing else to undo)')+'\n\nthen this entry is applied as new.'))return;
+    _applyShiftUndo(_up);
+  }
+  const _isResave=false;   // the old entry's effects were undone above
   // Line-level detail of what was sold off the counter. Stored on the shift so
   // COGS can be costed against real purchase prices instead of a blanket ratio.
   const _stockSold=[];
@@ -5771,13 +5789,13 @@ function _doSaveShift(){
       if(remaining>0.005)_shiftPayRows.push({ledgerId:null, amount:remaining, kind:'advance'});
       // Collected at the counter during the shift — same event, same table.
       _recordPayments(_shiftPayRows, {customer:name, date:shiftDate, mode:'Cash',
-        note:shift.toUpperCase()+' shift collection', ref:'PAY-'+_newId(), source:'shift'});
+        note:shift.toUpperCase()+' shift collection', ref:'SHIFT-'+_shiftIdStr+'-'+_newId(), source:'shift'});
       // Anything paid beyond the outstanding debt used to be silently discarded.
       // Park it as an advance (negative amount) so the customer keeps the credit.
       if(remaining>0.005){
         const advEntry={id:_newId(),date:shiftDate,customer:name,shift,fuel:'ADVANCE',
           amount:-_r2(remaining),paidBack:0,kind:'advance',
-          notes:'Excess payment carried forward as advance'};
+          notes:'Excess payment carried forward as advance',shiftId:_shiftIdStr};
         ledger.push(advEntry);
         if(_currentUser)sbSaveLedgerEntry(advEntry).catch(console.error);
       }
@@ -5949,6 +5967,107 @@ function askDelRec(btn){
     <button class="btn btn-g" style="padding:3px 8px;font-size:10px"
       onclick="renderHistory()">NO</button>`;
 }
+// ── MF_AUDIT_FIX_V1 — undo exactly what a saved shift did ─────────────────
+// Credit collected in the shift is found by the ref it was saved with
+// (SHIFT-<id>-…) or, for shifts saved before that, by date + "<SHIFT> shift
+// collection", which is how every shift collection has always been written.
+function _shiftPays(rec){
+  const legacyNote=String(rec.shift||'').toUpperCase()+' shift collection';
+  return (ledgerPayments||[]).filter(function(p){
+    if(!p||p.source!=='shift')return false;
+    const ref=String(p.ref||'');
+    if(ref.indexOf('SHIFT-'+rec.id+'-')===0)return true;
+    return ref.indexOf('SHIFT-')!==0 && p.date===rec.date && p.note===legacyNote;
+  });
+}
+function _shiftUndoPlan(rec){
+  const id=rec.id;
+  const pays=_shiftPays(rec);
+  const own=ledger.filter(function(e){return e.shiftId===id;});
+  const credits=own.filter(function(e){return (e.amount||0)>0;});
+  const settled=credits.filter(function(e){return (e.paidBack||0)>0.005;});
+  const freeCredits=credits.filter(function(e){return !((e.paidBack||0)>0.005);});
+  // Advances this shift created: tagged with the shift id, or (older saves)
+  // the matching "Excess payment" row for the same customer, date and shift.
+  const advRows=[];
+  pays.filter(function(p){return p.kind==='advance';}).forEach(function(p){
+    const a=ledger.find(function(e){
+      if(advRows.indexOf(e)>=0||!((e.amount||0)<0)||e.customer!==p.customer)return false;
+      if(e.shiftId===id)return true;
+      return !e.shiftId&&e.date===rec.date&&e.shift===rec.shift&&
+             Math.abs((e.amount||0)+(p.amount||0))<0.01&&/Excess payment/.test(e.notes||'');
+    });
+    if(a)advRows.push(a);
+  });
+  own.filter(function(e){return (e.amount||0)<0;}).forEach(function(e){if(advRows.indexOf(e)<0)advRows.push(e);});
+  const usedAdv=advRows.filter(function(e){return (e.paidBack||0)>0.005;});
+  const billPays=pays.filter(function(p){return p.kind!=='advance'&&p.ledgerId!=null;});
+  const payTotal=pays.reduce(function(s,p){return s+(p.amount||0);},0);
+  const lines=[], blocked=[];
+  if(rec.stockSold&&rec.stockSold.length)lines.push(rec.stockSold.length+' stock line(s) returned to inventory');
+  if(rec.ps)lines.push(rec.ps+' pack(s) returned');
+  if(Array.isArray(rec.looseOpened)&&rec.looseOpened.length)
+    lines.push(rec.looseOpened.map(function(o){return o.qty+' × '+o.name;}).join(', ')+' returned to stock');
+  else if(rec.looseOilUnits)lines.push(rec.looseOilUnits+' loose-oil bottle(s) returned to stock');
+  if(freeCredits.length)lines.push(freeCredits.length+' credit entry(ies) removed ('+
+    fmt(freeCredits.reduce(function(s,e){return s+(e.amount||0);},0))+')');
+  if(pays.length)lines.push('credit collected in this shift ('+fmt(payTotal)+') taken back off the customers\' bills');
+  settled.forEach(function(e){blocked.push('credit of '+fmt(e.amount)+' to '+e.customer+' has already been paid '+fmt(e.paidBack));});
+  usedAdv.forEach(function(e){blocked.push('advance of '+fmt(Math.abs(e.amount))+' from '+e.customer+' has already been used');});
+  return {rec:rec, pays:pays, billPays:billPays, freeCredits:freeCredits,
+          advRows:advRows.filter(function(e){return usedAdv.indexOf(e)<0;}), lines:lines, blocked:blocked};
+}
+function _applyShiftUndo(plan){
+  const rec=plan.rec;
+  // 1. counter stock back
+  (rec.stockSold||[]).forEach(function(it){
+    const item=stock.find(x=>String(x.id)===String(it.id));
+    if(item)item.qty=Math.round((item.qty+(parseFloat(it.qty)||0))*1000)/1000;
+  });
+  // 2. 40 ml packs back
+  if(rec.ps>0){
+    const pouch40=stock.find(x=>x.name.toLowerCase().includes('40')&&x.name.toLowerCase().includes('ml')&&
+      (x.name.toLowerCase().includes('pouch')||x.name.toLowerCase().includes('pack')));
+    if(pouch40)pouch40.qty=Math.round((pouch40.qty+rec.ps)*1000)/1000;
+  }
+  // 3. loose oil back — each bottle onto the shelf it came off
+  if(Array.isArray(rec.looseOpened)&&rec.looseOpened.length){
+    rec.looseOpened.forEach(function(o){
+      const src=stock.find(x=>String(x.id)===String(o.id));
+      if(src)src.qty=Math.max(0,Math.round(src.qty)+Math.round(o.qty||0));
+    });
+  } else if(rec.os>0&&rec.looseOilUnits>0){
+    const cfg=_looseOilCfg();
+    const src=cfg.stockId?stock.find(x=>String(x.id)===cfg.stockId):null;
+    if(src)src.qty=Math.max(0,Math.round(src.qty)+Math.round(rec.looseOilUnits));
+  }
+  if(rec.stockSold||rec.ps||rec.os)saveStockLS();
+  // 4. credit collected in the shift comes back off the bills it settled
+  let billsTouched=0;
+  plan.billPays.forEach(function(p){
+    const bill=ledger.find(function(e){return String(_intId(e.id))===String(_intId(p.ledgerId));});
+    if(!bill)return;
+    bill.paidBack=_r2(Math.max(0,(bill.paidBack||0)-(p.amount||0)));
+    billsTouched++;
+    if(_currentUser)sbSaveLedgerEntry(bill).catch(console.error);
+  });
+  // 5. credit given in the shift, and advances it created
+  const drop=new Set(plan.freeCredits.concat(plan.advRows).map(function(e){return String(e.id);}));
+  if(drop.size){
+    ledger=ledger.filter(function(e){return !drop.has(String(e.id));});
+    if(_currentUser)drop.forEach(function(i){sbDeleteLedgerEntry(i).catch(console.error);});
+  }
+  // 6. the payment history rows go too
+  if(plan.pays.length){
+    const pid=new Set(plan.pays.map(function(p){return String(p.id);}));
+    ledgerPayments=ledgerPayments.filter(function(p){return !pid.has(String(p.id));});
+    savePaymentsLS();
+    if(_currentUser&&MF_PAYTBL_OK)plan.pays.forEach(function(p){sbDelete('ledger_payments',_intId(p.id)).catch(console.error);});
+  }
+  if(billsTouched||drop.size)saveLedger();
+  refreshCreditSelects();refreshCredBackSelects();
+  return {ledgerRemoved:drop.size, billsTouched:billsTouched, pays:plan.pays.length};
+}
 function delRec(id){
   const rec=records.find(r=>r.id===id);
   if(!rec){showToast('Record not found');return;}
@@ -5957,61 +6076,19 @@ function delRec(id){
     renderHistory();return;
   }
 
-  // Everything the save did has to be undone, or stock stays deducted and the
-  // customer still owes money for a shift that no longer exists.
-  const ledgerRows=ledger.filter(e=>e.shiftId===id);
-  const settled=ledgerRows.filter(e=>(e.paidBack||0)>0);
-  const lines=[];
-  if(rec.stockSold&&rec.stockSold.length)lines.push(rec.stockSold.length+' stock line(s) returned to inventory');
-  if(rec.ps)lines.push(rec.ps+' pack(s) returned');
-  if(Array.isArray(rec.looseOpened)&&rec.looseOpened.length)
-    lines.push(rec.looseOpened.map(o=>o.qty+' × '+o.name).join(', ')+' returned to stock');
-  else if(rec.looseOilUnits)lines.push(rec.looseOilUnits+' loose-oil bottle(s) returned to stock');
-  if(ledgerRows.length)lines.push(ledgerRows.length+' credit entry(ies) removed');
-  if(settled.length)lines.push('⚠ '+settled.length+' of those already has a payment against it and will NOT be removed');
+  // MF_AUDIT_FIX_V1 — one routine undoes everything the save did, including the
+  // credit collected in the shift. That used to stay on the bills, so entering
+  // the shift again applied the same payment twice.
+  const _up=_shiftUndoPlan(rec);
+  const lines=_up.lines.concat(_up.blocked.map(function(b){return '⚠ '+b+' — left as it is';}));
   if(lines.length&&!confirm('Deleting '+id+' will also:\n\n• '+lines.join('\n• ')+'\n\nContinue?'))return;
-
-  // 1. put counter stock back
-  (rec.stockSold||[]).forEach(function(it){
-    const item=stock.find(x=>String(x.id)===String(it.id));
-    if(item)item.qty=Math.round((item.qty+(parseFloat(it.qty)||0))*1000)/1000;
-  });
-  // 2. put pack oil back
-  if(rec.ps>0){
-    const pouch40=stock.find(x=>x.name.toLowerCase().includes('40')&&x.name.toLowerCase().includes('ml')&&
-      (x.name.toLowerCase().includes('pouch')||x.name.toLowerCase().includes('pack')));
-    if(pouch40)pouch40.qty=Math.round((pouch40.qty+rec.ps)*1000)/1000;
-  }
-  // 3. put loose oil back — each bottle onto the shelf it came off
-  if(Array.isArray(rec.looseOpened)&&rec.looseOpened.length){
-    rec.looseOpened.forEach(function(o){
-      const src=stock.find(x=>String(x.id)===String(o.id));
-      if(src)src.qty=Math.max(0,Math.round(src.qty)+Math.round(o.qty||0));
-    });
-  } else if(rec.os>0&&rec.looseOilUnits>0){
-    // Saved before the per-item detail existed: the configured source is the
-    // best that record can tell us.
-    const cfg=_looseOilCfg();
-    const src=cfg.stockId?stock.find(x=>String(x.id)===cfg.stockId):null;
-    if(src)src.qty=Math.max(0,Math.round(src.qty)+Math.round(rec.looseOilUnits));
-  }
-  if(rec.stockSold||rec.ps||rec.os)saveStockLS();
-
-  // 4. remove the credit entries this shift created, unless money moved against them
-  const removable=ledgerRows.filter(e=>!(e.paidBack>0));
-  if(removable.length){
-    const ids=new Set(removable.map(e=>e.id));
-    ledger=ledger.filter(e=>!ids.has(e.id));
-    saveLedger();
-    if(_currentUser)removable.forEach(e=>sbDeleteLedgerEntry(e.id).catch(console.error));
-    refreshCreditSelects();refreshCredBackSelects();
-  }
+  const _res=_applyShiftUndo(_up);
 
   records=records.filter(r=>r.id!==id);
   localStorage.setItem('fuelRecords',JSON.stringify(records));
   if(_currentUser)sbDelete('shift_records',id).catch(console.error);
   if(typeof logActivity==='function')logActivity('del_shift','shift',id,
-    'Deleted shift + reversed '+((rec.stockSold||[]).length)+' stock line(s), '+removable.length+' ledger row(s)');
+    'Deleted shift + reversed '+((rec.stockSold||[]).length)+' stock line(s), '+_res.ledgerRemoved+' ledger row(s), '+_res.pays+' collection(s)');
   showToast('Shift deleted and stock/ledger reversed.');
   renderHistory();renderMasterStock();renderStockSales();
 }
@@ -14122,7 +14199,7 @@ async function silentSync(){
     if(typeof _uiEditing==='function' && _uiEditing())_pendingRerender=true;
     if(activePage){
       var pid = activePage.id ? activePage.id.replace('page-','') : '';
-      if(pid==='entry'   && typeof renderDashboard==='function')  renderDashboard();
+      if(pid==='dashboard' && typeof renderDashboard==='function') renderDashboard();   // MF_AUDIT_FIX_V1: was 'entry'
       if(pid==='history' && typeof renderHistory==='function')    renderHistory();
       if(pid==='ledger'  && typeof renderLedger==='function')     renderLedger();
       if(pid==='stock'   && typeof renderMasterStock==='function')renderMasterStock();
@@ -14130,7 +14207,7 @@ async function silentSync(){
       if(pid==='fuelload'&& typeof renderFuelLoads==='function')  renderFuelLoads();
       if(pid==='notes'   && typeof renderNotes==='function')      renderNotes();
       if(pid==='drawings'&& typeof renderDrawings==='function')   renderDrawings();
-      if(pid==='report'  && typeof renderReport==='function')     renderReport();
+      if(pid==='report'  && typeof genReport==='function' && (document.getElementById('rep_from')||{}).value) genReport();
     }
     if(typeof renderGlobalAlertBell==='function')renderGlobalAlertBell();
 
