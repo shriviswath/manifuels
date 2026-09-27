@@ -3964,15 +3964,15 @@ function renderWeeklyPL(){
     return '<td style="text-align:right;padding:2px 0 2px 8px;white-space:nowrap;color:'+c+';font-family:\'JetBrains Mono\',monospace">'+(d>=0?'▲ ':'▼ ')+f(Math.abs(d))+'</td>';};
   const td=(v,c)=>'<td style="text-align:right;padding:2px 0 2px 8px;white-space:nowrap;font-family:\'JetBrains Mono\',monospace;color:'+(c||TEXT)+'">'+v+'</td>';
   const wkName=w=>dm(w.from)+' – '+dm(w.to);
-  html+=band('LAST WEEK vs THE WEEK BEFORE (MON–SUN, COMPLETE WEEKS ONLY)');
+  html+=band('WEEK BEFORE → LAST WEEK (MON–SUN, COMPLETE WEEKS ONLY)');
   html+='<div style="'+box+';overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">'+
-    '<tr style="color:var(--muted);font-size:10px"><td></td><td style="text-align:right;padding-left:8px">'+wkName(wA)+'</td><td style="text-align:right;padding-left:8px">'+wkName(wB)+'</td><td style="text-align:right;padding-left:8px">CHANGE</td></tr>'+
-    '<tr><td>Profit</td>'+td(wA.known?R0(wA.P.netProfit):'—',wA.P.netProfit<0?RED:null)+td(wB.known?R0(wB.P.netProfit):'—',wB.P.netProfit<0?RED:null)+cmp(wA.P.netProfit,wB.P.netProfit,R0)+'</tr>'+
-    '<tr><td>Profit per litre</td>'+td(wA.known?perL(wA.perL):'—')+td(wB.known?perL(wB.perL):'—')+cmp(wA.perL,wB.perL,perL)+'</tr>'+
-    '<tr><td>Litres sold</td>'+td(Lfmt(wA.L))+td(Lfmt(wB.L))+cmp(wA.L,wB.L,Lfmt)+'</tr>'+
-    '<tr><td>Revenue</td>'+td(k(wA.P.revenue))+td(k(wB.P.revenue))+cmp(wA.P.revenue,wB.P.revenue,k)+'</tr>'+
-    '<tr><td>Running expenses</td>'+td(R0(wA.P.opex))+td(R0(wB.P.opex))+cmp(wA.P.opex,wB.P.opex,R0,false)+'</tr>'+
-    '<tr><td>Shifts saved</td>'+td(wA.P.shifts+' / 14',wA.miss.length?AMBER:null)+td(wB.P.shifts+' / 14',wB.miss.length?AMBER:null)+'<td></td></tr>'+
+    '<tr style="color:var(--muted);font-size:10px"><td></td><td style="text-align:right;padding-left:8px">'+wkName(wB)+'</td><td style="text-align:right;padding-left:8px">'+wkName(wA)+'</td><td style="text-align:right;padding-left:8px">CHANGE</td></tr>'+
+    '<tr><td>Profit</td>'+td(wB.known?R0(wB.P.netProfit):'—',wB.P.netProfit<0?RED:null)+td(wA.known?R0(wA.P.netProfit):'—',wA.P.netProfit<0?RED:null)+cmp(wA.P.netProfit,wB.P.netProfit,R0)+'</tr>'+
+    '<tr><td>Profit per litre</td>'+td(wB.known?perL(wB.perL):'—')+td(wA.known?perL(wA.perL):'—')+cmp(wA.perL,wB.perL,perL)+'</tr>'+
+    '<tr><td>Litres sold</td>'+td(Lfmt(wB.L))+td(Lfmt(wA.L))+cmp(wA.L,wB.L,Lfmt)+'</tr>'+
+    '<tr><td>Revenue</td>'+td(k(wB.P.revenue))+td(k(wA.P.revenue))+cmp(wA.P.revenue,wB.P.revenue,k)+'</tr>'+
+    '<tr><td>Running expenses</td>'+td(R0(wB.P.opex))+td(R0(wA.P.opex))+cmp(wA.P.opex,wB.P.opex,R0,false)+'</tr>'+
+    '<tr><td>Shifts saved</td>'+td(wB.P.shifts+' / 14',wB.miss.length?AMBER:null)+td(wA.P.shifts+' / 14',wA.miss.length?AMBER:null)+'<td></td></tr>'+
     '</table>'+(fair?'':small('⚠ Shifts missing ('+wA.miss.concat(wB.miss).slice(0,4).map(slotTxt).join(', ')+(wA.miss.length+wB.miss.length>4?' …':'')+') — totals are not a fair comparison; profit per litre still is.',AMBER))+'</div>';
 
   // ── 4. MONEY LEAKS & PROBLEMS (last 7 days) ─────────────────────────
