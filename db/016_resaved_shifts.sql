@@ -22,3 +22,22 @@ order by date desc;
 --    set deleted_at = null
 --  where deleted_at is not null
 --    and saved_at > deleted_at;
+
+-- ── MF_AUDIT_FIX_V1 ─────────────────────────────────────────────────────
+-- Until this fix, deleting a shift did NOT undo the credit collected in it.
+-- Re-entering that shift applied the same collection a second time, so the
+-- customer's balance went down twice. Read-only: lists the likely doubles.
+
+-- 4. Shift collections recorded twice (same customer, date, shift, amount)
+select customer, date, note, amount, count(*) as times,
+       array_agg(id order by id)        as payment_ids,
+       array_agg(ledger_id order by id) as bills_paid
+from public.ledger_payments
+where deleted_at is null and source = 'shift'
+group by customer, date, note, amount
+having count(*) > 1
+order by date desc;
+
+-- 5. For each customer above, the bills and what the app thinks was paid
+-- select id, date, amount, paid_back, notes from public.ledger_entries
+--  where customer = 'NAME HERE' and deleted_at is null order by date;
