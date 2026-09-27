@@ -3968,8 +3968,11 @@ function renderWeeklyPL(){
 
   // ── 3. LAST WEEK vs THE WEEK BEFORE (complete Mon–Sun weeks) ────────
   const dow=s=>{const p=s.split('-');return new Date(+p[0],+p[1]-1,+p[2]).getDay();};
-  let sun=todayIso; while(dow(sun)!==0)sun=addD(sun,-1);
-  if(mfSlotEnd({date:sun,shift:'night'})>now)sun=addD(sun,-7);   // this week not finished yet
+  // MF_WEEKS_FIXED_V1 — always LAST week (Mon–Sun before the current week) and
+  // the week before it. The current week is never used, not even on Sunday
+  // evening, so both columns are complete weeks with every shift entered.
+  const monThis=addD(todayIso,-((dow(todayIso)+6)%7));
+  const sun=addD(monThis,-1);
   const wA={from:addD(sun,-6),to:sun}, wB={from:addD(sun,-13),to:addD(sun,-7)};
   [wA,wB].forEach(w=>{w.P=P(w.from,w.to);w.L=litres(w.P);w.miss=missing(w.from,w.to);w.known=!w.P.fuelUncosted&&w.P.shifts>0;
     w.perL=w.L>0?w.P.netProfit/w.L:0;});
@@ -3980,7 +3983,7 @@ function renderWeeklyPL(){
     return '<td style="text-align:right;padding:2px 0 2px 8px;white-space:nowrap;color:'+c+';font-family:\'JetBrains Mono\',monospace">'+(d>=0?'▲ ':'▼ ')+f(Math.abs(d))+'</td>';};
   const td=(v,c)=>'<td style="text-align:right;padding:2px 0 2px 8px;white-space:nowrap;font-family:\'JetBrains Mono\',monospace;color:'+(c||TEXT)+'">'+v+'</td>';
   const wkName=w=>dm(w.from)+' – '+dm(w.to);
-  html+=band('WEEK BEFORE → LAST WEEK (MON–SUN, COMPLETE WEEKS ONLY)');
+  html+=band('WEEK BEFORE → LAST WEEK (MON–SUN) · CHANGE = LAST WEEK − WEEK BEFORE');
   html+='<div style="'+box+';overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">'+
     '<tr style="color:var(--muted);font-size:10px"><td></td><td style="text-align:right;padding-left:8px">'+wkName(wB)+'</td><td style="text-align:right;padding-left:8px">'+wkName(wA)+'</td><td style="text-align:right;padding-left:8px">CHANGE</td></tr>'+
     '<tr><td>Profit</td>'+td(wB.known?R0(wB.P.netProfit):'—',wB.P.netProfit<0?RED:null)+td(wA.known?R0(wA.P.netProfit):'—',wA.P.netProfit<0?RED:null)+cmp(wA.P.netProfit,wB.P.netProfit,R0)+'</tr>'+
