@@ -23,6 +23,7 @@ SQL editor, in this order (all are safe to run again):
 | `016_resaved_shifts.sql` | Steps 1–2 only read; step 3 (optional) marks re-saved shifts live | — |
 | `017_five_features.sql` | `fuel_loads.receipt`; tank line in the evening report | 015 |
 | `018_oil_stock_register.sql` | `oil_invoices.payments`, `stock_items.adjustments` | — |
+| `019_fuel_load_payments.sql` | `fuel_loads.payments` — dated tanker payments | — |
 
 The app keeps working if a column is missing — the extra detail stays on the
 phone that entered it until the migration runs.
