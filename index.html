@@ -13225,6 +13225,23 @@ function _outboxWrite(q){
   }
   _outboxBadge();
 }
+// MF_OUTBOX_DEDUPE_V1: one waiting job per row. Key = table + row key.
+function _outboxRowKey(job){
+  if(!job||job.op!=='upsert'||!Array.isArray(job.rows)||job.rows.length!==1)return null;
+  const r=job.rows[0]||{}, k=_conflictKey(job.table).split(',');
+  const v=k.map(function(c){return r[c];});
+  if(v.some(function(x){return x==null;}))return null;
+  return job.table+'|'+v.join('|');
+}
+function _outboxCompact(q){
+  const seen={}, out=[];
+  for(let i=q.length-1;i>=0;i--){            // newest last in the queue: keep it
+    const k=_outboxRowKey(q[i]);
+    if(k){ if(seen[k])continue; seen[k]=1; }
+    out.push(q[i]);
+  }
+  return out.reverse();
+}
 function _outboxQueue(table, op, rows, key, why){
   const q=_outboxRead();
   q.push({qid:_newId(), table:table, op:op, rows:rows, key:key||null,
@@ -13233,7 +13250,7 @@ function _outboxQueue(table, op, rows, key, why){
           // yet shows no reason at all, which is the moment somebody actually
           // looks at it.
           lastError:why||''});
-  _outboxWrite(q);
+  _outboxWrite(_outboxCompact(q));   // MF_OUTBOX_DEDUPE_V1
 }
 function _outboxDepth(){ return _outboxRead().length; }
 function _outboxBadge(){
@@ -13251,6 +13268,8 @@ async function _outboxFlush(){
   if(typeof navigator!=='undefined' && navigator.onLine===false)return 0;
   let q=_outboxRead();
   if(!q.length)return 0;
+  const _qc=_outboxCompact(q);          // MF_OUTBOX_DEDUPE_V1: collapse copies
+  if(_qc.length!==q.length){ console.warn('Outbox: merged '+(q.length-_qc.length)+' duplicate job(s)'); q=_qc; }
   const kept=[];
   for(const job of q){
     try{
