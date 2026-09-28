@@ -1969,6 +1969,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <div class="sbox"><div class="sb-t">Outstanding Now <span style="color:var(--muted)">(all time)</span></div><div class="sb-v" style="color:var(--diesel)" id="led_outstanding">&#8377;0</div></div>
       <div class="sbox"><div class="sb-t">Advance Held</div><div class="sb-v" style="color:var(--green)" id="led_advance_held">&#8377;0</div></div>
     </div>
+    <div id="led_ageing" style="margin-bottom:10px"></div><!-- MF_LEDGER_V1 -->
     <div id="led_period_note" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:14px;line-height:1.6"></div>
     <!-- Customer cards grid -->
     <div id="customer_cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px"></div>
@@ -1999,6 +2000,9 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <button class="btn btn-g" onclick="generateCustomerInvoice(currentLedgerCustomer)" style="padding:6px 14px">🧾 INVOICE PDF</button>
       <button class="btn btn-g" onclick="generateCustomerStatement(currentLedgerCustomer)" style="padding:6px 14px">📄 STATEMENT PDF</button>
       <button class="btn btn-g" onclick="addLedgerEntryFor()" style="padding:6px 14px">&#65291; ADD TRANSACTION</button>
+      <!-- MF_LEDGER_V1 -->
+      <button class="btn btn-g" id="use_adv_btn" onclick="applyAdvanceNow()" style="padding:6px 14px;display:none">↺ USE ADVANCE</button>
+      <button class="btn btn-g" onclick="renameCustomer()" style="padding:6px 14px">✎ RENAME / MERGE</button>
     </div>
     <!-- Discount edit panel (hidden by default) -->
     <div id="cust_disc_panel" style="display:none;margin-bottom:12px">
@@ -5105,6 +5109,7 @@ function validateAllMeters(){
   const _sh=validateSplit('hsd','HSD price split'); if(_sh)_extra.push(_sh);
   Array.prototype.push.apply(_extra, validateContinuity());
   if(typeof _credLimitIssues==='function')Array.prototype.push.apply(_extra, _credLimitIssues());   // MF_FIVE_V1
+  if(typeof _credNameIssues==='function')Array.prototype.push.apply(_extra, _credNameIssues());   // MF_LEDGER_V1
   const pairs=[
     ['msd1_prev','msd1_cur','MSD Machine 1'],
     ['msd2_prev','msd2_cur','MSD Machine 2'],
@@ -5691,7 +5696,8 @@ function addCredBack(){
         placeholder="Enter name" style="display:none;width:100%;min-width:0">
     </div>
     <input type="number" class="credback-amt" placeholder="\u20b9 Amount" oninput="calc()" style="width:100%;min-width:0">
-    <button class="rm-btn" onclick="document.getElementById('cb_${id}').remove();calc()">\u2715</button>`;
+    <button class="rm-btn" onclick="document.getElementById('cb_${id}').remove();calc()">\u2715</button>
+    <div class="cred-name-hint" style="grid-column:1/-1;font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.4"></div>`;
   document.getElementById('credback_list').appendChild(d);
   if(!hasExisting){
     const sel=d.querySelector('.credback-name-sel');
@@ -5743,7 +5749,8 @@ function addCredit(){
     </select>
     <input type="number" class="cred-amt" placeholder="&#8377; Amt" oninput="calc()" style="width:100%;min-width:0">
     <button class="rm-btn" onclick="document.getElementById('cr_${id}').remove();calc()">\u2715</button>
-    <div class="cred-limit-hint" style="grid-column:1/-1;font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.4"></div>`;
+    <div class="cred-limit-hint" style="grid-column:1/-1;font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.4"></div>
+    <div class="cred-name-hint" style="grid-column:1/-1;font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.4"></div>`;
   document.getElementById('cred_list').appendChild(d);
   if(!hasExisting){
     const sel=d.querySelector('.cred-name-sel');
@@ -6059,6 +6066,9 @@ function _doSaveShift(){
       }
     }
   });
+  // MF_LEDGER_V1: credit for someone holding an advance is paid from it first.
+  try{ [...new Set(ledger.filter(function(e){return e.shiftId===_shiftIdStr&&(e.amount||0)>0;})
+        .map(function(e){return e.customer;}))].forEach(_settleWithAdvance); }catch(err){ console.warn('advance settle:',err); }
   saveLedger();
   }
   refreshCreditSelects();refreshCredBackSelects();
@@ -6247,8 +6257,10 @@ function _shiftUndoPlan(rec){
   const pays=_shiftPays(rec);
   const own=ledger.filter(function(e){return e.shiftId===id;});
   const credits=own.filter(function(e){return (e.amount||0)>0;});
-  const settled=credits.filter(function(e){return (e.paidBack||0)>0.005;});
-  const freeCredits=credits.filter(function(e){return !((e.paidBack||0)>0.005);});
+  // MF_LEDGER_V1: only money actually paid blocks the undo; advance is handed back.
+  const _real=function(e){return (e.paidBack||0)-(typeof _advSettled==='function'?_advSettled(e):0);};
+  const settled=credits.filter(function(e){return _real(e)>0.005;});
+  const freeCredits=credits.filter(function(e){return !(_real(e)>0.005);});
   // Advances this shift created: tagged with the shift id, or (older saves)
   // the matching "Excess payment" row for the same customer, date and shift.
   const advRows=[];
@@ -6313,6 +6325,8 @@ function _applyShiftUndo(plan){
     billsTouched++;
     if(_currentUser)sbSaveLedgerEntry(bill).catch(console.error);
   });
+  // MF_LEDGER_V1: advance that paid these credits goes back to the customer
+  if(typeof _undoAdvanceOn==='function')plan.freeCredits.forEach(_undoAdvanceOn);
   // 5. credit given in the shift, and advances it created
   const drop=new Set(plan.freeCredits.concat(plan.advRows).map(function(e){return String(e.id);}));
   if(drop.size){
@@ -8096,11 +8110,13 @@ function addLedgerEntry(){
 }
 
 function submitLedgerEntry(){
-  const name=_clean(document.getElementById('lf_name').value.trim());
+  let name=_clean(document.getElementById('lf_name').value.trim());
   const fuel=document.getElementById('lf_fuel').value;
   const type=document.getElementById('lf_type').value;
   let amt=parseFloat(document.getElementById('lf_amt').value)||0;
   if(!name||!amt){showToast('Fill in name and amount');return;}
+  { const _s=_similarCustomer(name);   // MF_LEDGER_V1
+    if(_s&&confirm('"'+name+'" looks like existing customer "'+_s+'".\n\nOK = add it to '+_s+'\nCancel = create a new customer "'+name+'"'))name=_s; }
   // For advance, store as negative amount (and paidBack=amount so the entry stays "settled" from the credit-due perspective)
   // Convention: amount = original transaction value (negative for advance received)
   //             paidBack = how much of that has been resolved
@@ -8109,6 +8125,8 @@ function submitLedgerEntry(){
   const date=(document.getElementById('lf_date')||{}).value||_isoLocal();
   const newEntry3={id:_newId(),date,customer:name,shift,fuel,amount:amt,paidBack:0,kind:type};
   ledger.push(newEntry3);
+  if(type==='advance')_recordManualAdvance(newEntry3);   // MF_LEDGER_V1
+  _settleWithAdvance(name);
   saveLedger();
   if(_currentUser)sbSaveLedgerEntry(newEntry3).catch(console.error);
   if(typeof logActivity==='function')logActivity(type==='advance'?'add_advance':'add_credit','ledger',newEntry3.id,name+' • ₹'+Math.abs(amt));
@@ -8140,6 +8158,8 @@ function submitLedgerEntry2(){
   const date=(document.getElementById('lf_date2')||{}).value||_isoLocal();
   const newEntry2={id:_newId(),date,customer:currentLedgerCustomer,shift,fuel,amount:amt,paidBack:0,kind:type};
   ledger.push(newEntry2);
+  if(type==='advance')_recordManualAdvance(newEntry2);   // MF_LEDGER_V1
+  _settleWithAdvance(currentLedgerCustomer);
   saveLedger();
   if(_currentUser)sbSaveLedgerEntry(newEntry2).catch(console.error);
   if(typeof logActivity==='function')logActivity(type==='advance'?'add_advance':'add_credit','ledger',newEntry2.id,currentLedgerCustomer+' • ₹'+Math.abs(amt));
@@ -8167,7 +8187,9 @@ function markPaid(id){
   // only a real repayment is recorded as a payment.
   if(!isAdvance){
     _recordPayments([{ledgerId:entry.id, amount:inputAmt, kind:'credit'}],
-      {customer:entry.customer, date:_isoLocal(), mode:'Cash',
+      {customer:entry.customer,
+       date:((document.getElementById('pay_date_'+id)||{}).value||_isoLocal()),   // MF_LEDGER_V1
+       mode:((document.getElementById('pay_mode_'+id)||{}).value||'Cash'),
        note:'Recorded against '+(entry.date||'')+' bill',
        ref:'PAY-'+_newId(), source:'ledger'});
   }
@@ -8180,8 +8202,28 @@ function markPaid(id){
   showToast(isAdvance?'Advance usage recorded':'Payment recorded!');
 }
 function delLedger(id){
-  if(!confirm('Delete this transaction?'))return;
-  const _gone=ledger.find(x=>x.id===id);
+  // MF_LEDGER_V1
+  if(!_ledgerCanEdit()){showToast('🔒 Only an owner or manager can delete ledger entries');return;}
+  const _e=ledger.find(x=>x.id===id); if(!_e)return;
+  const _pays=(ledgerPayments||[]).filter(function(p){return p.ledgerId!=null&&String(_intId(p.ledgerId))===String(_intId(id));});
+  if(_pays.length){
+    showToast(fmt(_pays.reduce(function(s,p){return s+(+p.amount||0);},0))+' of payments are recorded against this bill — reverse them first (Payment history → REVERSE)');
+    return;
+  }
+  const _isAdv=(_e.amount||0)<0;
+  if(_isAdv&&(_e.paidBack||0)>0.005){
+    showToast('This advance has been used ('+fmt(_e.paidBack)+') — delete or reverse what used it first');return;}
+  const _fromAdv=_isAdv?0:_advSettled(_e);
+  const _legacy=_isAdv?0:_r2((_e.paidBack||0)-_fromAdv);
+  if(_legacy>0.005&&_currentUser&&!_isOwner){
+    showToast('🔒 '+fmt(_legacy)+' was marked paid without a payment record — only an owner can delete it');return;}
+  let _msg='Delete this '+(_isAdv?'advance':'credit')+' of '+fmt(Math.abs(_e.amount||0))+' ('+_e.date+')?';
+  if(_fromAdv>0.005)_msg+='\n\n'+fmt(_fromAdv)+' of advance that paid it goes back to the customer\'s advance.';
+  if(_legacy>0.005)_msg+='\n\n⚠ '+fmt(_legacy)+' was marked paid on it with no payment record — that amount disappears with it.';
+  if(_e.shiftId)_msg+='\n\nIt was entered in shift '+_e.shiftId+'. The shift\'s cash tally still counts it; deleting and re-entering the shift is the cleaner fix.';
+  if(!confirm(_msg))return;
+  if(!_isAdv)_undoAdvanceOn(_e);
+  const _gone=_e;
   if(_gone&&typeof logActivity==='function')logActivity('del_ledger','ledger',id,
     _gone.customer+' • '+_gone.date+' • '+(_gone.amount<0?'advance ':'credit ')+fmt(Math.abs(_gone.amount||0))+
     (_gone.paidBack?' (paid '+fmt(_gone.paidBack)+')':''));
@@ -8357,6 +8399,7 @@ function renderLedger(){
         ${statusBadge}
       </div>
       <div class="cust-boxes">${boxes}</div>
+      ${_ageStrip(name)}
       <div class="cust-foot">
         <span class="cust-count">${c.entries.length} txn${c.entries.length!==1?'s':''}</span>
         <div class="cust-actions">
@@ -8388,6 +8431,14 @@ function renderLedger(){
   document.getElementById('led_outstanding').textContent=_r0(totalOutstanding);
   const advEl=document.getElementById('led_advance_held');
   if(advEl)advEl.textContent=_r0(totalAdvanceHeld);
+  // MF_LEDGER_V1: how old the money owed is
+  { const _ag=document.getElementById('led_ageing');
+    if(_ag){ const T=[0,0,0,0]; names.forEach(function(n){ _custAgeing(n).forEach(function(v,i){T[i]+=v;}); });
+      const tot=T[0]+T[1]+T[2]+T[3];
+      _ag.innerHTML=tot>0.5?'<div style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:10px;letter-spacing:1.5px;color:var(--muted);margin-bottom:4px">UNPAID BILLS BY AGE</div>'+
+        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">'+T.map(function(v,i){
+          return '<div class="mini-card" style="text-align:center"><div class="mini-lbl">'+_AGE_LBL[i]+' DAYS</div><div class="mini-val" style="color:'+
+            (v>0.5?_AGE_COL[i]:'var(--muted)')+'">'+_r0(v)+'</div><div style="font-size:9px;color:var(--muted)">'+(tot?Math.round(v/tot*100):0)+'%</div></div>';}).join('')+'</div>':''; } }
 
   const note=document.getElementById('led_period_note');
   if(note){
@@ -8425,6 +8476,9 @@ function openLedgerDetail(name){
   const discRate=getCustDiscount(name);
   document.getElementById('cust_disc_display').textContent=discRate>0?'₹'+discRate.toFixed(2)+'/L':'₹0/L';
   if(typeof _renderCustLimitBadge==='function')_renderCustLimitBadge(name);   // MF_FIVE_V1
+  { const _ub=document.getElementById('use_adv_btn'), _ps=_custPosition(name);   // MF_LEDGER_V1
+    if(_ub){ const _can=_ps.due>0.005&&_ps.advLeft>0.005; _ub.style.display=_can?'':'none';
+      if(_can)_ub.textContent='↺ USE ADVANCE '+fmt(Math.min(_ps.due,_ps.advLeft)); } }
   var _lp=document.getElementById('cust_limit_panel'); if(_lp)_lp.style.display='none';
 
   const entries=ledger.filter(e=>e.customer===name);
@@ -8484,6 +8538,7 @@ function openLedgerDetail(name){
       <td>
         <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
           <input type="number" id="pay_inp_${e.id}" placeholder="${inpPlaceholder}" value="${remaining>0?remaining:''}" style="width:120px;padding:5px 8px;font-size:12px;${settled?'opacity:.4;pointer-events:none':''}">
+          ${(!isAdvance&&!settled&&typeof _payModeHtml==='function')?_payModeHtml(e.id):''}
           <button class="btn btn-g" style="padding:5px 12px;font-size:11px;white-space:nowrap;${settled?'opacity:.4;pointer-events:none':''}" onclick="markPaid(${e.id})">${settled?'&#10003; DONE':recordLabel}</button>
           <button class="btn btn-g" style="padding:3px 8px;font-size:10px" onclick="editLedgerEntry(${e.id})">&#9998;</button>
           <button class="btn btn-d" style="padding:3px 8px;font-size:10px" onclick="delLedger(${e.id})">&#10005;</button>
@@ -8560,8 +8615,12 @@ function reversePayment(key){
   var advAmt=_r2(pays.filter(function(p){return p.kind==='advance';}).reduce(function(s,p){return s+(+p.amount||0);},0));
   var advRows=(ref&&advAmt>0)?ledger.filter(function(e){
     return e.customer===name&&(e.amount||0)<0&&String(e.notes||'').indexOf(ref+':')===0;}):[];
-  if(advRows.some(function(e){return (e.paidBack||0)>0.005;})){
-    showToast('The advance from this payment has already been used — reverse that first');return;}
+  // MF_LEDGER_V1: use through [used:] links (auto-settled bills) is undone with
+  // the payment; only fuel drawn by hand against the advance blocks it.
+  var _autoUsed=function(e){return _advTags(e,'used').reduce(function(s,t){return s+t.amt;},0);};
+  if(advRows.some(function(e){return (e.paidBack||0)-_autoUsed(e)>0.005;})){
+    showToast('Fuel has been drawn against the advance from this payment — reverse that first');return;}
+  var _linked=[]; advRows.forEach(function(a){ _advTags(a,'used').forEach(function(t){ var b=_byIntId(t.id); if(b)_linked.push({a:a,b:b,amt:t.amt}); }); });
   var bills=billPays.map(function(p){
     return {p:p,bill:ledger.find(function(e){return String(_intId(e.id))===String(_intId(p.ledgerId));})};
   });
@@ -8569,6 +8628,7 @@ function reversePayment(key){
   var msg='Reverse '+fmt(total)+' received from '+name+' on '+date+' ('+mode+')?\n\n'+
     '• '+bills.length+' bill(s) go back to unpaid by what this payment cleared'+
     (advAmt>0?'\n• the '+fmt(advAmt)+' advance it created is removed':'')+
+    (_linked.length?'\n• '+_linked.length+' bill(s) that advance paid go back to unpaid':'')+
     (missing?'\n• '+missing+' bill(s) no longer exist and are skipped':'')+
     '\n\nOnly for a payment entered by mistake. Type the reason:';
   var reason=prompt(msg,'Entered by mistake');
@@ -8581,6 +8641,11 @@ function reversePayment(key){
     x.bill.notes=((x.bill.notes?x.bill.notes+' | ':'')+'REVERSED '+(ref||key)+': −'+fmt(+x.p.amount||0)+' '+today).slice(0,480);
     _touch(x.bill);
     if(_currentUser)sbSaveLedgerEntry(x.bill).catch(console.error);
+  });
+  _linked.forEach(function(x){   // MF_LEDGER_V1
+    x.b.paidBack=_r2(Math.max(0,(x.b.paidBack||0)-x.amt));
+    x.b.notes=_stripTag(x.b.notes,'adv',_intId(x.a.id));
+    _saveLedgerRow(x.b);
   });
   if(advRows.length){
     var drop=new Set(advRows.map(function(e){return String(e.id);}));
@@ -8600,6 +8665,7 @@ function reversePayment(key){
   showToast('↶ '+fmt(total)+' reversed — bills are back to unpaid');
 }
 function deleteCustomer(name){
+  if(!_ledgerCanEdit()){showToast('🔒 Only an owner or manager can delete a customer');return;}   // MF_LEDGER_V1
   const rows=ledger.filter(e=>e.customer===name);
   const outstanding=rows.reduce(function(s,e){
     return s + (e.amount>0 ? Math.max(0,e.amount-(e.paidBack||0)) : 0);
@@ -8621,6 +8687,12 @@ function deleteCustomer(name){
   _tombAdd('customer_profiles', name);
 
   ledger=ledger.filter(e=>e.customer!==name);
+  // MF_LEDGER_V1: their payment records go too, or collections keep counting them.
+  const _cp=(ledgerPayments||[]).filter(function(p){return p.customer===name;});
+  if(_cp.length){
+    ledgerPayments=ledgerPayments.filter(function(p){return p.customer!==name;}); savePaymentsLS();
+    if(_currentUser&&MF_PAYTBL_OK)_cp.forEach(function(p){sbDelete('ledger_payments',_intId(p.id)).catch(console.error);});
+  }
   delete customerProfiles[name];
   saveCustProfiles();
   saveLedger();refreshCreditSelects();refreshCredBackSelects();renderLedger();
@@ -8749,6 +8821,193 @@ document.addEventListener('change',function(e){
 document.addEventListener('input',function(e){
   if(e.target&&e.target.classList&&e.target.classList.contains('cred-new-name'))_credLimitHints();
 });
+// MF_LEDGER_V1 ── ledger helpers ─────────────────────────────────────────
+function _ledgerCanEdit(){
+  if(!_currentUser)return true;
+  return !!(_isOwner||_currentUser.role==='manager');
+}
+function _allCustomerNames(){
+  return [...new Set(ledger.map(function(e){return e.customer;}).concat(Object.keys(customerProfiles||{})))]
+    .filter(Boolean).sort();
+}
+// Advance links, kept in the notes so they sync with the row:
+//   on a bill    [adv:<advance id>:<amount>]
+//   on an advance [used:<bill id>:<amount>]
+function _advTags(e,kind){
+  var re=new RegExp('\\['+kind+':(-?\\d+):([\\d.]+)\\]','g'), out=[], m;
+  while((m=re.exec(String((e&&e.notes)||''))))out.push({id:m[1],amt:+m[2]});
+  return out;
+}
+function _stripTag(notes,kind,id){
+  return String(notes||'').split(' | ').filter(function(p){
+    return p.indexOf('['+kind+':'+id+':')<0;}).join(' | ');
+}
+function _advSettled(e){ return _r2(_advTags(e,'adv').reduce(function(s,t){return s+t.amt;},0)); }
+function _byIntId(id){ return ledger.find(function(x){return String(_intId(x.id))===String(_intId(id));}); }
+function _saveLedgerRow(e){ _touch(e); if(_currentUser&&typeof sbSaveLedgerEntry==='function')sbSaveLedgerEntry(e).catch(console.error); }
+// Pair the customer's oldest advance with their oldest unpaid bill until one
+// side runs out. Returns the amount moved.
+function _settleWithAdvance(name){
+  if(!name)return 0;
+  var moved=0, guard=0;
+  while(guard++<500){
+    var bill=_custUnpaid(name)[0];
+    var adv=ledger.filter(function(e){return e.customer===name&&(e.amount||0)<0&&
+        (Math.abs(e.amount)-(e.paidBack||0))>0.005;})
+      .sort(function(a,b){return String(a.date||'').localeCompare(String(b.date||''))||((a.id||0)-(b.id||0));})[0];
+    if(!bill||!adv)break;
+    var x=_r2(Math.min(bill.amount-(bill.paidBack||0), Math.abs(adv.amount)-(adv.paidBack||0)));
+    if(x<=0.005)break;
+    bill.paidBack=_r2((bill.paidBack||0)+x);
+    adv.paidBack=_r2((adv.paidBack||0)+x);
+    bill.notes=((bill.notes?bill.notes+' | ':'')+'[adv:'+_intId(adv.id)+':'+x+'] from advance of '+adv.date).slice(0,480);
+    adv.notes=((adv.notes?adv.notes+' | ':'')+'[used:'+_intId(bill.id)+':'+x+'] for bill of '+bill.date).slice(0,480);
+    _saveLedgerRow(bill); _saveLedgerRow(adv);
+    moved=_r2(moved+x);
+  }
+  if(moved>0&&typeof logActivity==='function')logActivity('advance_applied','ledger',name,name+' • '+fmt(moved)+' of advance used for bills');
+  return moved;
+}
+// Give back whatever advance this bill consumed (before the bill goes).
+function _undoAdvanceOn(bill){
+  _advTags(bill,'adv').forEach(function(t){
+    var a=_byIntId(t.id);
+    if(a){ a.paidBack=_r2(Math.max(0,(a.paidBack||0)-t.amt)); a.notes=_stripTag(a.notes,'used',_intId(bill.id)); _saveLedgerRow(a); }
+    bill.paidBack=_r2(Math.max(0,(bill.paidBack||0)-t.amt));
+  });
+  bill.notes=String(bill.notes||'').split(' | ').filter(function(p){return p.indexOf('[adv:')<0;}).join(' | ');
+}
+function _recordManualAdvance(entry){
+  var ref='ADV-'+_newId();
+  entry.notes=((entry.notes?entry.notes+' | ':'')+ref+': advance entered in ledger').slice(0,480);
+  _recordPayments([{ledgerId:null,amount:Math.abs(entry.amount),kind:'advance'}],
+    {customer:entry.customer,date:entry.date,mode:'Cash',note:'Advance entered in ledger',ref:ref,source:'ledger'});
+}
+// ── name matching ──
+function _normName(s){ return String(s||'').toLowerCase().replace(/[^\p{L}\p{N}]/gu,''); }
+function _lev(a,b){
+  if(a===b)return 0; var m=a.length,n=b.length; if(!m)return n; if(!n)return m;
+  var p=[],i,j; for(j=0;j<=n;j++)p[j]=j;
+  for(i=1;i<=m;i++){ var prev=p[0]; p[0]=i;
+    for(j=1;j<=n;j++){ var t=p[j]; p[j]=Math.min(p[j]+1,p[j-1]+1,prev+(a[i-1]===b[j-1]?0:1)); prev=t; } }
+  return p[n];
+}
+function _similarCustomer(name){
+  name=String(name||'').trim(); var n=_normName(name); if(n.length<2)return null;
+  var names=_allCustomerNames(); if(names.indexOf(name)>=0)return null;
+  var best=null, bd=99;
+  names.forEach(function(x){ var m=_normName(x);
+    var d=m===n?0:((m.indexOf(n)===0||n.indexOf(m)===0)&&Math.min(m.length,n.length)>=3?1:_lev(m,n));
+    if(d<bd){bd=d;best=x;} });
+  return bd<=(n.length<=4?1:2)?best:null;
+}
+function _nameHint(inp){
+  var row=inp.closest('.cred-row,.cred-row-3'); if(!row)return;
+  var h=row.querySelector('.cred-name-hint'); if(!h)return;
+  var s=_similarCustomer(inp.value);
+  if(!s){h.innerHTML='';return;}
+  h.innerHTML='<span style="color:var(--diesel)">Did you mean <b>'+_esc(s)+'</b>? A new name opens a separate account.</span> '+
+    '<button type="button" class="btn btn-g" style="padding:1px 8px;font-size:10px" data-name="'+_esc(s)+'" onclick="_useSuggested(this)">USE</button>';
+}
+function _useSuggested(btn){
+  var row=btn.closest('.cred-row,.cred-row-3'), name=btn.getAttribute('data-name'); if(!row)return;
+  var sel=row.querySelector('.cred-name-sel,.credback-name-sel'), inp=row.querySelector('.cred-new-name,.credback-new-name');
+  if(sel){ if(![].some.call(sel.options,function(o){return o.value===name;})){var o=document.createElement('option');o.value=name;o.textContent=name;sel.insertBefore(o,sel.firstChild);}
+    sel.style.display=''; sel.value=name; }
+  if(inp){ inp.value=''; inp.style.display='none'; }
+  var h=row.querySelector('.cred-name-hint'); if(h)h.innerHTML='';
+  calc();
+}
+function _credNameIssues(){
+  var out=[];
+  document.querySelectorAll('#cred_list .cred-new-name, #credback_list .credback-new-name').forEach(function(inp){
+    if(inp.style.display==='none'||!inp.value.trim())return;
+    var s=_similarCustomer(inp.value);
+    if(s)out.push({level:'warn',machine:'Customer name',msg:'"'+inp.value.trim()+'" looks like existing customer "'+s+'" — pick them from the list to keep one account'});
+  });
+  return out;
+}
+document.addEventListener('input',function(e){
+  var t=e.target; if(t&&t.classList&&(t.classList.contains('cred-new-name')||t.classList.contains('credback-new-name')))_nameHint(t);
+});
+// ── ageing ──
+function _custAgeing(name){
+  var b=[0,0,0,0], today=Date.parse(_isoLocal());
+  ledger.forEach(function(e){
+    if(e.customer!==name||!((e.amount||0)>0))return;
+    var due=_r2(e.amount-(e.paidBack||0)); if(due<=0.005)return;
+    var age=Math.floor((today-Date.parse(e.date))/86400000);
+    b[age<=30?0:age<=60?1:age<=90?2:3]+=due;
+  });
+  return b.map(_r2);
+}
+var _AGE_LBL=['0–30','31–60','61–90','90+'], _AGE_COL=['var(--green)','var(--diesel)','#ff8c42','var(--red)'];
+function _ageStrip(name){
+  var b=_custAgeing(name); if(!(b[0]+b[1]+b[2]+b[3]>0.5))return '';
+  return '<div class="cust-age" style="display:flex;gap:4px;margin:6px 0 2px;font-family:\'JetBrains Mono\',monospace;font-size:9px">'+
+    b.map(function(v,i){return '<span title="'+_AGE_LBL[i]+' days" style="flex:1;text-align:center;padding:2px 0;border-radius:3px;background:var(--s3);color:'+
+      (v>0.5?_AGE_COL[i]:'var(--muted)')+'">'+_AGE_LBL[i]+'<br><b>'+(v>0.5?'₹'+Math.round(v).toLocaleString('en-IN'):'—')+'</b></span>';}).join('')+'</div>';
+}
+// ── pay one bill: mode and date ──
+function _payModeHtml(id){
+  var sel='<select id="pay_mode_'+id+'" style="padding:4px 6px;font-size:11px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">'+
+    ['Cash','GPay','Paytm','Bank Transfer','Cheque','Other'].map(function(m){return '<option>'+m+'</option>';}).join('')+'</select>';
+  return sel+'<input type="date" id="pay_date_'+id+'" value="'+_isoLocal()+'" style="width:130px;padding:4px 6px;font-size:11px">';
+}
+// ── rename / merge ──
+function renameCustomer(){
+  var old=currentLedgerCustomer; if(!old)return;
+  if(!_ledgerCanEdit()){showToast('🔒 Only an owner or manager can rename or merge customers');return;}
+  var nn=prompt('Rename "'+old+'" to:\n\nType an existing customer\'s name to MERGE the two accounts into one.',old);
+  if(nn===null)return;
+  nn=_clean(String(nn).trim().replace(/\s+/g,' '));
+  if(!nn||nn===old)return;
+  var existing=_allCustomerNames().find(function(n){return n!==old&&n.toLowerCase()===nn.toLowerCase();});
+  var target=existing||nn;
+  if(existing){
+    var a=_custPosition(old), b=_custPosition(existing);
+    if(!confirm('MERGE "'+old+'" into "'+existing+'"?\n\n'+old+': owes '+fmt(a.due)+(a.advLeft>0.005?', advance '+fmt(a.advLeft):'')+
+      '\n'+existing+': owes '+fmt(b.due)+(b.advLeft>0.005?', advance '+fmt(b.advLeft):'')+
+      '\n\nEvery bill, payment and advance moves to "'+existing+'". "'+old+'" disappears. This cannot be undone with one tap.'))return;
+  } else if(!confirm('Rename "'+old+'" to "'+nn+'"? Every bill and payment moves with it.'))return;
+  var nBills=0, nPays=0;
+  ledger.forEach(function(e){ if(e.customer===old){ e.customer=target; _saveLedgerRow(e); nBills++; } });
+  (ledgerPayments||[]).forEach(function(p){ if(p.customer===old){ p.customer=target; p.updatedAt=new Date().toISOString(); nPays++;
+    if(_currentUser&&MF_PAYTBL_OK&&typeof sbSaveLedgerPayment==='function')sbSaveLedgerPayment(p).catch(console.error); } });
+  savePaymentsLS();
+  var po=customerProfiles[old];
+  if(po){
+    var pt=customerProfiles[target];
+    if(!pt) customerProfiles[target]=Object.assign({},po);
+    else {
+      if(!(pt.discountPerL>0)&&po.discountPerL>0)pt.discountPerL=po.discountPerL;
+      var bo=po.billing||{}, bt=pt.billing||{}, merged=Object.assign({},bo);
+      Object.keys(bt).forEach(function(k){ if(bt[k]!==''&&bt[k]!=null&&bt[k]!==0)merged[k]=bt[k]; });
+      pt.billing=merged; if(!pt.notes&&po.notes)pt.notes=po.notes;
+    }
+    delete customerProfiles[old]; saveCustProfiles();
+    if(_currentUser){
+      if(typeof sbSaveCustProfile==='function')sbSaveCustProfile(target).catch(console.error);
+      _sbRemove('customer_profiles', old, 'customer_name');
+    }
+    _tombAdd('customer_profiles', old);
+  }
+  if(existing)_settleWithAdvance(target);   // one account now: its advance meets its bills
+  saveLedger();
+  if(typeof logActivity==='function')logActivity(existing?'merge_customer':'rename_customer','customer',target,
+    (existing?'Merged "':'Renamed "')+old+'" → "'+target+'" • '+nBills+' ledger rows, '+nPays+' payments');
+  refreshCreditSelects();refreshCredBackSelects();
+  openLedgerDetail(target);
+  showToast(existing?'✓ Merged into '+target:'✓ Renamed to '+target);
+}
+function applyAdvanceNow(){
+  var name=currentLedgerCustomer; if(!name)return;
+  var pos=_custPosition(name);
+  if(!(pos.due>0.005&&pos.advLeft>0.005)){showToast('Nothing to apply');return;}
+  if(!confirm('Use '+fmt(Math.min(pos.due,pos.advLeft))+' of '+name+'\'s advance to pay their oldest unpaid bills?'))return;
+  var m=_settleWithAdvance(name); saveLedger();
+  openLedgerDetail(name); showToast('✓ '+fmt(m)+' of advance applied');
+}
 function saveCustDiscountRate(){
   const name=currentLedgerCustomer;if(!name)return;
   const rate=parseFloat(document.getElementById('disc_rate_inp').value)||0;
@@ -8764,6 +9023,7 @@ function saveCustDiscountRate(){
 
 function editLedgerEntry(id){
   const e=ledger.find(x=>x.id===id);if(!e)return;
+  if(!_ledgerCanEdit()){showToast('🔒 Only an owner or manager can edit ledger entries');return;}   // MF_LEDGER_V1
   const cell=document.getElementById('edit_row_'+id);
   // Build inline edit row - replace the row with inputs
   const tr=document.getElementById('ledger_tr_'+id);
@@ -8782,7 +9042,7 @@ function editLedgerEntry(id){
       <option${e.fuel==='Other'?' selected':''}>Other</option>
     </select></td>
     <td><input type="number" id="ed_amt_${id}" value="${e.amount}" style="width:90px;padding:3px 6px;font-size:11px"></td>
-    <td><input type="number" id="ed_paid_${id}" value="${e.paidBack}" style="width:90px;padding:3px 6px;font-size:11px"></td>
+    <td style="font-size:11px;color:var(--muted)">&#8377;${(e.paidBack||0).toLocaleString('en-IN')}<br><span style="font-size:9px">changes only by payment / reversal</span></td>
     <td colspan="2">
       <div style="display:flex;gap:5px">
         <button class="save-btn" style="padding:3px 12px;font-size:10px" onclick="saveEditLedger(${id})">&#10003; SAVE</button>
@@ -8792,17 +9052,30 @@ function editLedgerEntry(id){
 }
 function saveEditLedger(id){
   const e=ledger.find(x=>x.id===id);if(!e)return;
-  e.date=document.getElementById('ed_date_'+id).value||e.date;
-  e.shift=document.getElementById('ed_shift_'+id).value;
-  e.fuel=document.getElementById('ed_fuel_'+id).value;
-  e.amount=parseFloat(document.getElementById('ed_amt_'+id).value)||e.amount;
-  e.paidBack=parseFloat(document.getElementById('ed_paid_'+id).value)||0;
+  // MF_LEDGER_V1: "paid" moves only through payments, reversals and advances.
+  if(!_ledgerCanEdit()){showToast('🔒 Only an owner or manager can edit ledger entries');return;}
+  const nd=document.getElementById('ed_date_'+id).value||e.date;
+  const ns=document.getElementById('ed_shift_'+id).value;
+  const nf=document.getElementById('ed_fuel_'+id).value;
+  const na=_r2(parseFloat(document.getElementById('ed_amt_'+id).value));
+  if(!isFinite(na)||na===0){showToast('Enter the amount (delete the entry if it should not exist)');return;}
+  if((na<0)!==((e.amount||0)<0)){showToast(e.amount<0?'An advance stays negative':'A credit stays positive');return;}
+  if(Math.abs(na)+0.005<(e.paidBack||0)){
+    showToast(fmt(e.paidBack)+' is already '+(e.amount<0?'used':'paid')+' against it — reverse that first');return;}
+  const ch=[];
+  if(nd!==e.date)ch.push('date '+e.date+' → '+nd);
+  if(ns!==e.shift)ch.push('shift '+e.shift+' → '+ns);
+  if(nf!==e.fuel)ch.push('fuel '+e.fuel+' → '+nf);
+  if(na!==_r2(e.amount))ch.push('amount '+fmt(e.amount)+' → '+fmt(na));
+  if(!ch.length){openLedgerDetail(currentLedgerCustomer);return;}
+  e.date=nd; e.shift=ns; e.fuel=nf; e.amount=na;
+  if(typeof logActivity==='function')logActivity('edit_ledger','ledger',id,e.customer+' • '+ch.join(' • '));
+  if(na>0)_settleWithAdvance(e.customer);
   saveLedger();
   // Ledger rows carry no timestamp, so the merge resolves conflicts in the
   // server's favour. Without this upload the edit is undone on the next sync.
   if(_currentUser&&typeof sbSaveLedgerEntry==='function')sbSaveLedgerEntry(e).catch(console.error);
-  if(typeof logActivity==='function')logActivity('edit_ledger','ledger',id,e.customer+' → '+fmt(e.amount));
-  openLedgerDetail(currentLedgerCustomer);showToast('Entry updated.');
+  openLedgerDetail(currentLedgerCustomer);showToast('Entry updated.');   // MF_LEDGER_V1: logged above with old → new
 }
 
 function closeLedgerDetail(){
