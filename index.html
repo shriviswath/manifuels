@@ -1594,10 +1594,11 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <div class="rg" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
         <div><label>DATE</label><input type="date" id="dip_date"></div>
         <div><label>WHEN</label>
-          <select id="dip_slot" style="width:100%;padding:5px 9px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px">
-            <option value="open">Day open</option>
-            <option value="mid">Shift change</option>
-            <option value="close">Day close</option>
+          <select id="dip_slot" onchange="dipPreview()" style="width:100%;padding:5px 9px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px">
+            <!-- MF_DIP_SYNC_V1: named by the station's shift times -->
+            <option value="open">Before Morning shift (6 PM, day before)</option>
+            <option value="mid">Shift change (9 AM)</option>
+            <option value="close">After Night shift (6 PM)</option>
           </select></div>
         <div><label>TANK</label>
           <select id="dip_tank" onchange="dipPreview()" style="width:100%;padding:5px 9px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px">
@@ -4746,6 +4747,14 @@ function renderDashTanks(){
     const lvl=b.book, pct=cap?Math.min(100,Math.max(0,(lvl/cap)*100)):0;
     const bad = lvl<0 || (cap>0 && lvl>cap*1.02);
     let warn='';
+    // MF_DIP_SYNC_V1: a dip that is timed before the opening is not used.
+    const _hid=(typeof _dipsHiddenByOpening==='function')?_dipsHiddenByOpening(cls==='msd'?'MSD':'HSD'):[];
+    if(_hid.length&&!bad){
+      const _h=_hid[_hid.length-1];
+      warn='<div style="font-size:10px;color:var(--diesel);margin-top:4px;line-height:1.5">⚠ Dip of '+_esc(_h.date)+
+        ' ('+_esc(_DIP_SLOT_LBL[_h.slot]||_h.slot)+') is timed before the opening, so it is not used. '+
+        'Re-enter it on the Dip page as “Shift change (9 AM)” or later.</div>';
+    }
     if(bad){
       const why = lvl<0
         ? (b.since==='opening stock'
@@ -9294,7 +9303,9 @@ function _anchorDip(type,date,rank){
   (typeof dipReadings!=='undefined'?dipReadings:[]).forEach(function(d){
     if(d.type!==type)return;
     if(_posCmp(d.date,_slotRank(d.slot),date,rank)>=0)return;
-    if(!best||_posCmp(d.date,_slotRank(d.slot),best.date,_slotRank(best.slot))>0)best=d;
+    var _c=best?_posCmp(d.date,_slotRank(d.slot),best.date,_slotRank(best.slot)):1;
+    // MF_DIP_SYNC_V1: two dips at the same point — the one recorded last wins.
+    if(_c>0||(_c===0&&String(d.savedAt||'')>String(best.savedAt||'')))best=d;
   });
   return best;
 }
@@ -9397,6 +9408,11 @@ function dipPreview(){
   var he=document.getElementById('dip_book_hint');
   if(he)he.textContent=type+' book: '+b.book.toFixed(0)+' L';
   if(be)be.textContent=b.book.toFixed(3)+' L';
+  // MF_DIP_SYNC_V1
+  if(he&&_dipBeforeOpening({date:date,slot:slot})){
+    he.textContent='⚠ Timed before the opening ('+_openingAsOf()+', '+_DIP_SLOT_LBL[_openingAsOfSlot()]+
+      ') — it will not be used. Pick a later WHEN.';
+  }
   if(!isFinite(obs)){
     if(ve){ve.textContent='—';ve.style.color='var(--muted)';}
     if(fe){fe.textContent='';fe.className='field-warn-msg';}
@@ -9416,11 +9432,31 @@ function dipPreview(){
   }
 }
 
+// MF_DIP_SYNC_V1 ─────────────────────────────────────────────────────────
+var _DIP_SLOT_LBL={open:'before Morning shift (6 PM, day before)',mid:'shift change (9 AM)',close:'after Night shift (6 PM)'};
+// The old default, "Day open", is 6 PM the evening BEFORE the date — a dip
+// taken in the afternoon and left on it landed a whole shift too early.
+function _dipDefaultSlot(){ return new Date().getHours()<15?'mid':'close'; }
+// Is this dip timed before the opening measurement (so the opening is used)?
+function _dipBeforeOpening(d){
+  var asOf=(typeof _openingAsOf==='function')?_openingAsOf():''; if(!asOf||!d)return false;
+  var r=_slotRank((typeof _openingAsOfSlot==='function')?_openingAsOfSlot():'open');
+  return _posCmp(d.date,_slotRank(d.slot),asOf,r)<0;
+}
+// Dips on or after the opening DATE that are timed before its point — the
+// ones someone expects to count and that are silently not used.
+function _dipsHiddenByOpening(type){
+  var asOf=(typeof _openingAsOf==='function')?_openingAsOf():''; if(!asOf)return [];
+  return (typeof dipReadings!=='undefined'?dipReadings:[]).filter(function(d){
+    return (!type||d.type===type)&&String(d.date)>=asOf&&_dipBeforeOpening(d);
+  });
+}
 function dipResetForm(){
   ['dip_cm','dip_litres','dip_notes'].forEach(function(id){
     var e=document.getElementById(id); if(e)e.value='';
   });
   var d=document.getElementById('dip_date'); if(d)d.value=_isoLocal();
+  var s=document.getElementById('dip_slot'); if(s)s.value=_dipDefaultSlot();   // MF_DIP_SYNC_V1
   dipPreview();
 }
 
@@ -9473,7 +9509,9 @@ function renderDip(){
   var cfg=tankCfg();
   var se=function(id,val){var e=document.getElementById(id);if(e&&!e.value)e.value=val;};
   se('cfg_cap_msd',cfg.capMSD);se('cfg_cap_hsd',cfg.capHSD);se('cfg_tol',cfg.tol);
-  var d=document.getElementById('dip_date'); if(d&&!d.value)d.value=_isoLocal();
+  var d=document.getElementById('dip_date');
+  if(d&&!d.value){ d.value=_isoLocal();
+    var _s=document.getElementById('dip_slot'); if(_s)_s.value=_dipDefaultSlot(); }   // MF_DIP_SYNC_V1
 
   var rows=_dipSorted();
   var tb=document.getElementById('dip_body');
@@ -9497,7 +9535,8 @@ function renderDip(){
       '<td style="color:var(--muted)">'+(r.book||0).toFixed(3)+'</td>'+
       '<td style="color:'+vc+';font-weight:700">'+((r.variation||0)>=0?'+':'')+(r.variation||0).toFixed(3)+'</td>'+
       '<td style="color:'+cc+'">'+(cum[r.type]>=0?'+':'')+cum[r.type].toFixed(3)+'</td>'+
-      '<td style="color:var(--muted);font-size:11px">'+_esc(r.notes||'')+'</td>'+
+      '<td style="color:var(--muted);font-size:11px">'+_esc(r.notes||'')+
+        (_dipBeforeOpening(r)?' <span style="color:var(--diesel)">· before opening — not used</span>':'')+'</td>'+   // MF_DIP_SYNC_V1
       '<td><button class="rm-btn" onclick="delDip('+r.id+')">&#10005;</button></td>';
     tb.appendChild(tr);
   });
@@ -13226,6 +13265,12 @@ async function _outboxFlush(){
       } else if(job.op==='delete'){
         const r=await _applyDelete(job.table, job.key||'id', job.rows);
         error=r.error;
+      } else if(job.table==='dip_readings'&&typeof _sbDipUpsert==='function'){
+        // MF_DIP_SYNC_V1: a dip parked on the unique-slot conflict clears here.
+        for(const row of (job.rows||[])){
+          const r=await _sbDipUpsert(row);
+          if(r&&r.error){ error=r.error; break; }
+        }
       } else {
         const r=await _supa.from(job.table).upsert(job.rows,{onConflict:_conflictKey(job.table)});
         error=r.error;
@@ -13371,14 +13416,58 @@ async function sbDelete(table, id) {
   return _sbRemove(table, id, 'id');
 }
 
+// MF_DIP_SYNC_V1: one dip per (station, date, slot, tank) on the server, and a
+// soft-deleted row still holds its slot. A dip entered again for that slot has
+// a new id and used to bounce off the unique index forever. Take over the row
+// that holds the slot instead (reviving it if deleted) and re-key our copy.
+async function _sbDipUpsert(row){
+  const payload=Object.assign({},row);
+  if(MF_SOFT_DEL['dip_readings']!==false)payload.deleted_at=null;
+  let r=await _supa.from('dip_readings').upsert(payload,{onConflict:'id'});
+  if(r.error&&payload.deleted_at===null&&_isMissingCol(r.error.message)){
+    MF_SOFT_DEL['dip_readings']=false; delete payload.deleted_at;
+    r=await _supa.from('dip_readings').upsert(payload,{onConflict:'id'});
+  }
+  if(!r.error||!/unique_slot|duplicate key/i.test(String(r.error.message||'')))return r;
+  const q=await _supa.from('dip_readings').select('id')
+    .eq('user_id',payload.user_id).eq('date',payload.date)
+    .eq('slot',payload.slot).eq('type',payload.type).limit(1);
+  if(q.error||!q.data||!q.data.length)return r;
+  const sid=q.data[0].id;
+  if(String(sid)===String(payload.id))return r;
+  const oldId=payload.id; payload.id=sid;
+  r=await _supa.from('dip_readings').upsert(payload,{onConflict:'id'});
+  if(!r.error)_dipRekey(oldId,sid);
+  return r;
+}
+function _dipRekey(oldId,newId){
+  if(typeof dipReadings!=='undefined'){
+    const mine=dipReadings.find(function(x){return String(x.id)===String(oldId);});
+    if(mine){
+      dipReadings=dipReadings.filter(function(x){return x===mine||String(x.id)!==String(newId);});
+      mine.id=newId; saveDipsLS();
+    }
+  }
+  if(typeof _tombDel==='function')_tombDel('dip_readings',newId);
+  if(typeof renderDip==='function'&&document.getElementById('dip_body'))renderDip();
+}
 async function sbSaveDip(d){
   if(!_currentUser) return;
-  await _sbUpsert('dip_readings', {
+  const row={
     id:d.id, user_id:_currentUser.id, date:d.date, slot:d.slot, type:d.type,
     dip_cm:d.dipCm||null, observed_l:d.observed||0, book_l:d.book||0,
     variation_l:d.variation||0, notes:d.notes||'',
     created_by:_currentUser.username, saved_at:d.savedAt||new Date().toISOString()
-  });
+  };
+  if(!_supa||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+    _outboxQueue('dip_readings','upsert',[row],null,'offline'); return;
+  }
+  let r;
+  try{ r=await _sbDipUpsert(row); }catch(e){ r={error:{message:String(e.message||e)}}; }
+  if(r&&r.error){
+    console.warn('Dip queued for retry:',r.error.message);
+    _outboxQueue('dip_readings','upsert',[row],null,r.error.message);
+  }
 }
 
 async function sbSaveRecord(rec) {
