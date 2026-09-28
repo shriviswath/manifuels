@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Mani Fuels — Fuel Manager</title>
-<meta name="description" content="Mani Fuels shift account Manager for fuel bunk operations">
+<meta name="description" content="Mani Fuels shift account manager for fuel bunk operations">
 <meta name="theme-color" content="#00d4a0">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -35,9 +35,9 @@
   .ib-yes{background:var(--petrol);color:#000;letter-spacing:1px}
   .ib-no{background:transparent;border:1px solid var(--border)!important;color:var(--muted);padding:7px 10px!important}
   /* Role-based access: hidden by default, shown only for _isOwner in showApp() */
-  .Owner-only{display:none !important}
-  .Owner-only.show{display:flex !important}
-  button.Owner-only.show{display:flex !important}
+  .owner-only{display:none !important}
+  .owner-only.show{display:flex !important}
+  button.owner-only.show{display:flex !important}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -83,7 +83,7 @@ header{background:var(--s1);border-bottom:1px solid var(--border);padding:0 20px
 .nav-tab.active{color:var(--petrol);border-left-color:var(--petrol);background:rgba(0,212,160,.07)}
 .nav-tab:hover:not(.active){color:var(--text);background:var(--s2)}
 .nav-tab .tab-icon{font-size:16px;width:20px;text-align:center}
-.Owner-badge{margin-left:auto;font-size:10px;opacity:.6}
+.owner-badge{margin-left:auto;font-size:10px;opacity:.6}
 /* Top nav bar (just hamburger + active page name) */
 nav{background:var(--s1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 12px;gap:12px;height:46px}
 .nav-current{font-family:'Syne',sans-serif;font-weight:800;font-size:13px;letter-spacing:1.5px;color:var(--text)}
@@ -147,7 +147,7 @@ input::placeholder{color:var(--dim)}
 .add-btn:hover{border-color:var(--petrol);color:var(--petrol)}
 .rm-btn{background:transparent;border:none;color:var(--red);cursor:pointer;font-size:15px;padding:2px 5px;opacity:.7}
 .rm-btn:hover{opacity:1}
-/* MF_SHIFT_CLOCK_V1 — Staff-on-duty card */
+/* MF_SHIFT_CLOCK_V1 — staff-on-duty card */
 .sa-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)}
 .sa-row:last-child{border-bottom:none}
 .sa-name{flex:1;min-width:0;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -328,14 +328,14 @@ var _currentUser=null,_isOwner=false,_supa=null,_syncInProgress=false;
 var fuelOpeningMSD=0,fuelOpeningHSD=0;
 // Sign-in: see MF_AUTH_V1 below. No passwords live in this file.
 // Every table is filtered on user_id, and user_id used to be the username —
-// so each of the four Owners had their OWN stock list, rates, opening volumes
+// so each of the four owners had their OWN stock list, rates, opening volumes
 // and shifts. Four sets of books for one bunk. All rows now carry the station
 // id instead, so everyone sees the same data. Who did what is still recorded:
 // created_by / updated_by and the activity log keep the individual username.
 // The value stamped on every row and used to filter every read.
 //
 // This is NOT a multi-station feature — it is the fix for a bug. user_id used
-// to be the USERNAME, so each of the four Owners had their own stock list,
+// to be the USERNAME, so each of the four owners had their own stock list,
 // rates, opening volumes and shifts: four sets of books for one bunk. A single
 // shared value collapses them into one. Who did what is still recorded, via
 // created_by / updated_by and the activity log.
@@ -369,7 +369,7 @@ function showApp(){
   if(l)l.style.display='none';if(a)a.style.display='block';
   var u=document.getElementById('user-chip');
   if(u&&_currentUser)u.textContent=(_currentUser.display||_currentUser.username||'USER').toUpperCase();
-  document.querySelectorAll('.Owner-only').forEach(function(e){e.classList.toggle('show',_isOwner);});
+  document.querySelectorAll('.owner-only').forEach(function(e){e.classList.toggle('show',_isOwner);});
   if(typeof updateHeaderContext==='function')updateHeaderContext('dashboard');
   if(SUPABASE_URL.startsWith('https://')&&typeof supabase!=='undefined'){
     if(!_supa)_supa=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -386,17 +386,17 @@ function showApp(){
 // ── MF_AUTH_V1 · MF_AUTH_V2 — sign-in with Supabase Auth ───────────────────────────────
 // Every person has a real Supabase Auth account (username@manifuels.app — a
 // label, never e-mailed). Whether they belong to the station, and whether they
-// are an Owner, comes from the server (mf_whoami), so it cannot be changed from
+// are an owner, comes from the server (mf_whoami), so it cannot be changed from
 // the browser. No passwords live in this file.
 //
-// A new person signs in once with the one-time password the Owner gave them
-// (the Owner's own first code comes from the Supabase SQL Editor), then
+// A new person signs in once with the one-time password the owner gave them
+// (the owner's own first code comes from the Supabase SQL Editor), then
 // chooses their own password. Old passwords are not carried over — they were
 // published inside the previous version of this file.
 var MF_AUTH_DOMAIN='manifuels.vercel.app';   // the station's own address; nothing is ever e-mailed to it
 var _mfPending=null;       // {username, old, mode:'claim'|'change', cancel} while choosing a password
 var _mfSigningOut=false;
-var MF_SETUP_MSG='Server not set up for the new sign-in yet — the Owner must run stage1_accounts.sql in Supabase.';
+var MF_SETUP_MSG='Server not set up for the new sign-in yet — the owner must run stage1_accounts.sql in Supabase.';
 function _mfEmail(u){ return String(u||'').trim().toLowerCase()+'@'+MF_AUTH_DOMAIN; }
 function _mfClient(){
   if(!_supa&&SUPABASE_URL.startsWith('https://')&&typeof supabase!=='undefined')
@@ -414,7 +414,7 @@ function _mfLoginMsg(t,ok){
 function _mfSetUser(p){
   _currentUser={id:MF_STATION,email:p.username+'@'+MF_AUTH_DOMAIN,username:p.username,
                 role:p.role,display:p.display||p.username};
-  _isOwner=p.role==='Owner';
+  _isOwner=p.role==='owner';
 }
 function _mfCachedProfile(uid){
   try{ var c=JSON.parse(localStorage.getItem('mf_profile')||'null'); return (c&&c.uid===uid)?c:null; }catch(e){ return null; }
@@ -476,7 +476,7 @@ async function mfAuthBoot(){
   }
   try{
     c.auth.onAuthStateChange(function(ev){
-      // Refresh token revoked (password reset / removed by the Owner) or expired for good.
+      // Refresh token revoked (password reset / removed by the owner) or expired for good.
       if(ev==='SIGNED_OUT'&&_currentUser&&!_mfSigningOut){
         _currentUser=null;_isOwner=false;showLoginScreen();
         _mfLoginMsg('You have been signed out — please sign in again.');
@@ -498,17 +498,17 @@ async function mfAuthBoot(){
     _mfLoadProfile(s).then(function(p){
       if(!p||!_currentUser)return;
       if(p.none){ signOut(); _mfLoginMsg('This account is no longer a member of the station.'); return; }
-      if(p.must_change||p.role!==cp0.role)location.reload();   // role changed by the Owner
+      if(p.must_change||p.role!==cp0.role)location.reload();   // role changed by the owner
     });
     return;
   }
   var p=await _mfLoadProfile(s);
   if(!p){ showLoginScreen(); _mfLoginMsg('Could not check your account — connect to the internet and try again.'); return; }
   if(p.setup){ await _mfSignOutQuiet(); showLoginScreen(); _mfLoginMsg(MF_SETUP_MSG); return; }
-  if(p.none){ await _mfSignOutQuiet(); showLoginScreen(); _mfLoginMsg('This account is not a member of the station. Ask the Owner.'); return; }
+  if(p.none){ await _mfSignOutQuiet(); showLoginScreen(); _mfLoginMsg('This account is not a member of the station. Ask the owner.'); return; }
   _mfSetUser(p);
   if(p.must_change){ _mfPending={username:p.username,mode:'change'}; showLoginScreen();
-    _mfShowNewPw('The Owner set a temporary password for you. Choose your own to continue.'); return; }
+    _mfShowNewPw('The owner set a temporary password for you. Choose your own to continue.'); return; }
   showApp();
 }
 async function _mfSignOutQuiet(){
@@ -526,14 +526,14 @@ async function signIn(u,p){
     var prof=await _mfLoadProfile(r.data.session);
     if(!prof){ _mfLoginMsg('Signed in, but your account could not be loaded. Check the connection.'); return; }
     if(prof.setup){ await _mfSignOutQuiet(); _mfLoginMsg(MF_SETUP_MSG); return; }
-    if(prof.none){ await _mfSignOutQuiet(); _mfLoginMsg('This account is not a member of the station. Ask the Owner.'); return; }
+    if(prof.none){ await _mfSignOutQuiet(); _mfLoginMsg('This account is not a member of the station. Ask the owner.'); return; }
     _mfSetUser(prof);
     if(prof.must_change){ _mfPending={username:prof.username,old:p,mode:'change'};
-      _mfShowNewPw('The Owner set a temporary password for you. Choose your own to continue.'); return; }
+      _mfShowNewPw('The owner set a temporary password for you. Choose your own to continue.'); return; }
     _mfDone(); return;
   }
   if(_mfNetErr(r.error)){ _mfLoginMsg('No internet — signing in on a phone the first time needs a connection.'); return; }
-  // No account yet: a one-time password from the Owner lets you create one.
+  // No account yet: a one-time password from the owner lets you create one.
   var lc=await _mfLegacy(u,p);
   if(lc&&lc.setup){ _mfLoginMsg(MF_SETUP_MSG); return; }
   if(lc&&lc.ok){
@@ -541,8 +541,8 @@ async function signIn(u,p){
     _mfShowNewPw('Welcome'+(lc.display?', '+lc.display:'')+'. One-time step: choose your own password. The one-time password stops working after this.');
     return;
   }
-  if(lc&&lc.locked){ _mfLoginMsg('Too many wrong passwords for this invite — ask the Owner to invite you again.'); return; }
-  _mfLoginMsg('Invalid username or password. New here? Use the one-time password the Owner gave you.');
+  if(lc&&lc.locked){ _mfLoginMsg('Too many wrong passwords for this invite — ask the owner to invite you again.'); return; }
+  _mfLoginMsg('Invalid username or password. New here? Use the one-time password the owner gave you.');
 }
 
 async function doLogin(){
@@ -624,8 +624,8 @@ async function mfSubmitNewPw(){
         if(si.error||!si.data||!si.data.session){
           var em=String((si.error&&si.error.message)||(s.error&&s.error.message)||'');
           _mfLoginMsg(/confirm/i.test(em)||(!s.error&&!(s.data&&s.data.session))
-            ?'Supabase is asking for e-mail confirmation. The Owner must turn off "Confirm email" (Supabase → Authentication → Email), then ask the Owner to invite you again.'
-            :'An account with this username already exists with a different password. Ask the Owner to invite you again.');
+            ?'Supabase is asking for e-mail confirmation. The owner must turn off "Confirm email" (Supabase → Authentication → Email), then ask the owner to invite you again.'
+            :'An account with this username already exists with a different password. Ask the owner to invite you again.');
           return;
         }
         s=si;
@@ -653,7 +653,7 @@ function mfChangePassword(){
   showLoginScreen(); _mfShowNewPw('Choose a new password for '+_currentUser.username+'. You stay signed in on this phone.',true);
 }
 
-// ── Members (Owners only; the server enforces it too) ──
+// ── Members (owners only; the server enforces it too) ──
 function _mfGenTemp(){
   var a='abcdefghjkmnpqrstuvwxyz23456789', s='';
   var r=new Uint32Array(8); (window.crypto||{getRandomValues:function(x){for(var i=0;i<x.length;i++)x[i]=Math.random()*1e9;return x;}}).getRandomValues(r);
@@ -699,11 +699,11 @@ async function mfOpenMembers(note){
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
         '<input id="mfm_u" placeholder="username (e.g. ravi)" style="'+fs+'">'+
         '<input id="mfm_n" placeholder="full name" style="'+fs+'">'+
-        '<select id="mfm_r" style="'+fs+'"><option value="Staff">Staff</option><option value="Manager">Manager</option><option value="Owner">Owner</option></select>'+
+        '<select id="mfm_r" style="'+fs+'"><option value="staff">staff</option><option value="manager">manager</option><option value="owner">owner</option></select>'+
         '<button class="save-btn" style="margin:0;padding:8px" onclick="mfMemberAdd()">INVITE</button></div>'+
       '<div style="color:var(--muted);font-size:10px;margin-top:8px;line-height:1.6">They get a temporary password to sign in with once; the app then makes them choose their own. '+
-      'Staff: the app hides Owner pages (P&amp;L, drawings, activity log, this panel). The database itself keeps drawings and the activity log Owners-only and lets only Owners delete records permanently; '+
-      'other business records (shifts, credit, stock, salaries) are readable by every member — add Staff you trust with those numbers.</div></div>';
+      'Staff: the app hides owner pages (P&amp;L, drawings, activity log, this panel). The database itself keeps drawings and the activity log owners-only and lets only owners delete records permanently; '+
+      'other business records (shifts, credit, stock, salaries) are readable by every member — add staff you trust with those numbers.</div></div>';
 }
 async function _mfMemberCall(fn,args){
   try{ var r=await _mfClient().rpc(fn,args); if(r.error)throw r.error; return {ok:true,msg:r.data}; }
@@ -768,7 +768,7 @@ initAuth();
       <button class="shift-btn morning active" onclick="setShift('morning')">☀ MORNING</button>
       <button class="shift-btn night" onclick="setShift('night')">🌙 NIGHT</button>
     </div>
-    <button class="Owner-only" id="plQuickBtn" onclick="showPage('report')" title="Jump to Profit & Loss" style="font-family:'Syne',sans-serif;font-weight:800;font-size:11px;letter-spacing:1px;padding:6px 14px;border-radius:6px;border:1px solid rgba(0,212,160,.35);background:rgba(0,212,160,.1);color:var(--petrol);cursor:pointer;align-items:center;gap:6px">📈 P&amp;L</button>
+    <button class="owner-only" id="plQuickBtn" onclick="showPage('report')" title="Jump to Profit & Loss" style="font-family:'Syne',sans-serif;font-weight:800;font-size:11px;letter-spacing:1px;padding:6px 14px;border-radius:6px;border:1px solid rgba(0,212,160,.35);background:rgba(0,212,160,.1);color:var(--petrol);cursor:pointer;align-items:center;gap:6px">📈 P&amp;L</button>
   </div>
 <div style="display:flex;align-items:center;gap:8px;margin-left:8px">
       <div id="globalAlertBell" style="position:relative;cursor:pointer" onclick="toggleGlobalAlerts()" title="Alerts">
@@ -799,7 +799,7 @@ initAuth();
     <button class="nav-tab" onclick="showPage('entry');closeMenu()"><span class="tab-icon">📋</span>Shift Entry</button>
     <button class="nav-tab" onclick="showPage('tally');closeMenu()"><span class="tab-icon">⚖</span>Tally</button>
     <button class="nav-tab" onclick="showPage('history');closeMenu()"><span class="tab-icon">🗂</span>History</button>
-    <button class="nav-tab Owner-only" onclick="showPage('report');closeMenu()"><span class="tab-icon">📈</span>Reports<span class="Owner-badge" title="Owner only">🔒</span></button>
+    <button class="nav-tab owner-only" onclick="showPage('report');closeMenu()"><span class="tab-icon">📈</span>Reports<span class="owner-badge" title="Owner only">🔒</span></button>
     <div class="sidebar-section">INVENTORY</div>
     <button class="nav-tab" onclick="showPage('stock');closeMenu()"><span class="tab-icon">📦</span>Oil Stock</button>
     <button class="nav-tab" onclick="showPage('oilreg');closeMenu()"><span class="tab-icon">🧾</span>Oil Register</button>
@@ -809,14 +809,14 @@ initAuth();
     <button class="nav-tab" onclick="showPage('order');closeMenu()"><span class="tab-icon">🛒</span>Order Advisor</button>
     <div class="sidebar-section">ACCOUNTS</div>
     <button class="nav-tab" onclick="showPage('ledger');closeMenu()"><span class="tab-icon">📒</span>Credit Ledger</button>
-    <button class="nav-tab" onclick="showPage('Staff');closeMenu()"><span class="tab-icon">👥</span>Staff Register</button>
-    <button class="nav-tab Owner-only" onclick="showPage('drawings');closeMenu()"><span class="tab-icon">💼</span>Owner Drawings<span class="Owner-badge" title="Owner only">🔒</span></button>
+    <button class="nav-tab" onclick="showPage('staff');closeMenu()"><span class="tab-icon">👥</span>Staff Register</button>
+    <button class="nav-tab owner-only" onclick="showPage('drawings');closeMenu()"><span class="tab-icon">💼</span>Owner Drawings<span class="owner-badge" title="Owner only">🔒</span></button>
     <div class="sidebar-section">DATA</div>
-    <button class="nav-tab Owner-only" onclick="showPage('activity');closeMenu()"><span class="tab-icon">📜</span>Activity Log<span class="Owner-badge" title="Owner only">🔒</span></button>
-    <button class="nav-tab Owner-only" onclick="exportFullBackup();closeMenu()"><span class="tab-icon">💾</span>Backup &amp; Download<span class="Owner-badge" title="Owner only">🔒</span></button>
-    <button class="nav-tab Owner-only" onclick="openStatement();closeMenu()"><span class="tab-icon">🧾</span>Business Statement<span class="Owner-badge" title="Owner only">🔒</span></button>
+    <button class="nav-tab owner-only" onclick="showPage('activity');closeMenu()"><span class="tab-icon">📜</span>Activity Log<span class="owner-badge" title="Owner only">🔒</span></button>
+    <button class="nav-tab owner-only" onclick="exportFullBackup();closeMenu()"><span class="tab-icon">💾</span>Backup &amp; Download<span class="owner-badge" title="Owner only">🔒</span></button>
+    <button class="nav-tab owner-only" onclick="openStatement();closeMenu()"><span class="tab-icon">🧾</span>Business Statement<span class="owner-badge" title="Owner only">🔒</span></button>
     <button class="nav-tab" onclick="exportPDF();closeMenu()"><span class="tab-icon">📄</span>Export Report (PDF)</button>
-    <button class="nav-tab Owner-only" onclick="document.getElementById('import-file').click();closeMenu()"><span class="tab-icon">📥</span>Import Backup<span class="Owner-badge" title="Owner only">🔒</span></button>
+    <button class="nav-tab owner-only" onclick="document.getElementById('import-file').click();closeMenu()"><span class="tab-icon">📥</span>Import Backup<span class="owner-badge" title="Owner only">🔒</span></button>
     <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
     <button class="nav-tab" onclick="syncNow();closeMenu()"><span class="tab-icon">&#8635;</span>Sync Cloud</button>
   </div>
@@ -1225,7 +1225,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
   </div>
 </div>
 
-<!-- ════ PACK SIZES Manager MODAL ════ -->
+<!-- ════ PACK SIZES MANAGER MODAL ════ -->
 <div id="packSizesOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:850;align-items:center;justify-content:center;padding:20px">
   <div style="background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:22px;max-width:520px;width:100%;max-height:85vh;overflow-y:auto">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
@@ -1526,7 +1526,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <div class="res"><span class="res-lbl">Credit Payments Back</span><span class="res-val d" id="r_credback">₹0</span></div>
         <div class="total-row"><span class="total-lbl">TOTAL RIGHT (EXPECTED)</span><span class="total-val" style="color:var(--green)" id="total_right">₹0</span></div>
       </div>
-      <div class="sec" style="display:flex;align-items:center;justify-content:space-between"><span><span class="dot db"></span>Staff ON DUTY — ATTENDANCE</span>
+      <div class="sec" style="display:flex;align-items:center;justify-content:space-between"><span><span class="dot db"></span>STAFF ON DUTY — ATTENDANCE</span>
         <span id="sa_summary" style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0;text-transform:none;color:var(--muted)"></span>
       </div>
       <div class="card" id="sa_card">
@@ -1863,7 +1863,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:11px;letter-spacing:1px;color:var(--text)"
       title="Off by default: food is already in shift expenses and settlement here is irregular, so an accrued salary double-counts.">
       <input type="checkbox" id="plWages" onchange="toggleWagesInPL()">
-      👥 DEDUCT Staff WAGES
+      👥 DEDUCT STAFF WAGES
     </label>
     <button id="cmpFilterTagBtn" onclick="toggleTagFilter()" style="margin-left:auto;font-family:'Syne',sans-serif;font-size:10px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:5px 10px;border-radius:3px;cursor:pointer;font-weight:700;letter-spacing:1px">🏷 FILTER BY TAG</button>
     <select id="cmpTagFilter" onchange="genReport()" style="display:none;padding:5px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px">
@@ -2063,7 +2063,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
           <button class="btn btn-g" onclick="document.getElementById('cust_limit_panel').style.display='none'">&#10005;</button>
         </div>
         <div id="limit_preview" style="margin-top:8px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);line-height:1.5">
-          Leave a box empty or 0 for no limit. Staff are warned when entering credit in a shift; Owners get a dashboard alert.</div>
+          Leave a box empty or 0 for no limit. Staff are warned when entering credit in a shift; owners get a dashboard alert.</div>
       </div>
     </div>
     <!-- Move an amount between two customer accounts. Both sides are written. -->
@@ -2285,24 +2285,24 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
   </div>
 </div>
 
-<!-- ════ Staff REGISTER PAGE ════ -->
-<div class="page" id="page-Staff" style="padding:16px">
+<!-- ════ STAFF REGISTER PAGE ════ -->
+<div class="page" id="page-staff" style="padding:16px">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
-    <div class="sec" style="margin:0;border:none"><span class="dot db"></span>Staff REGISTER</div>
+    <div class="sec" style="margin:0;border:none"><span class="dot db"></span>STAFF REGISTER</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-g" onclick="StaffShowTab('list')" id="Staff_tab_list">Staff LIST</button>
-      <button class="btn btn-g" onclick="StaffShowTab('attendance')" id="Staff_tab_att">ATTENDANCE</button>
-      <button class="btn btn-g" onclick="StaffShowTab('payments')" id="Staff_tab_pay">PAYMENTS</button>
-      <button class="btn btn-g" onclick="StaffShowTab('report')" id="Staff_tab_report">&#128197; MONTHLY REPORT</button>
+      <button class="btn btn-g" onclick="staffShowTab('list')" id="staff_tab_list">STAFF LIST</button>
+      <button class="btn btn-g" onclick="staffShowTab('attendance')" id="staff_tab_att">ATTENDANCE</button>
+      <button class="btn btn-g" onclick="staffShowTab('payments')" id="staff_tab_pay">PAYMENTS</button>
+      <button class="btn btn-g" onclick="staffShowTab('report')" id="staff_tab_report">&#128197; MONTHLY REPORT</button>
     </div>
   </div>
 
-  <!-- ── TAB: Staff LIST ── -->
-  <div id="Staff_view_list">
-    <div style="margin-bottom:12px"><button class="btn btn-g" onclick="toggleStaffForm()">&#65291; ADD Staff</button></div>
-    <div id="Staff_form" style="display:none;margin-bottom:14px">
+  <!-- ── TAB: STAFF LIST ── -->
+  <div id="staff_view_list">
+    <div style="margin-bottom:12px"><button class="btn btn-g" onclick="toggleStaffForm()">&#65291; ADD STAFF</button></div>
+    <div id="staff_form" style="display:none;margin-bottom:14px">
       <div class="card" style="border-color:var(--blue);max-width:640px">
-        <div class="card-head" style="color:var(--blue)" id="sf_form_title">NEW Staff MEMBER</div>
+        <div class="card-head" style="color:var(--blue)" id="sf_form_title">NEW STAFF MEMBER</div>
         <div class="fgrid" style="margin-bottom:10px">
           <div><div class="flabel" style="margin-bottom:4px">NAME</div>
             <input type="text" id="sf_name" placeholder="Full name"></div>
@@ -2327,12 +2327,12 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         </div>
       </div>
     </div>
-    <div id="Staff_cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px"></div>
-    <div id="Staff_empty" style="text-align:center;padding:30px;color:var(--muted);font-family:'JetBrains Mono',monospace;display:none">No Staff added yet. Click + ADD Staff.</div>
+    <div id="staff_cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px"></div>
+    <div id="staff_empty" style="text-align:center;padding:30px;color:var(--muted);font-family:'JetBrains Mono',monospace;display:none">No staff added yet. Click + ADD STAFF.</div>
   </div>
 
   <!-- ── TAB: ATTENDANCE ── -->
-  <div id="Staff_view_attendance" style="display:none">
+  <div id="staff_view_attendance" style="display:none">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
       <div class="flabel">DATE</div>
       <input type="date" id="att_date" class="date-inp" onchange="renderAttendance()">
@@ -2343,14 +2343,14 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
     </div>
     <div class="card" style="overflow-x:auto">
       <table class="data-tbl" style="width:100%;min-width:540px">
-        <thead><tr><th>Staff</th><th>ROLE</th><th>STATUS</th><th>NOTES</th><th></th></tr></thead>
+        <thead><tr><th>STAFF</th><th>ROLE</th><th>STATUS</th><th>NOTES</th><th></th></tr></thead>
         <tbody id="att_body"></tbody>
       </table>
     </div>
   </div>
 
   <!-- ── TAB: MONTHLY REPORT ── -->
-  <div id="Staff_view_report" style="display:none">
+  <div id="staff_view_report" style="display:none">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
       <div class="flabel">MONTH</div>
       <input type="month" id="pay_month" class="date-inp" onchange="renderStaffReport()">
@@ -2397,7 +2397,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
           </div>
         </div>
         <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);line-height:1.6">
-          These rules are shared across every device, so all four Owners compute the
+          These rules are shared across every device, so all four owners compute the
           same wage from the same register. Changing them changes the figures for
           <b>every</b> month, including ones already paid &mdash; payments already recorded
           are unaffected, only what this page says is owed.
@@ -2410,7 +2410,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
     <div class="card" style="overflow-x:auto">
       <table class="data-tbl" style="width:100%;min-width:900px">
         <thead><tr>
-          <th>Staff</th><th title="Days in the month this person was employed">ELIGIBLE</th>
+          <th>STAFF</th><th title="Days in the month this person was employed">ELIGIBLE</th>
           <th title="Shifts marked present — two shifts in one day count twice here, once in DAYS PAID">PRESENT<br><small>shifts</small></th><th>HALF<br><small>shifts</small></th><th>ABSENT<br><small>shifts</small></th>
           <th title="Eligible days with no attendance mark at all">UNMARKED</th>
           <th title="Present + half-day value, after the double-shift rule">DAYS PAID</th>
@@ -2420,24 +2420,24 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <tbody id="payroll_body"></tbody>
       </table>
       <div id="payroll_empty" style="text-align:center;padding:26px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;display:none">
-        No active Staff. Add Staff on the Staff LIST tab first.
+        No active staff. Add staff on the STAFF LIST tab first.
       </div>
     </div>
 
     <div id="payroll_notes" style="display:flex;flex-direction:column;gap:6px;margin-top:12px"></div>
-    <!-- MF_FIVE_V1: cash shortages by Staff on duty -->
-    <div id="Staff_short_wrap" style="margin-top:16px"></div>
+    <!-- MF_FIVE_V1: cash shortages by staff on duty -->
+    <div id="staff_short_wrap" style="margin-top:16px"></div>
   </div>
 
   <!-- ── TAB: PAYMENTS ── -->
-  <div id="Staff_view_payments" style="display:none">
+  <div id="staff_view_payments" style="display:none">
     <div style="margin-bottom:12px"><button class="btn btn-g" onclick="togglePaymentForm()">&#65291; RECORD PAYMENT</button></div>
     <div id="pay_form" style="display:none;margin-bottom:14px">
       <div class="card" style="border-color:var(--green);max-width:680px">
         <div class="card-head" style="color:var(--green)">RECORD PAYMENT</div>
         <div class="fgrid" style="margin-bottom:10px">
-          <div><div class="flabel" style="margin-bottom:4px">Staff</div>
-            <select id="pf_Staff" onchange="onPayStaffChange()" style="width:100%;padding:5px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;height:32px"></select></div>
+          <div><div class="flabel" style="margin-bottom:4px">STAFF</div>
+            <select id="pf_staff" onchange="onPayStaffChange()" style="width:100%;padding:5px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;height:32px"></select></div>
           <div><div class="flabel" style="margin-bottom:4px">DATE</div>
             <input type="date" id="pf_date" class="date-inp" style="width:100%"></div>
           <div><div class="flabel" style="margin-bottom:4px">TYPE</div>
@@ -2453,7 +2453,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <!-- Advance deduction row (visible only on salary type if pending advance exists) -->
         <div id="pf_adv_row" style="display:none;margin-bottom:10px;padding:10px;background:rgba(255,193,77,.08);border:1px solid rgba(255,193,77,.3);border-radius:6px">
           <div style="font-size:11px;color:var(--diesel);margin-bottom:6px">
-            ⚠ <span id="pf_adv_msg">This Staff has pending advance.</span>
+            ⚠ <span id="pf_adv_msg">This staff has pending advance.</span>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
@@ -2476,7 +2476,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
     </div>
     <div class="card" style="overflow-x:auto">
       <table class="data-tbl" style="width:100%;min-width:600px">
-        <thead><tr><th>DATE</th><th>Staff</th><th>TYPE</th><th>AMOUNT</th><th>NOTES</th><th></th></tr></thead>
+        <thead><tr><th>DATE</th><th>STAFF</th><th>TYPE</th><th>AMOUNT</th><th>NOTES</th><th></th></tr></thead>
         <tbody id="pay_body"></tbody>
       </table>
       <div id="pay_empty" style="text-align:center;padding:24px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;display:none">No payments recorded yet.</div>
@@ -2484,14 +2484,14 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
   </div>
 </div>
 
-<!-- ════ Owner DRAWINGS PAGE ════ -->
+<!-- ════ OWNER DRAWINGS PAGE ════ -->
 <div class="page" id="page-drawings" style="padding:16px">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
-    <div class="sec" style="margin:0;border:none"><span class="dot dpu"></span>Owner DRAWINGS</div>
+    <div class="sec" style="margin:0;border:none"><span class="dot dpu"></span>OWNER DRAWINGS</div>
     <button class="btn btn-g" onclick="toggleDrawingForm()">&#65291; RECORD DRAWING</button>
   </div>
   <div style="font-size:11px;color:var(--muted);margin-bottom:14px;font-family:'JetBrains Mono',monospace;line-height:1.6">
-    Track money taken from the business for personal/family use. Keeps Owner withdrawals separate from business expenses for cleaner P&amp;L.
+    Track money taken from the business for personal/family use. Keeps owner withdrawals separate from business expenses for cleaner P&amp;L.
   </div>
   <div id="draw_form" style="display:none;margin-bottom:14px">
     <div class="card" style="border-color:#b48cff;max-width:560px">
@@ -2502,7 +2502,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <div><div class="flabel">AMOUNT (₹)</div>
           <input type="number" id="dw_amt" placeholder="0" min="0"></div>
         <div><div class="flabel">TAKEN BY</div>
-          <select id="dw_Owner">
+          <select id="dw_owner">
             <option value="">— select —</option>
             <option>Shri Viswath C K</option><option>Kalimuthu M</option>
             <option>Kumutha K</option><option>Nithin K</option><option>Other</option>
@@ -2986,7 +2986,7 @@ let plCI=null,collCI=null;
 
 document.getElementById('shiftDate').value=_isoLocal();
 setShiftId();setDateTime();setInterval(setDateTime,30000);
-// Open on the shift that is due. Deferred: StaffList is declared further down
+// Open on the shift that is due. Deferred: staffList is declared further down
 // this script, and the on-duty card needs it.
 setTimeout(function(){
   try{ const _s=mfDueSlot(); document.getElementById('shiftDate').value=_s.date; setShift(_s.shift,true); _slotManual=false; }catch(e){console.warn('shift clock init:',e);}
@@ -3599,7 +3599,7 @@ function _applyDeviceConfig(cfg){
   _cfgApplyIfNewer('looseOilCfg', cfg.looseOilCfg);
   _cfgApplyIfNewer('packStockCfg', cfg.packStockCfg);
   _cfgApplyIfNewer('monthTarget', cfg.monthTarget);   // MF_DASH_PULSE_V4
-  // Payroll rules must be identical everywhere or two Owners compute two
+  // Payroll rules must be identical everywhere or two owners compute two
   // different wages from the same register.
   if(cfg.payrollCfg)  localStorage.setItem('payrollCfg', JSON.stringify(cfg.payrollCfg));
   // Invoice header and numbering: a customer should not get two differently
@@ -3963,7 +3963,7 @@ function _draftFromRecord(r){
 }
 function editShiftInForm(id){
   var r=records.find(function(x){return x.id===id;}); if(!r)return;
-  if(_isLocked(r)){showToast('🔒 '+id+' is locked — an Owner must unlock it first');return;}
+  if(_isLocked(r)){showToast('🔒 '+id+' is locked — an owner must unlock it first');return;}
   if(!_entryPristine()&&_curSlotId()!==id&&!confirm('The shift form has figures for '+_curSlotId()+'. They stay saved as an unsaved entry for that shift.\n\nLoad '+id+' to edit?'))return;
   _saveDraftNow();
   var d=_draftFromRecord(r);
@@ -4054,35 +4054,35 @@ function mfAdvanceAfterSave(rec){
   setShift(s.shift,true);
 }
 
-// ── Staff ON DUTY ─────────────────────────────────────────────────────────
+// ── STAFF ON DUTY ─────────────────────────────────────────────────────────
 // Marks are staged per slot and written with the shift, so the register and
 // the shift are recorded together. A slot never touched in the form leaves the
 // register exactly as it is (the ATTENDANCE tab keeps working on its own).
-var _saDrafts={};   // { 'YYYY-MM-DD|shift': { StaffId: 'present'|'half'|'absent'|'' } }
+var _saDrafts={};   // { 'YYYY-MM-DD|shift': { staffId: 'present'|'half'|'absent'|'' } }
 function _saKey(date,sh){return date+'|'+sh;}
 function _saCurSlot(){return {date:document.getElementById('shiftDate').value||_isoLocal(),shift:shift};}
 function _saActiveStaff(){
-  try{ return StaffList.filter(s=>s.active); }catch(e){ return null; }   // not declared yet during boot
+  try{ return staffList.filter(s=>s.active); }catch(e){ return null; }   // not declared yet during boot
 }
-function _saSaved(date,sh,StaffId){
-  const a=StaffAttendance.find(x=>x.StaffId===StaffId&&x.date===date&&x.shift===sh);
+function _saSaved(date,sh,staffId){
+  const a=staffAttendance.find(x=>x.staffId===staffId&&x.date===date&&x.shift===sh);
   return a?a.status:'';
 }
-function _saMark(date,sh,StaffId){
+function _saMark(date,sh,staffId){
   const d=_saDrafts[_saKey(date,sh)];
-  if(d&&Object.prototype.hasOwnProperty.call(d,StaffId))return d[StaffId];
-  return _saSaved(date,sh,StaffId);
+  if(d&&Object.prototype.hasOwnProperty.call(d,staffId))return d[staffId];
+  return _saSaved(date,sh,staffId);
 }
-function _saSet(StaffId,status){
+function _saSet(staffId,status){
   const s=_saCurSlot(), k=_saKey(s.date,s.shift);
   if(!_saDrafts[k])_saDrafts[k]={};
-  _saDrafts[k][StaffId]=status;
+  _saDrafts[k][staffId]=status;
   if(typeof _saveDraftSoon==='function')_saveDraftSoon();   // MF_SHIFT_ENTRY_V1
 }
-function saMark(StaffId,status){
+function saMark(staffId,status){
   if(_lockedRec(document.getElementById('shiftId').textContent))return;
   const s=_saCurSlot();
-  _saSet(StaffId,_saMark(s.date,s.shift,StaffId)===status?'':status);
+  _saSet(staffId,_saMark(s.date,s.shift,staffId)===status?'':status);
   renderShiftAttendance();
 }
 function saMarkAll(status){
@@ -4112,7 +4112,7 @@ function renderShiftAttendance(){
   const st=_saActiveStaff();
   if(st===null)return;
   if(!st.length){
-    list.innerHTML='<div style="padding:10px 0;color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:11px">No active Staff. <span style="color:var(--petrol);cursor:pointer" onclick="showPage(\'Staff\')">Add Staff →</span></div>';
+    list.innerHTML='<div style="padding:10px 0;color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:11px">No active staff. <span style="color:var(--petrol);cursor:pointer" onclick="showPage(\'staff\')">Add staff →</span></div>';
     if(sum)sum.textContent='';return;
   }
   const s=_saCurSlot(), p=mfPrevSlot(s);
@@ -4140,7 +4140,7 @@ function _saIssues(){
   if(!st||!st.length)return [];
   const s=_saCurSlot(), c=_saCounts(s.date,s.shift), out=[];
   if(c.unmarked)out.push({level:'warn',machine:'Attendance',
-    msg:c.unmarked+' Staff not marked — '+c.unmarkedNames.slice(0,4).map(_esc).join(', ')+(c.unmarked>4?'…':'')+
+    msg:c.unmarked+' staff not marked — '+c.unmarkedNames.slice(0,4).map(_esc).join(', ')+(c.unmarked>4?'…':'')+
         '. Payroll will count '+(c.unmarked!==1?'these':'this')+' as unmarked.'});
   if(!c.unmarked&&c.present+c.half===0)out.push({level:'warn',machine:'Attendance',
     msg:'Nobody is marked present on this shift.'});
@@ -4152,21 +4152,21 @@ function _saCommit(date,sh){
   const res={present:0,half:0,absent:0,cleared:0,changed:0};
   if(!d)return res;
   Object.keys(d).forEach(sid=>{
-    const StaffId=Number(sid), status=d[sid];
-    const idx=StaffAttendance.findIndex(a=>a.StaffId===StaffId&&a.date===date&&a.shift===sh);
-    const cur=idx>=0?StaffAttendance[idx].status:'';
+    const staffId=Number(sid), status=d[sid];
+    const idx=staffAttendance.findIndex(a=>a.staffId===staffId&&a.date===date&&a.shift===sh);
+    const cur=idx>=0?staffAttendance[idx].status:'';
     if(status)res[status]++;
     if(status===cur)return;
     res.changed++;
     if(!status){
-      StaffAttendance.splice(idx,1);res.cleared++;
-      if(_currentUser&&typeof sbDeleteAttendance==='function')sbDeleteAttendance(StaffId,date,sh).catch(console.error);
+      staffAttendance.splice(idx,1);res.cleared++;
+      if(_currentUser&&typeof sbDeleteAttendance==='function')sbDeleteAttendance(staffId,date,sh).catch(console.error);
       return;
     }
     let row;
-    if(idx>=0){row=StaffAttendance[idx];row.status=status;}
-    else{row={id:_newId(),StaffId:StaffId,date:date,shift:sh,status:status,notes:''};StaffAttendance.push(row);}
-    _tombDel('Staff_attendance',_attKey(row));
+    if(idx>=0){row=staffAttendance[idx];row.status=status;}
+    else{row={id:_newId(),staffId:staffId,date:date,shift:sh,status:status,notes:''};staffAttendance.push(row);}
+    _tombDel('staff_attendance',_attKey(row));
     if(_currentUser&&typeof sbSaveAttendance==='function')sbSaveAttendance(row).catch(console.error);
   });
   delete _saDrafts[k];
@@ -4185,12 +4185,12 @@ const PAGE_LABELS={
   oilreg:'🧾 OIL REGISTER',fuelload:'⛽ FUEL LOADS',dip:'📏 DIP & VARIATION',
   order:'🛒 ORDER ADVISOR',
   activity:'📜 ACTIVITY LOG',
-  Staff:'👥 Staff REGISTER',drawings:'💼 Owner DRAWINGS',
+  staff:'👥 STAFF REGISTER',drawings:'💼 OWNER DRAWINGS',
   notes:'📝 NOTES'
 };
-const Owner_ONLY_PAGES=['report','drawings','activity'];
+const OWNER_ONLY_PAGES=['report','drawings','activity'];
 function showPage(p){
-  if(Owner_ONLY_PAGES.includes(p) && !_isOwner){
+  if(OWNER_ONLY_PAGES.includes(p) && !_isOwner){
     if(typeof showToast==='function')showToast('🔒 Owner access only');
     p='dashboard';
   }
@@ -4223,7 +4223,7 @@ function showPage(p){
   if(p==='dip'&&typeof renderDip==='function')renderDip();
   if(p==='order'&&typeof renderAdvisor==='function')renderAdvisor();
   if(p==='activity'&&typeof renderActivityLog==='function')renderActivityLog();
-  if(p==='Staff'&&typeof renderStaff==='function'){StaffShowTab(_currentStaffTab||'list');}
+  if(p==='staff'&&typeof renderStaff==='function'){staffShowTab(_currentStaffTab||'list');}
   if(p==='drawings'&&typeof renderDrawings==='function')renderDrawings();
   if(p==='notes'&&typeof renderNotes==='function')renderNotes();
   if(typeof updateHeaderContext==='function')updateHeaderContext(p);
@@ -4238,7 +4238,7 @@ var PL_SHORTCUT_PAGES=['dashboard','history'];
 function updateHeaderContext(page){
   var pill=document.getElementById('shiftPill');
   if(pill)pill.style.display=SHIFT_PAGES.indexOf(page)>=0?'flex':'none';
-  // .Owner-only is display:none !important, so this has to go through the
+  // .owner-only is display:none !important, so this has to go through the
   // 'show' class rather than an inline style.
   var pl=document.getElementById('plQuickBtn');
   if(pl)pl.classList.toggle('show', !!_isOwner && PL_SHORTCUT_PAGES.indexOf(page)>=0);
@@ -4538,7 +4538,7 @@ function _todayISO(){return _isoLocal();}
 function _daysAgo(n){const d=new Date();d.setDate(d.getDate()-n);return _isoLocal(d);}
 
 // ── TEXT SAFETY. The UI builds rows with innerHTML in ~86 places, and customer,
-// Staff and supplier names go straight in. Rather than chase every sink, free
+// staff and supplier names go straight in. Rather than chase every sink, free
 // text is stripped of angle brackets on the way IN (so nothing dangerous is
 // ever stored) and escaped on the way OUT wherever new code renders it.
 function _clean(str){
@@ -6296,7 +6296,7 @@ function _doSaveShift(){
   // A locked shift is closed. Saving over it would rewrite the numbers a
   // locked P&L was read from, which is the whole thing locking prevents.
   if(_lockedRec(_shiftIdStr)){
-    showToast('🔒 '+_shiftIdStr+' is locked — an Owner must unlock it to re-save');
+    showToast('🔒 '+_shiftIdStr+' is locked — an owner must unlock it to re-save');
     return;
   }
   // MF_AUDIT_FIX_V1 — re-saving a saved shift used to overwrite its numbers
@@ -6569,7 +6569,7 @@ function renderHistory(){
 // SHIFT LOCKING
 // A saved shift could be re-saved or deleted at any time and the P&L behind it
 // changed with no record that it ever read differently. A locked shift refuses
-// both. Unlocking is an Owner action and lands in the activity log, so a
+// both. Unlocking is an owner action and lands in the activity log, so a
 // correction is visible rather than silent.
 // ══════════════════════════════════════════════════════════════════
 function _isLocked(rec){ return !!(rec&&rec.lockedAt); }
@@ -6582,7 +6582,7 @@ function lockShift(id){
   if(!rec){showToast('Record not found');return;}
   if(_isLocked(rec)){showToast('Already locked');return;}
   if(!confirm('Lock '+rec.id+'?\n\nOnce locked it cannot be edited or deleted. '+
-              'An Owner can unlock it, and that is recorded.'))return;
+              'An owner can unlock it, and that is recorded.'))return;
   rec.lockedAt=new Date().toISOString();
   rec.lockedBy=(_currentUser&&_currentUser.username)||'';
   rec.savedAt=new Date().toISOString();   // so the merge carries the lock across
@@ -6726,7 +6726,7 @@ function delRec(id){
   const rec=records.find(r=>r.id===id);
   if(!rec){showToast('Record not found');return;}
   if(_isLocked(rec)){
-    showToast('🔒 '+rec.id+' is locked — an Owner must unlock it first');
+    showToast('🔒 '+rec.id+' is locked — an owner must unlock it first');
     renderHistory();return;
   }
 
@@ -7413,8 +7413,8 @@ function renderPLWorkings(from,to,recs,P,X){
   if(X.totalCreditDiscounts>0)sl('VI. Less: Credit discounts (estimated)','5',null,_wkM(-X.totalCreditDiscounts));
   sl('<b>VII. Net profit</b>',null,null,'<b>'+(fuelUnc?'—':_wkM(X.netFinal))+'</b>','wk-tot wk-grand');
   sl('&nbsp;&nbsp;&nbsp;Net margin',null,null,fuelUnc||!P.revenue?'—':(X.netFinal/P.revenue*100).toFixed(2)+'%','wk-sub');
-  sl('VIII. Appropriation: Owner drawings','6',null,X.totalDrawings>0?_wkM(-X.totalDrawings):'—');
-  if(!X.includeWages&&X.StaffCashOut>0)sl('IX. Cash paid to Staff (wages not in VII)','4',null,_wkM(-X.StaffCashOut));
+  sl('VIII. Appropriation: owner drawings','6',null,X.totalDrawings>0?_wkM(-X.totalDrawings):'—');
+  if(!X.includeWages&&X.staffCashOut>0)sl('IX. Cash paid to staff (wages not in VII)','4',null,_wkM(-X.staffCashOut));
   sl('<b>Retained in the business</b>',null,null,'<b>'+(fuelUnc?'—':_wkM(X.cashAfterDrawings))+'</b>','wk-tot');
   var stmt='<div style="overflow-x:auto"><table class="wk-tbl wk-stmt"><thead><tr><th>PARTICULARS</th><th>NOTE</th><th '+rowS+'>₹</th><th '+rowS+'>₹</th></tr></thead><tbody>'+st.join('')+'</tbody></table></div>';
 
@@ -7522,17 +7522,17 @@ function renderPLWorkings(from,to,recs,P,X){
     '<div class="wk-p"><b>Why testing comes out of both sides:</b> the test measure is metered (so it is in sales) and poured back (so the shift books it as an expense to balance the cash). Left in, it inflates revenue and expenses equally and charges the cost of fuel that never left the tank.</div>'+
     '<div class="wk-p"><b>Chit fund</b> is shown as recorded on the shifts. It sits inside operating expenses.</div>';
 
-  // ── NOTE 4 — Staff ──────────────────────────────────────────────────
+  // ── NOTE 4 — STAFF ──────────────────────────────────────────────────
   var n4=tbl(['','₹'],[
       tr(['Salary paid in period',fmt(X.totalSalaries)]),
       tr(['less advance recovered out of salary',_wkM(-X.totalAdvRecovered)],'wk-sub'),
       tr(['add advances given',fmt(X.totalAdvances)]),
       tr(['add bonus',fmt(X.totalBonuses)]),
-      tr(['<b>Cash paid to Staff</b>','<b>'+fmt(X.StaffCashOut)+'</b>'],'wk-tot'),
+      tr(['<b>Cash paid to staff</b>','<b>'+fmt(X.staffCashOut)+'</b>'],'wk-tot'),
       tr(['Wage cost (accrual): '+(X.wagesAccrued?'earned per attendance register':'no register — salary paid'),fmt(X.totalStaffCost)])])+
     '<div class="wk-p">'+(X.includeWages
       ?'<b>Deducted in the statement</b> at the accrual figure. An advance is a loan to the employee, not a cost, so it is not expensed when paid.'
-      :'<b>Not deducted in the statement</b> (Reports → "deduct Staff wages" is off): food and tea for Staff are already in Note 3 and wages are settled irregularly. The cash paid is shown below net profit instead.')+'</div>';
+      :'<b>Not deducted in the statement</b> (Reports → "deduct staff wages" is off): food and tea for staff are already in Note 3 and wages are settled irregularly. The cash paid is shown below net profit instead.')+'</div>';
 
   // ── NOTE 5 — CREDIT DISCOUNTS ────────────────────────────────────────
   var n5='';
@@ -7558,7 +7558,7 @@ function renderPLWorkings(from,to,recs,P,X){
   var n6=(X.drawingsInRange||[]).length
     ? tbl(['DATE','PURPOSE','BY','₹'],X.drawingsInRange.map(function(d){return tr([d.date,_esc(d.purpose||'—'),_esc(d.createdBy||'—'),fmt(d.amount||0)]);})
         .concat([tr(['<b>Total</b>','','','<b>'+fmt(X.totalDrawings)+'</b>'],'wk-tot')]))+
-      '<div class="wk-p">Drawings are the Owners taking profit out — an appropriation, not an expense. They reduce what stays in the business, not the profit itself.</div>'
+      '<div class="wk-p">Drawings are the owners taking profit out — an appropriation, not an expense. They reduce what stays in the business, not the profit itself.</div>'
     : '<div class="wk-p">No drawings in this period.</div>';
 
   // ── NOTE 7 — CASH, CREDIT, PURCHASES (memorandum) ────────────────────
@@ -7703,14 +7703,14 @@ function printPLWorkings(){
 // BUSINESS STATEMENT — MF_STATEMENT_V1
 // A printable, bank-statement style account of a period: every rupee in
 // and out, date by date, with a running balance, then the registers behind
-// it (meters, customers, fuel stock, purchases, Staff), the profit & loss,
+// it (meters, customers, fuel stock, purchases, staff), the profit & loss,
 // and the exceptions. White paper on screen; prints across as many A4
 // pages as it needs, with column headings repeated on every page.
 // Read-only — nothing here writes business data.
 // ══════════════════════════════════════════════════════════════════
 var STMT_SECTIONS=[
   ['txn','Transaction statement'],['shifts','Shift & meter register'],['cust','Customer credit'],
-  ['stock','Fuel stock register'],['purch','Purchases & supplier dues'],['Staff','Staff'],
+  ['stock','Fuel stock register'],['purch','Purchases & supplier dues'],['staff','Staff'],
   ['pl','Profit & loss'],['checks','Exceptions']];
 function _stmtSecOn(k){
   var s=null; try{ s=JSON.parse(localStorage.getItem('stmtSections')||'null'); }catch(e){}
@@ -7725,7 +7725,7 @@ function _sAmt(n){ return (+n||0)?_sN(n):''; }
 function _sBal(n){ n=+n||0; return _sN(Math.abs(n))+(n<0?' Dr':' Cr'); }
 function _sD(d){ return d?new Date(d+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):''; }
 function _sL(n,dp){ return (+n||0).toLocaleString('en-IN',{minimumFractionDigits:dp==null?2:dp,maximumFractionDigits:dp==null?2:dp}); }
-function _sStaffName(id){ var s=(typeof StaffList!=='undefined'?StaffList:[]).find(function(x){return x.id===id;}); return s?s.name:'#'+id; }
+function _sStaffName(id){ var s=(typeof staffList!=='undefined'?staffList:[]).find(function(x){return x.id===id;}); return s?s.name:'#'+id; }
 var _SHIFT_ORD={morning:1,night:2};
 
 // ── Every money movement in the period, as statement lines ───────────────
@@ -7786,8 +7786,8 @@ function _stmtTransactions(from,to){
     // Header + closing line for the shift
     var coll=(r.cash||0)+(r.gpay||0)+(r.paytm||0);
     var net=L.reduce(function(s,x){return s+(x.cr||0)-(x.dr||0);},0);
-    var on=(typeof StaffAttendance!=='undefined'?StaffAttendance:[]).filter(function(a){return a.date===r.date&&a.shift===r.shift&&(a.status==='present'||a.status==='half');})
-      .map(function(a){return _sStaffName(a.StaffId)+(a.status==='half'?' (½)':'');});
+    var on=(typeof staffAttendance!=='undefined'?staffAttendance:[]).filter(function(a){return a.date===r.date&&a.shift===r.shift&&(a.status==='present'||a.status==='half');})
+      .map(function(a){return _sStaffName(a.staffId)+(a.status==='half'?' (½)':'');});
     rows.push({head:true,date:r.date,ord:o,ref:r.id,sortRef:r.id,
       desc:(r.shift==='night'?'NIGHT':'MORNING')+' SHIFT'+(typeof mfSlotLabel==='function'?' · '+mfSlotLabel({date:r.date,shift:r.shift}):'')+
         (on.length?' · On duty: '+on.join(', '):'')+(r.lockedAt?' · 🔒 locked':'')+(r.tag?' · '+r.tag:'')});
@@ -7814,14 +7814,14 @@ function _stmtTransactions(from,to){
     rows.push({date:p.date,ord:0,ref:'PACK',dr:p.totalCost,desc:'Pack purchase — '+_sL(p.qty,0)+' × '+(p.size||40)+' ml',sub:(p.supplier||'')+' @ ₹'+_sN(p.cost)+(p.notes?' · '+p.notes:'')});
   });
   // Staff
-  (typeof StaffPayments!=='undefined'?StaffPayments:[]).filter(function(p){return inR(p.date);}).forEach(function(p){
+  (typeof staffPayments!=='undefined'?staffPayments:[]).filter(function(p){return inR(p.date);}).forEach(function(p){
     var ded=+p.advanceDeducted||0, cash=p.type==='salary'?(+p.amount||0)-ded:(+p.amount||0);
     var lbl={salary:'Salary',advance:'Advance',bonus:'Bonus',chit:'Chit'}[p.type]||p.type;
-    if(cash>0)rows.push({date:p.date,ord:3,ref:'Staff',dr:cash,desc:'Staff '+lbl+' — '+_sStaffName(p.StaffId),
+    if(cash>0)rows.push({date:p.date,ord:3,ref:'STAFF',dr:cash,desc:'Staff '+lbl+' — '+_sStaffName(p.staffId),
       sub:(p.type==='salary'&&ded>0?'gross ₹'+_sN(p.amount)+' − advance recovered ₹'+_sN(ded):'')+(p.notes?' · '+p.notes:'')});
   });
   // Owner drawings
-  (typeof OwnerDrawings!=='undefined'?OwnerDrawings:[]).filter(function(d){return inR(d.date);}).forEach(function(d){
+  (typeof ownerDrawings!=='undefined'?ownerDrawings:[]).filter(function(d){return inR(d.date);}).forEach(function(d){
     rows.push({date:d.date,ord:3,ref:'DRAW',dr:d.amount||0,desc:'Owner drawing'+(d.purpose?' — '+d.purpose:''),sub:(d.createdBy?'by '+d.createdBy:'')+(d.notes?' · '+d.notes:'')});
   });
   // Money received on the ledger page (not through a shift)
@@ -8038,12 +8038,12 @@ function renderStatement(){
   }
 
   // ── 6. Staff ──
-  if(_stmtSecOn('Staff')&&typeof StaffList!=='undefined'&&StaffList.length){
-    var SP=(typeof StaffPayments!=='undefined'?StaffPayments:[]).filter(function(p){return p.date>=from&&p.date<=to;});
-    var SA=(typeof StaffAttendance!=='undefined'?StaffAttendance:[]).filter(function(a){return a.date>=from&&a.date<=to;});
+  if(_stmtSecOn('staff')&&typeof staffList!=='undefined'&&staffList.length){
+    var SP=(typeof staffPayments!=='undefined'?staffPayments:[]).filter(function(p){return p.date>=from&&p.date<=to;});
+    var SA=(typeof staffAttendance!=='undefined'?staffAttendance:[]).filter(function(a){return a.date>=from&&a.date<=to;});
     H.push('<h2>6. Staff</h2><table class="st-t"><thead><tr><th>Name</th><th>Role</th><th class="n">Present</th><th class="n">Half</th><th class="n">Absent</th><th class="n">Salary paid</th><th class="n">Advance</th><th class="n">Bonus</th><th class="n">Adv. recovered</th></tr></thead><tbody>'+
-      StaffList.map(function(s){
-        var a=SA.filter(function(x){return x.StaffId===s.id;}), p=SP.filter(function(x){return x.StaffId===s.id;});
+      staffList.map(function(s){
+        var a=SA.filter(function(x){return x.staffId===s.id;}), p=SP.filter(function(x){return x.staffId===s.id;});
         var sum=function(t){return p.filter(function(x){return x.type===t;}).reduce(function(q,x){return q+(+x.amount||0);},0);};
         if(!a.length&&!p.length&&!s.active)return '';
         return '<tr><td>'+_esc(s.name)+'</td><td>'+_esc(s.role||'')+'</td><td class="n">'+a.filter(function(x){return x.status==='present';}).length+'</td><td class="n">'+a.filter(function(x){return x.status==='half';}).length+'</td><td class="n">'+a.filter(function(x){return x.status==='absent';}).length+'</td>'+
@@ -8169,15 +8169,15 @@ function renderPL(from, to, shiftRecs){
   });
   const netProfitAfterDisc = netProfit - totalCreditDiscounts;
 
-  // ── Owner DRAWINGS in period ──
-  const drawings=JSON.parse(localStorage.getItem('OwnerDrawings')||'[]');
+  // ── OWNER DRAWINGS in period ──
+  const drawings=JSON.parse(localStorage.getItem('ownerDrawings')||'[]');
   const drawingsInRange=drawings.filter(d=>(!from||d.date>=from)&&(!to||d.date<=to));
   const totalDrawings=drawingsInRange.reduce((s,d)=>s+(d.amount||0),0);
 
-  // ── Staff PAYMENTS in period ──
-  const sPays=JSON.parse(localStorage.getItem('StaffPayments')||'[]');
+  // ── STAFF PAYMENTS in period ──
+  const sPays=JSON.parse(localStorage.getItem('staffPayments')||'[]');
   const sPaysInRange=sPays.filter(p=>(!from||p.date>=from)&&(!to||p.date<=to));
-  // Wage EXPENSE is gross salary + bonus. An advance is a loan to the Staff
+  // Wage EXPENSE is gross salary + bonus. An advance is a loan to the staff
   // member, not a cost — the old formula expensed the advance when it was paid
   // out AND again inside the salary, so wages were overstated.
   const totalSalaries=sPaysInRange.filter(p=>p.type==='salary').reduce((s,p)=>s+(p.amount||0),0);
@@ -8186,14 +8186,14 @@ function renderPL(from, to, shiftRecs){
   const totalBonuses=sPaysInRange.filter(p=>p.type==='bonus').reduce((s,p)=>s+(p.amount||0),0);
   // Earned, from the attendance register. Falls back to what was paid only if
   // no attendance has been marked at all, so the figure is never silently zero.
-  const wages=(typeof _wagesEarned==='function')?_wagesEarned(from,to):{earned:0,unmarked:0,Staff:0};
+  const wages=(typeof _wagesEarned==='function')?_wagesEarned(from,to):{earned:0,unmarked:0,staff:0};
   const wagesAccrued=wages.earned>0;
   const totalStaffCost=(wagesAccrued?wages.earned:totalSalaries)+totalBonuses;
   // Owner drawings are an appropriation of profit, not an expense. They are
   // reported below the profit line as cash taken out.
   // Wages are deliberately OUT of the profit sum unless asked for. Here the
   // settlement is irregular and partly in kind — food given on a bad day is
-  // already in the shift expenses, Staff draw money mid-month, and the balance
+  // already in the shift expenses, staff draw money mid-month, and the balance
   // is squared up later. Accruing a salary on top of that double-counts the
   // food and reports a wage cost in months nothing was settled. The cash
   // actually handed over is shown below the profit line instead, where it is a
@@ -8202,11 +8202,11 @@ function renderPL(from, to, shiftRecs){
   const wageDeduction = includeWages ? totalStaffCost : 0;
   // Declared before it is used — `const` is not hoisted, and referencing it a
   // line early threw, which took the whole P&L render down with it.
-  const StaffCashOut=totalSalaries-totalAdvRecovered+totalAdvances+totalBonuses;
+  const staffCashOut=totalSalaries-totalAdvRecovered+totalAdvances+totalBonuses;
   const netAfterAll=netProfitAfterDisc-wageDeduction;
   // When wages are not a profit deduction, the money handed over is still gone
   // out of the drawer, so it comes off the cash figure instead.
-  const cashAfterDrawings=netAfterAll-totalDrawings-(includeWages?0:StaffCashOut);
+  const cashAfterDrawings=netAfterAll-totalDrawings-(includeWages?0:staffCashOut);
 
   // ── IS THE COST OF THE FUEL EVEN KNOWN? ───────────────────────────────
   // With no load recorded on or before the period end, the weighted-average
@@ -8253,11 +8253,11 @@ function renderPL(from, to, shiftRecs){
       {cls:'opex', lbl:'Staff Wages', val:'−'+fmt(totalStaffCost),
        sub:(wagesAccrued
              ? (wages.onContract>0
-                 ? `${wages.onContract} of ${wages.Staff} Staff accrued on contract salary — their attendance is ${Math.round(100-100*wages.marked/Math.max(1,wages.eligible))}% unmarked`
-                 : `Earned by ${wages.Staff} Staff from the attendance register`)+
+                 ? `${wages.onContract} of ${wages.staff} staff accrued on contract salary — their attendance is ${Math.round(100-100*wages.marked/Math.max(1,wages.eligible))}% unmarked`
+                 : `Earned by ${wages.staff} staff from the attendance register`)+
                (totalBonuses>0?` + ${fmt(totalBonuses)} bonus`:'')+
                ` • ${fmt(totalSalaries)} of it paid so far`
-             : `No Staff on the register — using the ${fmt(totalSalaries)} actually paid`)},
+             : `No staff on the register — using the ${fmt(totalSalaries)} actually paid`)},
     ]:[]),
     ...(totalCreditDiscounts>0?[
       {cls:'opex',  lbl:'Credit Discounts', val:'−'+fmt(totalCreditDiscounts),
@@ -8286,8 +8286,8 @@ function renderPL(from, to, shiftRecs){
       {cls:'opex', lbl:'Cash Handed Over', val:fmt(handoverTotal),
        sub:'Taken from the drawer during the shift — moved, not spent'},
     ]:[]),
-    ...(StaffCashOut>0?[
-      {cls:'cogs', lbl:'Paid to Staff (cash out)', val:fmt(StaffCashOut),
+    ...(staffCashOut>0?[
+      {cls:'cogs', lbl:'Paid to Staff (cash out)', val:fmt(staffCashOut),
        sub:`Salary ${fmt(totalSalaries)} − advance recovered ${fmt(totalAdvRecovered)} + advances ${fmt(totalAdvances)} + bonus ${fmt(totalBonuses)}`},
     ]:[]),
     ...(totalDrawings>0?[
@@ -8296,8 +8296,8 @@ function renderPL(from, to, shiftRecs){
     ]:[]),
     ...((totalDrawings>0&&!fuelUncosted)?[
       {cls: cashAfterDrawings>=0?'net-pos':'net-neg', lbl:'Left After Drawings', val:fmt(cashAfterDrawings),
-       sub:`Net profit less ${fmt(totalDrawings)} taken by the Owners`+
-           (includeWages?'':` and ${fmt(StaffCashOut)} paid to Staff`)},
+       sub:`Net profit less ${fmt(totalDrawings)} taken by the owners`+
+           (includeWages?'':` and ${fmt(staffCashOut)} paid to staff`)},
     ]:[]),
   ];
 
@@ -8329,16 +8329,16 @@ function renderPL(from, to, shiftRecs){
         '<span>NET PROFIT</span><span style="color:'+
         (fuelUncosted?'var(--diesel)':(netFinal>=0?'var(--green)':'var(--red)'))+'">'+
         (fuelUncosted?'—':fmt(netFinal))+'</span></div>'+
-      ((!includeWages&&StaffCashOut>0)?'<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--muted);margin-top:6px">'+
-        'Wages are not deducted above. '+fmt(StaffCashOut)+' was handed to Staff in this period — see CASH MOVEMENT. '+
-        'Food and tea given to them is already inside running expenses. Tick “deduct Staff wages” to include a wage cost here.</div>':'')+
+      ((!includeWages&&staffCashOut>0)?'<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--muted);margin-top:6px">'+
+        'Wages are not deducted above. '+fmt(staffCashOut)+' was handed to staff in this period — see CASH MOVEMENT. '+
+        'Food and tea given to them is already inside running expenses. Tick “deduct staff wages” to include a wage cost here.</div>':'')+
       (totalDrawings>0?'<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--muted);margin-top:6px">'+
         'Owner drawings of '+fmt(totalDrawings)+' come out of that profit — they are not deducted before it.</div>':'')+
     '</div>';
 
   const wageWarn = (includeWages && wages && wages.onContract>0)
     ? '<div class="pl-warn" style="border-color:var(--blue);background:rgba(77,166,255,.08)">ℹ '+
-      '<b>Wages are on contract salary for '+wages.onContract+' of '+wages.Staff+' Staff.</b> '+
+      '<b>Wages are on contract salary for '+wages.onContract+' of '+wages.staff+' staff.</b> '+
       'Their attendance is '+Math.round(100-100*wages.marked/Math.max(1,wages.eligible))+'% unmarked, so the '+
       'register cannot say what they worked and the full salary is charged instead. Mark attendance daily '+
       'under <b>Staff Register → Attendance</b> and this switches to the days actually worked.</div>'
@@ -8365,7 +8365,7 @@ function renderPL(from, to, shiftRecs){
     try{
       renderPLWorkings(from,to,shiftRecs,_pl,{totalCreditDiscounts:totalCreditDiscounts,includeWages:includeWages,
         totalStaffCost:totalStaffCost,wagesAccrued:wagesAccrued,totalSalaries:totalSalaries,totalAdvances:totalAdvances,
-        totalAdvRecovered:totalAdvRecovered,totalBonuses:totalBonuses,StaffCashOut:StaffCashOut,
+        totalAdvRecovered:totalAdvRecovered,totalBonuses:totalBonuses,staffCashOut:staffCashOut,
         drawingsInRange:drawingsInRange,totalDrawings:totalDrawings,netFinal:netFinal,cashAfterDrawings:cashAfterDrawings});
     }catch(e){ console.error('P&L workings failed:',e); var _w=document.getElementById('pl_workings'); if(_w)_w.innerHTML='<div class="pl-warn">Workings could not be built: '+_esc(e.message)+'</div>'; }
   }
@@ -8581,7 +8581,7 @@ function markPaid(id){
 }
 function delLedger(id){
   // MF_LEDGER_V1
-  if(!_ledgerCanEdit()){showToast('🔒 Only an Owner or Manager can delete ledger entries');return;}
+  if(!_ledgerCanEdit()){showToast('🔒 Only an owner or manager can delete ledger entries');return;}
   const _e=ledger.find(x=>x.id===id); if(!_e)return;
   const _pays=(ledgerPayments||[]).filter(function(p){return p.ledgerId!=null&&String(_intId(p.ledgerId))===String(_intId(id));});
   if(_pays.length){
@@ -8594,7 +8594,7 @@ function delLedger(id){
   const _fromAdv=_isAdv?0:_advSettled(_e);
   const _legacy=_isAdv?0:_r2((_e.paidBack||0)-_fromAdv);
   if(_legacy>0.005&&_currentUser&&!_isOwner){
-    showToast('🔒 '+fmt(_legacy)+' was marked paid without a payment record — only an Owner can delete it');return;}
+    showToast('🔒 '+fmt(_legacy)+' was marked paid without a payment record — only an owner can delete it');return;}
   let _msg='Delete this '+(_isAdv?'advance':'credit')+' of '+fmt(Math.abs(_e.amount||0))+' ('+_e.date+')?';
   if(_fromAdv>0.005)_msg+='\n\n'+fmt(_fromAdv)+' of advance that paid it goes back to the customer\'s advance.';
   if(_legacy>0.005)_msg+='\n\n⚠ '+fmt(_legacy)+' was marked paid on it with no payment record — that amount disappears with it.';
@@ -8996,7 +8996,7 @@ function _renderPayHistory(name){
 function reversePayment(key){
   var name=currentLedgerCustomer; if(!name)return;
   var role=(_currentUser&&_currentUser.role)||'';
-  if(!(_isOwner||role==='Manager')){showToast('🔒 Only an Owner or Manager can reverse a payment');return;}
+  if(!(_isOwner||role==='manager')){showToast('🔒 Only an owner or manager can reverse a payment');return;}
   var pays=ledgerPayments.filter(function(p){return p.customer===name&&(p.ref||('id:'+p.id))===key;});
   if(!pays.length){showToast('Payment not found');return;}
   if(pays.some(function(p){return p.source==='shift';})){
@@ -9057,7 +9057,7 @@ function reversePayment(key){
   showToast('↶ '+fmt(total)+' reversed — bills are back to unpaid');
 }
 function deleteCustomer(name){
-  if(!_ledgerCanEdit()){showToast('🔒 Only an Owner or Manager can delete a customer');return;}   // MF_LEDGER_V1
+  if(!_ledgerCanEdit()){showToast('🔒 Only an owner or manager can delete a customer');return;}   // MF_LEDGER_V1
   const rows=ledger.filter(e=>e.customer===name);
   const outstanding=rows.reduce(function(s,e){
     return s + (e.amount>0 ? Math.max(0,e.amount-(e.paidBack||0)) : 0);
@@ -9158,7 +9158,7 @@ function editCustLimit(){
 function saveCustLimit(){
   var name=currentLedgerCustomer; if(!name)return;
   var role=(_currentUser&&_currentUser.role)||'';
-  if(_currentUser&&!(_isOwner||role==='Manager')){showToast('🔒 Only an Owner or Manager can set credit limits');return;}
+  if(_currentUser&&!(_isOwner||role==='manager')){showToast('🔒 Only an owner or manager can set credit limits');return;}
   var lim=Math.max(0,parseFloat(document.getElementById('limit_amt_inp').value)||0);
   var days=Math.max(0,parseInt(document.getElementById('limit_days_inp').value,10)||0);
   if(!customerProfiles[name])customerProfiles[name]={};
@@ -9217,7 +9217,7 @@ document.addEventListener('input',function(e){
 // MF_LEDGER_V1 ── ledger helpers ─────────────────────────────────────────
 function _ledgerCanEdit(){
   if(!_currentUser)return true;
-  return !!(_isOwner||_currentUser.role==='Manager');
+  return !!(_isOwner||_currentUser.role==='manager');
 }
 function _allCustomerNames(){
   return [...new Set(ledger.map(function(e){return e.customer;}).concat(Object.keys(customerProfiles||{})))]
@@ -9350,7 +9350,7 @@ function _payModeHtml(id){
 // ── rename / merge ──
 function renameCustomer(){
   var old=currentLedgerCustomer; if(!old)return;
-  if(!_ledgerCanEdit()){showToast('🔒 Only an Owner or Manager can rename or merge customers');return;}
+  if(!_ledgerCanEdit()){showToast('🔒 Only an owner or manager can rename or merge customers');return;}
   var nn=prompt('Rename "'+old+'" to:\n\nType an existing customer\'s name to MERGE the two accounts into one.',old);
   if(nn===null)return;
   nn=_clean(String(nn).trim().replace(/\s+/g,' '));
@@ -9416,7 +9416,7 @@ function saveCustDiscountRate(){
 
 function editLedgerEntry(id){
   const e=ledger.find(x=>x.id===id);if(!e)return;
-  if(!_ledgerCanEdit()){showToast('🔒 Only an Owner or Manager can edit ledger entries');return;}   // MF_LEDGER_V1
+  if(!_ledgerCanEdit()){showToast('🔒 Only an owner or manager can edit ledger entries');return;}   // MF_LEDGER_V1
   const cell=document.getElementById('edit_row_'+id);
   // Build inline edit row - replace the row with inputs
   const tr=document.getElementById('ledger_tr_'+id);
@@ -9446,7 +9446,7 @@ function editLedgerEntry(id){
 function saveEditLedger(id){
   const e=ledger.find(x=>x.id===id);if(!e)return;
   // MF_LEDGER_V1: "paid" moves only through payments, reversals and advances.
-  if(!_ledgerCanEdit()){showToast('🔒 Only an Owner or Manager can edit ledger entries');return;}
+  if(!_ledgerCanEdit()){showToast('🔒 Only an owner or manager can edit ledger entries');return;}
   const nd=document.getElementById('ed_date_'+id).value||e.date;
   const ns=document.getElementById('ed_shift_'+id).value;
   const nf=document.getElementById('ed_fuel_'+id).value;
@@ -9510,12 +9510,12 @@ function viewShiftDetail(id){
     </div>`;
   }
   {
-    const _on=StaffAttendance.filter(a=>a.date===r.date&&a.shift===r.shift);
-    const _nm=id=>{const s=StaffList.find(x=>x.id===id);return s?_esc(s.name):'#'+id;};
-    const _grp=k=>_on.filter(a=>a.status===k).map(a=>_nm(a.StaffId)).join(', ');
+    const _on=staffAttendance.filter(a=>a.date===r.date&&a.shift===r.shift);
+    const _nm=id=>{const s=staffList.find(x=>x.id===id);return s?_esc(s.name):'#'+id;};
+    const _grp=k=>_on.filter(a=>a.status===k).map(a=>_nm(a.staffId)).join(', ');
     const _p=_grp('present'),_h=_grp('half'),_a=_grp('absent');
     html2+=`<div style="background:var(--s3);border:1px solid var(--border);border-radius:6px;padding:12px;margin-top:10px">
-      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">Staff ON DUTY · ${mfSlotLabel(r)}</div>
+      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">STAFF ON DUTY · ${mfSlotLabel(r)}</div>
       <div style="font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.7">${_on.length?
         (_p?`<span style="color:var(--green)">Present:</span> ${_p}<br>`:'')+
         (_h?`<span style="color:var(--blue)">Half:</span> ${_h}<br>`:'')+
@@ -11112,19 +11112,19 @@ function applyOpeningLock(){
     if(!e)return;
     e.disabled=locked;
     e.style.opacity=locked?'.55':'';
-    e.title=locked?'Locked. An Owner can unlock it.':'';
+    e.title=locked?'Locked. An owner can unlock it.':'';
   });
   const _ao=document.getElementById('opening_asof');   // MF_TANK_PACK_V1
   if(_ao){
     const _lk=locked&&(typeof _openingAsOf==='function')&&!!_openingAsOf();
     _ao.disabled=_lk; _ao.style.opacity=_lk?'.55':'';
-    _ao.title=_lk?'Locked. An Owner can unlock it.':'';
+    _ao.title=_lk?'Locked. An owner can unlock it.':'';
   }
   const _as=document.getElementById('opening_asof_slot');   // MF_OPENING_SLOT_V1
   if(_as){
     const _lk2=locked&&localStorage.getItem('fuelOpeningAsOfSlot')!=null;
     _as.disabled=_lk2; _as.style.opacity=_lk2?'.55':'';
-    _as.title=_lk2?'Locked. An Owner can unlock it.':'';
+    _as.title=_lk2?'Locked. An owner can unlock it.':'';
   }
   const b=document.getElementById('opening_lock_badge');
   if(b){
@@ -11139,9 +11139,9 @@ function toggleOpeningLock(){
   const locked=openingLocked();
   if(locked){
     // Unlocking changes the cost basis of every litre sold before the first
-    // tanker, so it is Owner-only and it goes in the log.
+    // tanker, so it is owner-only and it goes in the log.
     if(typeof _isOwner!=='undefined' && !_isOwner){
-      showToast('🔒 Only an Owner can unlock the opening stock');return;
+      showToast('🔒 Only an owner can unlock the opening stock');return;
     }
     if(!confirm('Unlock the opening stock?\n\nThe volume is the baseline every tank figure counts from, '+
       'and the landed cost prices every litre sold before your first tanker. '+
@@ -11153,7 +11153,7 @@ function toggleOpeningLock(){
     localStorage.setItem('fuelOpeningLocked','1');
     if(typeof logActivity==='function')logActivity('opening_lock','settings','opening',
       'Locked at MSD '+fuelOpeningMSD+'L @ ₹'+openingCost('MSD')+'/L, HSD '+fuelOpeningHSD+'L @ ₹'+openingCost('HSD')+'/L');
-    showToast('Locked. An Owner can unlock it if it needs correcting.');
+    showToast('Locked. An owner can unlock it if it needs correcting.');
   }
   applyOpeningLock();
   queueSettingsSave();
@@ -11188,7 +11188,7 @@ function calcOpeningStock(){
 }
 // MF_TANK_PACK_V1: date the opening stock. Setting it the first time is
 // allowed while locked (it only fixes a missing fact); changing it after that
-// moves every tank figure, so it needs the Owner unlock like the volume does.
+// moves every tank figure, so it needs the owner unlock like the volume does.
 function setOpeningAsOf(val){
   var cur=_openingAsOf();
   var e=document.getElementById('opening_asof');
@@ -11208,7 +11208,7 @@ function setOpeningAsOf(val){
   showToast(d?'✓ Opening stock dated '+d:'Opening date cleared');
 }
 // MF_OPENING_SLOT_V1: same rule as the date — the first set is allowed while
-// locked, changing it afterwards needs the Owner unlock.
+// locked, changing it afterwards needs the owner unlock.
 function setOpeningAsOfSlot(val){
   var had=localStorage.getItem('fuelOpeningAsOfSlot')!=null, cur=_openingAsOfSlot();
   var e=document.getElementById('opening_asof_slot');
@@ -11387,7 +11387,7 @@ function unlockFuelLoad(id){
   var load=fuelLoads.find(function(x){return x.id===id;});
   if(!load)return;
   if(typeof _isOwner!=='undefined' && !_isOwner){
-    showToast('Only an Owner can unlock a load record'); return;
+    showToast('Only an owner can unlock a load record'); return;
   }
   if(!confirm('Unlock '+load.type+' — '+load.inv+'?\n\n'+
     'It becomes editable and deletable again. This is recorded in the activity log.'))return;
@@ -11723,10 +11723,10 @@ function importData(event){
         if(data.packReg) localStorage.setItem('packReg',JSON.stringify(data.packReg));
         if(data.packSizes) localStorage.setItem('packSizes',JSON.stringify(data.packSizes));
         if(data.rateHistory) localStorage.setItem('rateHistory',JSON.stringify(data.rateHistory));
-        if(data.StaffList) localStorage.setItem('StaffList',JSON.stringify(data.StaffList));
-        if(data.StaffAttendance) localStorage.setItem('StaffAttendance',JSON.stringify(data.StaffAttendance));
-        if(data.StaffPayments) localStorage.setItem('StaffPayments',JSON.stringify(data.StaffPayments));
-        if(data.OwnerDrawings) localStorage.setItem('OwnerDrawings',JSON.stringify(data.OwnerDrawings));
+        if(data.staffList) localStorage.setItem('staffList',JSON.stringify(data.staffList));
+        if(data.staffAttendance) localStorage.setItem('staffAttendance',JSON.stringify(data.staffAttendance));
+        if(data.staffPayments) localStorage.setItem('staffPayments',JSON.stringify(data.staffPayments));
+        if(data.ownerDrawings) localStorage.setItem('ownerDrawings',JSON.stringify(data.ownerDrawings));
         if(data.notes) localStorage.setItem('mfNotes',JSON.stringify(data.notes));
         if(data.activityLogLocal) localStorage.setItem('activityLogLocal',JSON.stringify(data.activityLogLocal));
         overlay.remove();
@@ -12245,23 +12245,23 @@ function generateCustomerStatement(name){
 }
 
 // ═══════════════════════════════════════════════════
-// Staff REGISTER
+// STAFF REGISTER
 // ═══════════════════════════════════════════════════
-let StaffList=JSON.parse(localStorage.getItem('StaffList')||'[]');
-let StaffAttendance=JSON.parse(localStorage.getItem('StaffAttendance')||'[]');
-let StaffPayments=JSON.parse(localStorage.getItem('StaffPayments')||'[]');
+let staffList=JSON.parse(localStorage.getItem('staffList')||'[]');
+let staffAttendance=JSON.parse(localStorage.getItem('staffAttendance')||'[]');
+let staffPayments=JSON.parse(localStorage.getItem('staffPayments')||'[]');
 let _currentStaffTab='list';
-function saveStaffLS(){localStorage.setItem('StaffList',JSON.stringify(StaffList));}
-function saveAttLS(){localStorage.setItem('StaffAttendance',JSON.stringify(StaffAttendance));}
-function savePayLS(){localStorage.setItem('StaffPayments',JSON.stringify(StaffPayments));}
+function saveStaffLS(){localStorage.setItem('staffList',JSON.stringify(staffList));}
+function saveAttLS(){localStorage.setItem('staffAttendance',JSON.stringify(staffAttendance));}
+function savePayLS(){localStorage.setItem('staffPayments',JSON.stringify(staffPayments));}
 
-function StaffShowTab(tab){
+function staffShowTab(tab){
   _currentStaffTab=tab;
   const btnId={attendance:'att',payments:'pay',report:'report',list:'list'};
   ['list','attendance','payments','report'].forEach(t=>{
-    const v=document.getElementById('Staff_view_'+t);
+    const v=document.getElementById('staff_view_'+t);
     if(v)v.style.display=t===tab?'block':'none';
-    const b=document.getElementById('Staff_tab_'+btnId[t]);
+    const b=document.getElementById('staff_tab_'+btnId[t]);
     if(b){
       if(t===tab){b.style.background='var(--blue)';b.style.color='#000';}
       else {b.style.background='';b.style.color='';}
@@ -12282,10 +12282,10 @@ function StaffShowTab(tab){
 var _editingStaffId=null;
 
 function editStaff(id){
-  const st=StaffList.find(x=>x.id===id);
+  const st=staffList.find(x=>x.id===id);
   if(!st)return;
   _editingStaffId=id;
-  const f=document.getElementById('Staff_form');
+  const f=document.getElementById('staff_form');
   f.style.display='block';
   document.getElementById('sf_form_title').textContent='EDIT — '+st.name;
   document.getElementById('sf_save_btn').innerHTML='&#10003; UPDATE';
@@ -12303,14 +12303,14 @@ function editStaff(id){
 
 function _resetStaffForm(){
   _editingStaffId=null;
-  const t=document.getElementById('sf_form_title'); if(t)t.textContent='NEW Staff MEMBER';
+  const t=document.getElementById('sf_form_title'); if(t)t.textContent='NEW STAFF MEMBER';
   const b=document.getElementById('sf_save_btn'); if(b)b.innerHTML='&#10003; SAVE';
   const n=document.getElementById('sf_salary_note'); if(n)n.style.display='none';
 }
 
 function toggleStaffForm(){
   _resetStaffForm();
-  const f=document.getElementById('Staff_form');
+  const f=document.getElementById('staff_form');
   f.style.display=f.style.display==='none'?'block':'none';
   if(f.style.display==='block'){
     ['sf_name','sf_phone','sf_salary','sf_notes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
@@ -12321,7 +12321,7 @@ function toggleStaffForm(){
 
 function submitStaff(){
   const name=_clean(document.getElementById('sf_name').value.trim());
-  if(!name){showToast('Enter Staff name');return;}
+  if(!name){showToast('Enter staff name');return;}
   const role=_clean(document.getElementById('sf_role').value.trim())||'Operator';
   const phone=_clean(document.getElementById('sf_phone').value.trim());
   const salary=parseFloat(document.getElementById('sf_salary').value)||0;
@@ -12329,7 +12329,7 @@ function submitStaff(){
   const notes=_clean(document.getElementById('sf_notes').value.trim());
 
   if(_editingStaffId!=null){
-    const st=StaffList.find(x=>x.id===_editingStaffId);
+    const st=staffList.find(x=>x.id===_editingStaffId);
     if(!st){_resetStaffForm();return;}
     const changes=[];
     if(st.name!==name)   changes.push('name '+st.name+' → '+name);
@@ -12347,15 +12347,15 @@ function submitStaff(){
       changes.push('salary ₹'+oldSal.toLocaleString('en-IN')+' → ₹'+salary.toLocaleString('en-IN'));
     }
     if(!changes.length){showToast('Nothing changed');_resetStaffForm();
-      document.getElementById('Staff_form').style.display='none';return;}
+      document.getElementById('staff_form').style.display='none';return;}
 
     st.name=name; st.role=role; st.phone=phone;
     st.monthlySalary=salary; st.joinedDate=joined; st.notes=notes;
     saveStaffLS();
     if(_currentUser&&typeof sbSaveStaff==='function')sbSaveStaff(st).catch(console.error);
-    if(typeof logActivity==='function')logActivity('edit_Staff','Staff',st.id,name+': '+changes.join(' • '));
+    if(typeof logActivity==='function')logActivity('edit_staff','staff',st.id,name+': '+changes.join(' • '));
     _resetStaffForm();
-    document.getElementById('Staff_form').style.display='none';
+    document.getElementById('staff_form').style.display='none';
     renderStaff();
     showToast(oldSal!==salary
       ? 'Salary updated to ₹'+salary.toLocaleString('en-IN')+'/mo from '+_isoLocal()
@@ -12368,28 +12368,28 @@ function submitStaff(){
     monthlySalary:salary, joinedDate:joined, notes,
     active:true, salaryHistory:[]
   };
-  StaffList.push(member);
+  staffList.push(member);
   saveStaffLS();
   if(_currentUser&&typeof sbSaveStaff==='function')sbSaveStaff(member).catch(console.error);
-  if(typeof logActivity==='function')logActivity('add_Staff','Staff',member.id,'Added: '+name+' • ₹'+salary+'/mo');
+  if(typeof logActivity==='function')logActivity('add_staff','staff',member.id,'Added: '+name+' • ₹'+salary+'/mo');
   toggleStaffForm();
   renderStaff();
   showToast('Staff added: '+name);
 }
 
 function deleteStaff(id){
-  const s=StaffList.find(x=>x.id===id);if(!s)return;
-  if(!confirm('Remove '+s.name+' from Staff register?'))return;
-  StaffList=StaffList.filter(x=>x.id!==id);
+  const s=staffList.find(x=>x.id===id);if(!s)return;
+  if(!confirm('Remove '+s.name+' from staff register?'))return;
+  staffList=staffList.filter(x=>x.id!==id);
   saveStaffLS();
-  if(_currentUser&&typeof sbDelete==='function')sbDelete('Staff',id).catch(console.error);
-  if(typeof logActivity==='function')logActivity('del_Staff','Staff',id,'Removed: '+s.name);
+  if(_currentUser&&typeof sbDelete==='function')sbDelete('staff',id).catch(console.error);
+  if(typeof logActivity==='function')logActivity('del_staff','staff',id,'Removed: '+s.name);
   renderStaff();
   showToast('Removed.');
 }
 
 function toggleStaffActive(id){
-  const s=StaffList.find(x=>x.id===id);if(!s)return;
+  const s=staffList.find(x=>x.id===id);if(!s)return;
   s.active=!s.active;
   saveStaffLS();
   if(_currentUser&&typeof sbSaveStaff==='function')sbSaveStaff(s).catch(console.error);
@@ -12452,10 +12452,10 @@ function _monthRange(ym){
 // Salary in force on a date. A raise is a dated event; without this an old
 // month would be recalculated at today's rate and the payslip would not match
 // what was actually paid.
-function _salaryOn(Staff,dateISO){
-  var hist=(Staff.salaryHistory||[]).slice()
+function _salaryOn(staff,dateISO){
+  var hist=(staff.salaryHistory||[]).slice()
     .sort(function(a,b){return String(a.date).localeCompare(String(b.date));});
-  var cur=parseFloat(Staff.monthlySalary)||0;
+  var cur=parseFloat(staff.monthlySalary)||0;
   // Walk backwards: the last revision on or before the date gives `to`,
   // anything after it means the rate then was that revision's `from`.
   for(var i=hist.length-1;i>=0;i--){
@@ -12470,8 +12470,8 @@ function _salaryOn(Staff,dateISO){
 // wages were settled late showed no wage cost at all and the one that paid two
 // months at once showed double. Cost belongs to the month the work was done.
 function _wagesEarned(from,to){
-  var out={earned:0,unmarked:0,Staff:0,basis:'',onContract:0,marked:0,eligible:0};
-  if(typeof StaffList==='undefined'||!StaffList.length)return out;
+  var out={earned:0,unmarked:0,staff:0,basis:'',onContract:0,marked:0,eligible:0};
+  if(typeof staffList==='undefined'||!staffList.length)return out;
   var cfg=(typeof payrollCfg==='function')?payrollCfg()
           :{basis:'fixed30',both:'cap',unmarked:'ignore',half:0.5};
   out.basis=cfg.basis;
@@ -12479,13 +12479,13 @@ function _wagesEarned(from,to){
   var lo=from||'0000-01-01';
   var hi=to||today; if(hi>today)hi=today;    // never accrue days that have not happened
   if(hi<lo)return out;
-  StaffList.forEach(function(s){
+  staffList.forEach(function(s){
     var start=(s.joinedDate&&s.joinedDate>lo)?s.joinedDate:lo;
     if(start>hi)return;
-    out.Staff++;
+    out.staff++;
     var byDate={};
-    (typeof StaffAttendance!=='undefined'?StaffAttendance:[]).forEach(function(a){
-      if(a.StaffId!==s.id||a.date<start||a.date>hi)return;
+    (typeof staffAttendance!=='undefined'?staffAttendance:[]).forEach(function(a){
+      if(a.staffId!==s.id||a.date<start||a.date>hi)return;
       (byDate[a.date]=byDate[a.date]||[]).push(a.status);
     });
     var days=0, absent=0;
@@ -12507,7 +12507,7 @@ function _wagesEarned(from,to){
 
     // A monthly-salaried operator is owed their salary unless somebody records
     // that they did not turn up. Accruing only from ticks meant a register
-    // nobody filled in reported four Staff costing ₹629 for a month, which
+    // nobody filled in reported four staff costing ₹629 for a month, which
     // then flatters net profit by very nearly a full payroll. Where the
     // register covers most of the period the register wins; where it is
     // largely blank the contract wins, and the card says which was used.
@@ -12525,9 +12525,9 @@ function _wagesEarned(from,to){
 }
 
 // One person, one month. Everything the report shows, and nothing hidden.
-function payrollFor(Staff,ym){
+function payrollFor(staff,ym){
   var cfg=payrollCfg(), R=_monthRange(ym);
-  var joined=Staff.joinedDate||'';
+  var joined=staff.joinedDate||'';
   var today=_isoLocal();
 
   // Eligible window: employed, and not in the future. A month still running
@@ -12539,8 +12539,8 @@ function payrollFor(Staff,ym){
     eligible = Math.round((new Date(to+'T00:00:00') - new Date(from+'T00:00:00'))/86400000)+1;
   }
 
-  var rows=StaffAttendance.filter(function(a){
-    return a.StaffId===Staff.id && a.date>=from && a.date<=to;
+  var rows=staffAttendance.filter(function(a){
+    return a.staffId===staff.id && a.date>=from && a.date<=to;
   });
 
   // Group by date so a double shift cannot silently earn two days.
@@ -12571,7 +12571,7 @@ function payrollFor(Staff,ym){
     ? Math.max(0, eligible-worked)
     : Math.max(0, markedDates-worked);
 
-  var salary=_salaryOn(Staff,R.last);
+  var salary=_salaryOn(staff,R.last);
   var perDay = cfg.basis==='calendar' ? (salary/R.days) : (salary/30);
   var earned;
   if(cfg.basis==='deduct'){
@@ -12583,21 +12583,21 @@ function payrollFor(Staff,ym){
   }
   earned=Math.max(0,_r2(earned));
 
-  var paid=StaffPayments.filter(function(p){
-    return p.StaffId===Staff.id && p.type==='salary' && p.date>=R.first && p.date<=R.last;
+  var paid=staffPayments.filter(function(p){
+    return p.staffId===staff.id && p.type==='salary' && p.date>=R.first && p.date<=R.last;
   }).reduce(function(a,p){return a+(p.amount||0);},0);
 
-  var advance=getStaffAdvanceBalance(Staff.id);
+  var advance=getStaffAdvanceBalance(staff.id);
   var net=_r2(Math.max(0, earned-paid-Math.min(advance, Math.max(0,earned-paid))));
   var advApplied=_r2(Math.min(advance, Math.max(0, earned-paid)));
 
   // A raise inside the month means the whole month is billed at the new rate.
   // Say so rather than let someone find it in a payslip.
-  var revised=(Staff.salaryHistory||[]).filter(function(h){
+  var revised=(staff.salaryHistory||[]).filter(function(h){
     return h.date>=R.first && h.date<=R.last;
   });
 
-  return {Staff:Staff, month:R, salary:salary, perDay:_r2(perDay),
+  return {staff:staff, month:R, salary:salary, perDay:_r2(perDay),
           eligible:eligible, present:present, half:half, absent:absentDays,
           unmarked:unmarked, worked:Math.round(worked*100)/100,
           earned:earned, paid:_r2(paid), advance:_r2(advance),
@@ -12617,20 +12617,20 @@ function payrollShiftMonth(delta){
 function _payrollRows(){
   var el=document.getElementById('pay_month');
   var ym=el&&el.value?el.value:'';
-  return StaffList.filter(function(s){return s.active;})
+  return staffList.filter(function(s){return s.active;})
     .sort(function(a,b){return a.name.localeCompare(b.name);})
     .map(function(s){return payrollFor(s,ym);});
 }
 
 // MF_FIVE_V1 — cash shortages by who was on duty. One short shift says little;
 // the same name on most of them is a pattern worth a conversation.
-function _StaffShortRows(days){
+function _staffShortRows(days){
   days=days||30;
   var from=(function(){var d=new Date();d.setDate(d.getDate()-days);return _isoLocal(d);})();
   var recs=records.filter(function(r){return String(r.date)>=from;});
   var by={}, unassigned={n:0,amt:0};
-  var who=function(r){return (typeof StaffAttendance!=='undefined'?StaffAttendance:[]).filter(function(a){
-    return a.date===r.date&&a.shift===r.shift&&(a.status==='present'||a.status==='half');}).map(function(a){return a.StaffId;});};
+  var who=function(r){return (typeof staffAttendance!=='undefined'?staffAttendance:[]).filter(function(a){
+    return a.date===r.date&&a.shift===r.shift&&(a.status==='present'||a.status==='half');}).map(function(a){return a.staffId;});};
   recs.forEach(function(r){
     var ids=who(r), short=(r.bal||0)<-50;
     if(short&&!ids.length){unassigned.n++;unassigned.amt+=-r.bal;}
@@ -12641,7 +12641,7 @@ function _StaffShortRows(days){
     });
   });
   var rows=Object.keys(by).map(function(k){
-    var o=by[k], s=(typeof StaffList!=='undefined'?StaffList:[]).find(function(x){return String(x.id)===String(k);});
+    var o=by[k], s=(typeof staffList!=='undefined'?staffList:[]).find(function(x){return String(x.id)===String(k);});
     o.name=s?s.name:('Staff '+k); o.rate=o.worked?o.shortN/o.worked:0;
     o.flag=o.shortN>=3&&o.rate>=0.4; return o;
   }).sort(function(a,b){return b.share-a.share;});
@@ -12649,14 +12649,14 @@ function _StaffShortRows(days){
           shortShifts:recs.filter(function(r){return (r.bal||0)<-50;}).length};
 }
 function renderStaffShortages(){
-  var el=document.getElementById('Staff_short_wrap'); if(!el)return;
-  var R=_StaffShortRows(30);
-  var h='<div class="sec" style="margin-bottom:8px"><span class="dot dr"></span>CASH SHORTAGES BY Staff ON DUTY — LAST 30 DAYS</div>'+
+  var el=document.getElementById('staff_short_wrap'); if(!el)return;
+  var R=_staffShortRows(30);
+  var h='<div class="sec" style="margin-bottom:8px"><span class="dot dr"></span>CASH SHORTAGES BY STAFF ON DUTY — LAST 30 DAYS</div>'+
         '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--muted);margin-bottom:8px;line-height:1.5">'+
         R.shortShifts+' of '+R.shifts+' shifts short by ₹50 or more. Each shortage is split between everyone marked present on that shift. '+
         'A pattern, not proof — use it to decide who to watch or retrain.</div>';
   if(!R.rows.length){el.innerHTML=h+'<div style="font-size:11px;color:var(--muted)">No attendance marked in this period.</div>';return;}
-  h+='<div style="overflow-x:auto"><table class="data-tbl" style="min-width:520px"><thead><tr><th>Staff</th><th>SHIFTS WORKED</th>'+
+  h+='<div style="overflow-x:auto"><table class="data-tbl" style="min-width:520px"><thead><tr><th>STAFF</th><th>SHIFTS WORKED</th>'+
      '<th>SHORT SHIFTS</th><th>% SHORT</th><th>SHARE OF SHORTAGE</th><th>TOTAL ON THEIR SHIFTS</th></tr></thead><tbody>';
   R.rows.forEach(function(o){
     h+='<tr><td><b>'+_esc(o.name)+'</b>'+(o.flag?' <span style="color:var(--red);font-size:10px">⚠ pattern</span>':'')+'</td>'+
@@ -12670,7 +12670,7 @@ function renderStaffShortages(){
   el.innerHTML=h;
 }
 function renderStaffReport(){
-  try{ renderStaffShortages(); }catch(e){ console.warn('Staff shortages:',e); }   // MF_FIVE_V1
+  try{ renderStaffShortages(); }catch(e){ console.warn('staff shortages:',e); }   // MF_FIVE_V1
   var mEl=document.getElementById('pay_month');
   if(mEl&&!mEl.value){
     var n=new Date();
@@ -12697,8 +12697,8 @@ function renderStaffReport(){
     var unmarkedCol=r.unmarked>0?'var(--diesel)':'var(--muted)';
     var tr=document.createElement('tr');
     tr.innerHTML=
-      '<td><b>'+_esc(r.Staff.name)+'</b><br><span style="font-size:10px;color:var(--muted)">'+
-        _esc(r.Staff.role||'')+' &middot; &#8377;'+r.salary.toLocaleString('en-IN')+'/mo</span>'+
+      '<td><b>'+_esc(r.staff.name)+'</b><br><span style="font-size:10px;color:var(--muted)">'+
+        _esc(r.staff.role||'')+' &middot; &#8377;'+r.salary.toLocaleString('en-IN')+'/mo</span>'+
         (r.revised.length?'<br><span style="font-size:9px;color:var(--diesel)">&#9888; salary revised '+_esc(r.revised[0].date)+'</span>':'')+
       '</td>'+
       '<td>'+r.eligible+'</td>'+
@@ -12713,7 +12713,7 @@ function renderStaffReport(){
       '<td style="color:var(--blue)">&#8377;'+r.paid.toLocaleString('en-IN')+'</td>'+
       '<td style="color:'+(r.net>0?'var(--green)':'var(--muted)')+';font-weight:700;font-size:13px">&#8377;'+r.net.toLocaleString('en-IN')+'</td>'+
       '<td>'+(r.net>0
-        ? '<button class="btn btn-g" style="padding:4px 10px;font-size:10px" onclick="payrollPay('+r.Staff.id+')">PAY</button>'
+        ? '<button class="btn btn-g" style="padding:4px 10px;font-size:10px" onclick="payrollPay('+r.staff.id+')">PAY</button>'
         : '<span class="badge bg_">&#10003; SETTLED</span>')+'</td>';
     tb.appendChild(tr);
   });
@@ -12722,7 +12722,7 @@ function renderStaffReport(){
   var basisLbl={fixed30:'salary \u00f7 30',calendar:'salary \u00f7 '+R.days,deduct:'full salary less absences'}[cfg.basis];
   document.getElementById('payroll_kpis').innerHTML=
     [{cls:'blue',  icon:'\uD83D\uDCC5', lbl:'MONTH', val:R.label,
-      sub:rows.length+' active Staff \u00b7 '+basisLbl},
+      sub:rows.length+' active staff \u00b7 '+basisLbl},
      {cls:'petrol',icon:'\uD83D\uDCB0', lbl:'TOTAL EARNED', val:fmt(tEarned),
       sub:'from the attendance register'},
      {cls:'diesel',icon:'\u21A9', lbl:'ADVANCE OUTSTANDING', val:fmt(tAdv),
@@ -12746,7 +12746,7 @@ function renderStaffReport(){
   }
   var rev=rows.filter(function(r){return r.revised.length;});
   if(rev.length){
-    notes.push({level:'warn', text:rev.map(function(r){return r.Staff.name;}).join(', ')+
+    notes.push({level:'warn', text:rev.map(function(r){return r.staff.name;}).join(', ')+
       ' had a salary revision inside this month. The whole month is calculated at the '+
       'new rate \u2014 split the payment by hand if the raise was meant to start mid-month.'});
   }
@@ -12771,15 +12771,15 @@ function renderStaffReport(){
 
 // Hand off to the existing payment form, pre-filled. The payment itself is
 // still recorded by a person pressing SAVE \u2014 nothing here writes a payment.
-function payrollPay(StaffId){
+function payrollPay(staffId){
   var el=document.getElementById('pay_month');
-  var s=StaffList.find(function(x){return x.id===StaffId;});
+  var s=staffList.find(function(x){return x.id===staffId;});
   if(!s)return;
   var r=payrollFor(s, el?el.value:'');
-  StaffShowTab('payments');
+  staffShowTab('payments');
   togglePaymentForm();
   var set=function(id,v){var e=document.getElementById(id);if(e)e.value=v;};
-  set('pf_Staff',StaffId); set('pf_type','salary');
+  set('pf_staff',staffId); set('pf_type','salary');
   set('pf_date', r.month.last>_isoLocal()?_isoLocal():r.month.last);
   set('pf_amt', _r2(r.earned-r.paid));
   set('pf_notes', r.month.label+' \u2014 '+r.worked+' day(s) of '+r.eligible+' eligible');
@@ -12797,13 +12797,13 @@ function payrollExportCsv(){
   var rows=_payrollRows();
   if(!rows.length){showToast('Nothing to export');return;}
   var R=rows[0].month;
-  var head=['month','Staff','role','monthly_salary','per_day','eligible_days','present',
+  var head=['month','staff','role','monthly_salary','per_day','eligible_days','present',
             'half','absent','unmarked','days_paid','earned','advance_outstanding',
             'advance_applied','paid_this_month','net_payable'];
   var lines=[head.join(',')];
   rows.forEach(function(r){
-    lines.push(['"'+R.label+'"','"'+String(r.Staff.name).replace(/"/g,'""')+'"',
-      '"'+String(r.Staff.role||'').replace(/"/g,'""')+'"',
+    lines.push(['"'+R.label+'"','"'+String(r.staff.name).replace(/"/g,'""')+'"',
+      '"'+String(r.staff.role||'').replace(/"/g,'""')+'"',
       r.salary,r.perDay,r.eligible,r.present,r.half,r.absent,r.unmarked,r.worked,
       r.earned,r.advance,r.advApplied,r.paid,r.net].join(','));
   });
@@ -12813,7 +12813,7 @@ function payrollExportCsv(){
   a.download='manifuels-payroll-'+(document.getElementById('pay_month').value||'')+'.csv';
   a.click();
   setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
-  if(typeof logActivity==='function')logActivity('payroll_export','Staff',null,R.label+' \u2014 '+rows.length+' Staff');
+  if(typeof logActivity==='function')logActivity('payroll_export','staff',null,R.label+' \u2014 '+rows.length+' staff');
 }
 
 function payrollPayslips(){
@@ -12832,9 +12832,9 @@ function payrollPayslips(){
       '</div>'+
       '<div style="display:flex;justify-content:space-between;background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;padding:14px 18px;margin-top:16px">'+
         '<div><div style="font-size:9px;color:#666;letter-spacing:1.5px">EMPLOYEE</div>'+
-        '<div style="font-size:17px;font-weight:800">'+_esc(r.Staff.name)+'</div>'+
-        '<div style="font-size:11px;color:#666;margin-top:3px">'+_esc(r.Staff.role||'')+
-        (r.Staff.joinedDate?' \u00b7 joined '+_esc(r.Staff.joinedDate):'')+'</div></div>'+
+        '<div style="font-size:17px;font-weight:800">'+_esc(r.staff.name)+'</div>'+
+        '<div style="font-size:11px;color:#666;margin-top:3px">'+_esc(r.staff.role||'')+
+        (r.staff.joinedDate?' \u00b7 joined '+_esc(r.staff.joinedDate):'')+'</div></div>'+
         '<div style="text-align:right"><div style="font-size:9px;color:#666;letter-spacing:1.5px">NET PAYABLE</div>'+
         '<div style="font-size:20px;font-weight:900;color:'+(r.net>0?'#0d7c3f':'#333')+'">'+money(r.net)+'</div></div>'+
       '</div>'+
@@ -12871,19 +12871,19 @@ function payrollPayslips(){
   });
   document.getElementById('pdf-print-area').innerHTML=out;
   _mfPrintArea('Mani Fuels · Payslips · '+R.label);
-  if(typeof logActivity==='function')logActivity('payroll_payslip','Staff',null,R.label+' \u2014 '+rows.length+' payslips');
+  if(typeof logActivity==='function')logActivity('payroll_payslip','staff',null,R.label+' \u2014 '+rows.length+' payslips');
   setTimeout(function(){window.print();},400);
 }
 
 function renderStaff(){
-  const cards=document.getElementById('Staff_cards');
-  const empty=document.getElementById('Staff_empty');
+  const cards=document.getElementById('staff_cards');
+  const empty=document.getElementById('staff_empty');
   if(!cards)return;
   cards.innerHTML='';
-  if(!StaffList.length){if(empty)empty.style.display='block';return;}
+  if(!staffList.length){if(empty)empty.style.display='block';return;}
   if(empty)empty.style.display='none';
   // Sort active first, then by name
-  const sorted=[...StaffList].sort((a,b)=>{
+  const sorted=[...staffList].sort((a,b)=>{
     if(a.active!==b.active)return a.active?-1:1;
     return a.name.localeCompare(b.name);
   });
@@ -12897,10 +12897,10 @@ function renderStaff(){
     const effectiveDays=_pr.worked;
     const halfMonth=_pr.half;
     // Advance balance: total advances - amount deducted from advances
-    const totalAdv=StaffPayments.filter(p=>p.StaffId===s.id&&p.type==='advance').reduce((sum,p)=>sum+(p.amount||0),0);
-    const totalDeducted=StaffPayments.filter(p=>p.StaffId===s.id).reduce((sum,p)=>sum+(p.advanceDeducted||0),0);
+    const totalAdv=staffPayments.filter(p=>p.staffId===s.id&&p.type==='advance').reduce((sum,p)=>sum+(p.amount||0),0);
+    const totalDeducted=staffPayments.filter(p=>p.staffId===s.id).reduce((sum,p)=>sum+(p.advanceDeducted||0),0);
     const advBalance=totalAdv-totalDeducted;
-    const salaryThisMonth=StaffPayments.filter(p=>p.StaffId===s.id&&p.type==='salary'&&p.date>=ms).reduce((sum,p)=>sum+(p.amount||0),0);
+    const salaryThisMonth=staffPayments.filter(p=>p.staffId===s.id&&p.type==='salary'&&p.date>=ms).reduce((sum,p)=>sum+(p.amount||0),0);
     const card=document.createElement('div');
     card.className='card';
     card.style.cssText='border-color:'+(s.active?'var(--border2)':'var(--border)')+(s.active?'':';opacity:.6');
@@ -12945,11 +12945,11 @@ function renderStaff(){
   });
 }
 
-// Quick-pay shortcut from Staff card
-function quickPay(StaffId,type){
+// Quick-pay shortcut from staff card
+function quickPay(staffId,type){
   togglePaymentForm();
-  const sel=document.getElementById('pf_Staff');
-  if(sel){sel.value=StaffId;}
+  const sel=document.getElementById('pf_staff');
+  if(sel){sel.value=staffId;}
   const t=document.getElementById('pf_type');
   if(t){t.value=type;}
   onPayTypeChange();
@@ -12957,11 +12957,11 @@ function quickPay(StaffId,type){
   setTimeout(()=>{const a=document.getElementById('pf_amt');if(a)a.focus();},100);
 }
 
-// Show Staff transaction history in a modal-like view
-function viewStaffHistory(StaffId){
-  const s=StaffList.find(x=>x.id===StaffId);
+// Show staff transaction history in a modal-like view
+function viewStaffHistory(staffId){
+  const s=staffList.find(x=>x.id===staffId);
   if(!s)return;
-  const payments=StaffPayments.filter(p=>p.StaffId===StaffId).sort((a,b)=>b.date.localeCompare(a.date));
+  const payments=staffPayments.filter(p=>p.staffId===staffId).sort((a,b)=>b.date.localeCompare(a.date));
   if(!payments.length&&!(s.salaryHistory&&s.salaryHistory.length)){
     showToast('No transactions or salary changes yet for '+s.name);return;
   }
@@ -12976,7 +12976,7 @@ function viewStaffHistory(StaffId){
   const advBal=totalAdv-totalDed;
   let html=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
     <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:16px">${s.name} — Transaction History</div>
-    <button onclick="document.getElementById('StaffHistOverlay').style.display='none'" style="background:transparent;border:1px solid var(--border2);color:var(--muted);padding:5px 12px;border-radius:4px;cursor:pointer">✕</button>
+    <button onclick="document.getElementById('staffHistOverlay').style.display='none'" style="background:transparent;border:1px solid var(--border2);color:var(--muted);padding:5px 12px;border-radius:4px;cursor:pointer">✕</button>
   </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:14px">
     <div class="sbox"><div class="sb-t">Total Advances</div><div class="sb-v" style="color:var(--diesel);font-size:14px">₹${totalAdv.toLocaleString('en-IN')}</div></div>
@@ -13022,15 +13022,15 @@ function viewStaffHistory(StaffId){
     html+='</tbody></table>';
   }
   // Render in a modal
-  let overlay=document.getElementById('StaffHistOverlay');
+  let overlay=document.getElementById('staffHistOverlay');
   if(!overlay){
     overlay=document.createElement('div');
-    overlay.id='StaffHistOverlay';
+    overlay.id='staffHistOverlay';
     overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:850;display:flex;align-items:center;justify-content:center;padding:20px';
-    overlay.innerHTML='<div id="StaffHistContent" style="background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:22px;max-width:780px;width:100%;max-height:85vh;overflow-y:auto"></div>';
+    overlay.innerHTML='<div id="staffHistContent" style="background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:22px;max-width:780px;width:100%;max-height:85vh;overflow-y:auto"></div>';
     document.body.appendChild(overlay);
   }
-  document.getElementById('StaffHistContent').innerHTML=html;
+  document.getElementById('staffHistContent').innerHTML=html;
   overlay.style.display='flex';
 }
 
@@ -13040,13 +13040,13 @@ function renderAttendance(){
   const tb=document.getElementById('att_body');
   if(!tb)return;
   tb.innerHTML='';
-  const active=StaffList.filter(s=>s.active);
+  const active=staffList.filter(s=>s.active);
   if(!active.length){
-    tb.innerHTML='<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--muted);font-family:JetBrains Mono,monospace;font-size:11px">No active Staff. Add Staff first.</td></tr>';
+    tb.innerHTML='<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--muted);font-family:JetBrains Mono,monospace;font-size:11px">No active staff. Add staff first.</td></tr>';
     return;
   }
   active.forEach(s=>{
-    const att=StaffAttendance.find(a=>a.StaffId===s.id&&a.date===date&&a.shift===shift);
+    const att=staffAttendance.find(a=>a.staffId===s.id&&a.date===date&&a.shift===shift);
     const status=att?att.status:'';
     const notes=att?att.notes:'';
     const tr=document.createElement('tr');
@@ -13068,40 +13068,40 @@ function renderAttendance(){
   });
 }
 
-function setAttendance(StaffId,date,shift,status){
-  const idx=StaffAttendance.findIndex(a=>a.StaffId===StaffId&&a.date===date&&a.shift===shift);
+function setAttendance(staffId,date,shift,status){
+  const idx=staffAttendance.findIndex(a=>a.staffId===staffId&&a.date===date&&a.shift===shift);
   if(!status){
     // Clearing a mark used to happen locally only, so the row stayed on the
     // server and the next sync merged it straight back — the mark appeared to
     // un-clear itself, and payroll kept counting the day.
-    if(idx>=0)StaffAttendance.splice(idx,1);
+    if(idx>=0)staffAttendance.splice(idx,1);
     if(_currentUser&&typeof sbDeleteAttendance==='function')
-      sbDeleteAttendance(StaffId,date,shift).catch(console.error);
+      sbDeleteAttendance(staffId,date,shift).catch(console.error);
   } else {
-    if(idx>=0){StaffAttendance[idx].status=status;}
-    else {StaffAttendance.push({id:_newId(),StaffId,date,shift,status,notes:''});}
-    if(typeof _tombDel==='function')_tombDel('Staff_attendance',String(StaffId)+'|'+date+'|'+shift);
+    if(idx>=0){staffAttendance[idx].status=status;}
+    else {staffAttendance.push({id:_newId(),staffId,date,shift,status,notes:''});}
+    if(typeof _tombDel==='function')_tombDel('staff_attendance',String(staffId)+'|'+date+'|'+shift);
   }
   saveAttLS();
   if(typeof renderShiftAttendance==='function')renderShiftAttendance();
   if(_currentUser&&typeof sbSaveAttendance==='function'){
-    if(idx<0&&status)sbSaveAttendance(StaffAttendance[StaffAttendance.length-1]).catch(console.error);
-    else if(idx>=0&&status)sbSaveAttendance(StaffAttendance[idx]).catch(console.error);
+    if(idx<0&&status)sbSaveAttendance(staffAttendance[staffAttendance.length-1]).catch(console.error);
+    else if(idx>=0&&status)sbSaveAttendance(staffAttendance[idx]).catch(console.error);
   }
   if(typeof logActivity==='function'){
-    const s=StaffList.find(x=>x.id===StaffId);
-    logActivity('attendance','Staff',StaffId,(s?s.name:'')+' '+date+' '+shift+': '+(status||'cleared'));
+    const s=staffList.find(x=>x.id===staffId);
+    logActivity('attendance','staff',staffId,(s?s.name:'')+' '+date+' '+shift+': '+(status||'cleared'));
   }
   renderAttendance();
   if(_currentStaffTab==='list')renderStaff();
 }
 
-function setAttNotes(StaffId,date,shift,notes){
-  const idx=StaffAttendance.findIndex(a=>a.StaffId===StaffId&&a.date===date&&a.shift===shift);
+function setAttNotes(staffId,date,shift,notes){
+  const idx=staffAttendance.findIndex(a=>a.staffId===staffId&&a.date===date&&a.shift===shift);
   if(idx>=0){
-    StaffAttendance[idx].notes=notes;
+    staffAttendance[idx].notes=notes;
     saveAttLS();
-    if(_currentUser&&typeof sbSaveAttendance==='function')sbSaveAttendance(StaffAttendance[idx]).catch(console.error);
+    if(_currentUser&&typeof sbSaveAttendance==='function')sbSaveAttendance(staffAttendance[idx]).catch(console.error);
   }
 }
 
@@ -13109,8 +13109,8 @@ function togglePaymentForm(){
   const f=document.getElementById('pay_form');
   f.style.display=f.style.display==='none'?'block':'none';
   if(f.style.display==='block'){
-    const sel=document.getElementById('pf_Staff');
-    sel.innerHTML=StaffList.filter(s=>s.active).map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+    const sel=document.getElementById('pf_staff');
+    sel.innerHTML=staffList.filter(s=>s.active).map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
     document.getElementById('pf_date').value=_isoLocal();
     document.getElementById('pf_amt').value='';
     document.getElementById('pf_notes').value='';
@@ -13122,9 +13122,9 @@ function togglePaymentForm(){
   }
 }
 
-function getStaffAdvanceBalance(StaffId){
-  const adv=StaffPayments.filter(p=>p.StaffId===StaffId&&p.type==='advance').reduce((s,p)=>s+(p.amount||0),0);
-  const ded=StaffPayments.filter(p=>p.StaffId===StaffId).reduce((s,p)=>s+(p.advanceDeducted||0),0);
+function getStaffAdvanceBalance(staffId){
+  const adv=staffPayments.filter(p=>p.staffId===staffId&&p.type==='advance').reduce((s,p)=>s+(p.amount||0),0);
+  const ded=staffPayments.filter(p=>p.staffId===staffId).reduce((s,p)=>s+(p.advanceDeducted||0),0);
   return Math.max(0,adv-ded);
 }
 
@@ -13132,7 +13132,7 @@ function onPayStaffChange(){onPayTypeChange();}
 
 function onPayTypeChange(){
   const type=document.getElementById('pf_type').value;
-  const StaffId=parseInt(document.getElementById('pf_Staff').value);
+  const staffId=parseInt(document.getElementById('pf_staff').value);
   const advRow=document.getElementById('pf_adv_row');
   const advMsg=document.getElementById('pf_adv_msg');
   const deductBtn=document.getElementById('pf_deduct_max');
@@ -13143,10 +13143,10 @@ function onPayTypeChange(){
   else if(type==='chit')lblEl.textContent='CHIT AMOUNT (₹)';
   else lblEl.textContent='SALARY AMOUNT (₹)';
   // Show advance deduction row only on salary if pending balance exists
-  const advBal=StaffId?getStaffAdvanceBalance(StaffId):0;
+  const advBal=staffId?getStaffAdvanceBalance(staffId):0;
   if(type==='salary'&&advBal>0){
     advRow.style.display='block';
-    advMsg.textContent=`${StaffList.find(s=>s.id===StaffId)?.name||'Staff'} has ₹${advBal.toLocaleString('en-IN')} advance pending.`;
+    advMsg.textContent=`${staffList.find(s=>s.id===staffId)?.name||'Staff'} has ₹${advBal.toLocaleString('en-IN')} advance pending.`;
     deductBtn.style.display='inline-block';
   } else {
     advRow.style.display='none';
@@ -13164,8 +13164,8 @@ function onDeductToggle(){
   if(!checked){dEl.value='';}
   else if(!dEl.value){
     // Auto-fill with min(advBalance, salaryAmount)
-    const StaffId=parseInt(document.getElementById('pf_Staff').value);
-    const advBal=getStaffAdvanceBalance(StaffId);
+    const staffId=parseInt(document.getElementById('pf_staff').value);
+    const advBal=getStaffAdvanceBalance(staffId);
     const salAmt=parseFloat(document.getElementById('pf_amt').value)||0;
     if(salAmt>0)dEl.value=Math.min(advBal,salAmt);
   }
@@ -13173,8 +13173,8 @@ function onDeductToggle(){
 }
 
 function setDeductMax(){
-  const StaffId=parseInt(document.getElementById('pf_Staff').value);
-  const advBal=getStaffAdvanceBalance(StaffId);
+  const staffId=parseInt(document.getElementById('pf_staff').value);
+  const advBal=getStaffAdvanceBalance(staffId);
   const salAmt=parseFloat(document.getElementById('pf_amt').value)||0;
   const max=salAmt>0?Math.min(advBal,salAmt):advBal;
   document.getElementById('pf_deduct_check').checked=true;
@@ -13202,7 +13202,7 @@ function updatePayPreview(){
 }
 
 function submitPayment(){
-  const StaffId=parseInt(document.getElementById('pf_Staff').value);
+  const staffId=parseInt(document.getElementById('pf_staff').value);
   const date=document.getElementById('pf_date').value||_isoLocal();
   const type=document.getElementById('pf_type').value;
   const amt=parseFloat(document.getElementById('pf_amt').value)||0;
@@ -13210,7 +13210,7 @@ function submitPayment(){
   let deduct=0;
   if(type==='salary'&&document.getElementById('pf_deduct_check').checked){
     deduct=parseFloat(document.getElementById('pf_deduct_amt').value)||0;
-    const advBal=getStaffAdvanceBalance(StaffId);
+    const advBal=getStaffAdvanceBalance(staffId);
     if(deduct>advBal){
       showToast('Cannot deduct more than pending advance (₹'+advBal+')');return;
     }
@@ -13218,19 +13218,19 @@ function submitPayment(){
       showToast('Deduction cannot exceed salary amount');return;
     }
   }
-  if(!StaffId||!amt){showToast('Select Staff and enter amount');return;}
+  if(!staffId||!amt){showToast('Select staff and enter amount');return;}
   const pay={
-    id:_newId(),StaffId,date,type,amount:amt,notes,
+    id:_newId(),staffId,date,type,amount:amt,notes,
     advanceDeducted:deduct,
     createdBy:_currentUser?_currentUser.username:''
   };
-  StaffPayments.unshift(pay);
+  staffPayments.unshift(pay);
   savePayLS();
   if(_currentUser&&typeof sbSavePayment==='function')sbSavePayment(pay).catch(console.error);
   if(typeof logActivity==='function'){
-    const s=StaffList.find(x=>x.id===StaffId);
+    const s=staffList.find(x=>x.id===staffId);
     const detail=(s?s.name:'')+' • '+type+' ₹'+amt+(deduct>0?' (−₹'+deduct+' adv)':'');
-    logActivity('Staff_pay','Staff',StaffId,detail);
+    logActivity('staff_pay','staff',staffId,detail);
   }
   togglePaymentForm();renderPayments();renderStaff();
   showToast(deduct>0?`Salary ₹${amt} recorded; ₹${deduct} deducted from advance`:'Payment recorded');
@@ -13238,9 +13238,9 @@ function submitPayment(){
 
 function delPayment(id){
   if(!confirm('Delete this payment?'))return;
-  StaffPayments=StaffPayments.filter(p=>p.id!==id);
+  staffPayments=staffPayments.filter(p=>p.id!==id);
   savePayLS();
-  if(_currentUser&&typeof sbDelete==='function')sbDelete('Staff_payments',id).catch(console.error);
+  if(_currentUser&&typeof sbDelete==='function')sbDelete('staff_payments',id).catch(console.error);
   renderPayments();
 }
 
@@ -13249,11 +13249,11 @@ function renderPayments(){
   const empty=document.getElementById('pay_empty');
   if(!tb)return;
   tb.innerHTML='';
-  if(!StaffPayments.length){if(empty)empty.style.display='block';return;}
+  if(!staffPayments.length){if(empty)empty.style.display='block';return;}
   if(empty)empty.style.display='none';
   const typeColor={salary:'var(--green)',advance:'var(--diesel)',bonus:'var(--blue)',chit:'#b48cff'};
-  StaffPayments.forEach(p=>{
-    const s=StaffList.find(x=>x.id===p.StaffId);
+  staffPayments.forEach(p=>{
+    const s=staffList.find(x=>x.id===p.staffId);
     const ded=p.advanceDeducted||0;
     const net=p.type==='salary'?p.amount-ded:p.amount;
     const dedHTML=ded>0?`<br><span style="font-size:9px;color:var(--green)">−₹${ded.toLocaleString('en-IN')} adv ded.</span>`:'';
@@ -13270,10 +13270,10 @@ function renderPayments(){
 }
 
 // ═══════════════════════════════════════════════════
-// Owner DRAWINGS
+// OWNER DRAWINGS
 // ═══════════════════════════════════════════════════
-let OwnerDrawings=JSON.parse(localStorage.getItem('OwnerDrawings')||'[]');
-function saveDrawingsLS(){localStorage.setItem('OwnerDrawings',JSON.stringify(OwnerDrawings));}
+let ownerDrawings=JSON.parse(localStorage.getItem('ownerDrawings')||'[]');
+function saveDrawingsLS(){localStorage.setItem('ownerDrawings',JSON.stringify(ownerDrawings));}
 
 function toggleDrawingForm(){
   const f=document.getElementById('draw_form');
@@ -13281,7 +13281,7 @@ function toggleDrawingForm(){
   if(f.style.display==='block'){
     document.getElementById('dw_date').value=_isoLocal();
     document.getElementById('dw_amt').value='';
-    var _ow=document.getElementById('dw_Owner'); if(_ow)_ow.value='';
+    var _ow=document.getElementById('dw_owner'); if(_ow)_ow.value='';
     document.getElementById('dw_purpose').value='';
     document.getElementById('dw_notes').value='';
   }
@@ -13294,11 +13294,11 @@ function submitDrawing(){
   const notes=_clean(document.getElementById('dw_notes').value.trim());
   if(!amt){showToast('Enter amount');return;}
   // Date.now() collides when two rows are written in the same millisecond.
-  const Owner=_clean((document.getElementById('dw_Owner')||{}).value||'');
-  const d={id:_newId(),date,amount:_r2(amt),Owner:Owner,purpose,notes,
+  const owner=_clean((document.getElementById('dw_owner')||{}).value||'');
+  const d={id:_newId(),date,amount:_r2(amt),owner:owner,purpose,notes,
            updatedAt:new Date().toISOString(),
            createdBy:_currentUser?_currentUser.username:''};
-  OwnerDrawings.unshift(d);
+  ownerDrawings.unshift(d);
   saveDrawingsLS();
   if(_currentUser&&typeof sbSaveDrawing==='function')sbSaveDrawing(d).catch(console.error);
   if(typeof logActivity==='function')logActivity('drawing','drawing',d.id,'₹'+amt+(purpose?' • '+purpose:''));
@@ -13308,9 +13308,9 @@ function submitDrawing(){
 
 function delDrawing(id){
   if(!confirm('Delete this drawing?'))return;
-  OwnerDrawings=OwnerDrawings.filter(d=>d.id!==id);
+  ownerDrawings=ownerDrawings.filter(d=>d.id!==id);
   saveDrawingsLS();
-  if(_currentUser&&typeof sbDelete==='function')sbDelete('Owner_drawings',id).catch(console.error);
+  if(_currentUser&&typeof sbDelete==='function')sbDelete('owner_drawings',id).catch(console.error);
   renderDrawings();
 }
 
@@ -13324,21 +13324,21 @@ function renderDrawings(){
   const monthStart=_isoLocal(new Date(today.getFullYear(),today.getMonth(),1));
   const lastMonthStart=_isoLocal(new Date(today.getFullYear(),today.getMonth()-1,1));
   const lastMonthEnd=_isoLocal(new Date(today.getFullYear(),today.getMonth(),0));
-  const thisMonth=OwnerDrawings.filter(d=>d.date>=monthStart).reduce((s,d)=>s+d.amount,0);
-  const lastMonth=OwnerDrawings.filter(d=>d.date>=lastMonthStart&&d.date<=lastMonthEnd).reduce((s,d)=>s+d.amount,0);
-  const total=OwnerDrawings.reduce((s,d)=>s+d.amount,0);
+  const thisMonth=ownerDrawings.filter(d=>d.date>=monthStart).reduce((s,d)=>s+d.amount,0);
+  const lastMonth=ownerDrawings.filter(d=>d.date>=lastMonthStart&&d.date<=lastMonthEnd).reduce((s,d)=>s+d.amount,0);
+  const total=ownerDrawings.reduce((s,d)=>s+d.amount,0);
   const fmtR=n=>'₹'+n.toLocaleString('en-IN');
   document.getElementById('dw_this_month').textContent=fmtR(thisMonth);
   document.getElementById('dw_last_month').textContent=fmtR(lastMonth);
   document.getElementById('dw_total').textContent=fmtR(total);
 
-  if(!OwnerDrawings.length){if(empty)empty.style.display='block';return;}
+  if(!ownerDrawings.length){if(empty)empty.style.display='block';return;}
   if(empty)empty.style.display='none';
-  OwnerDrawings.forEach(d=>{
+  ownerDrawings.forEach(d=>{
     const tr=document.createElement('tr');
     tr.innerHTML=`<td>${d.date}</td>
       <td style="color:#b48cff;font-weight:700">₹${d.amount.toLocaleString('en-IN')}</td>
-      <td>${_esc(d.Owner||'—')}</td>
+      <td>${_esc(d.owner||'—')}</td>
       <td>${_esc(d.purpose||'—')}</td>
       <td style="font-size:11px;color:var(--muted)">${d.notes||'—'}</td>
       <td style="font-size:11px;color:var(--muted)">${d.createdBy||'—'}</td>
@@ -13348,22 +13348,22 @@ function renderDrawings(){
 }
 
 // ═══════════════════════════════════════════════════
-// SUPABASE SYNC FOR Staff & DRAWINGS
+// SUPABASE SYNC FOR STAFF & DRAWINGS
 // ═══════════════════════════════════════════════════
 async function sbSaveStaff(s){
   if(!_currentUser)return;   // no _supa: _sbUpsert queues it
   try{
-    await _sbUpsert('Staff', {
+    await _sbUpsert('staff', {
       id:Math.round(s.id),user_id:_currentUser.id,name:s.name,role:s.role,
       monthly_salary:s.monthlySalary,phone:s.phone,active:s.active,
       joined_date:s.joinedDate,notes:s.notes,
       salary_history:s.salaryHistory||[]
     });
-  }catch(e){console.error('Save Staff failed:',e.message);}
+  }catch(e){console.error('Save staff failed:',e.message);}
 }
-// Attendance is keyed by Staff + date + shift, not by id, so the id-based
+// Attendance is keyed by staff + date + shift, not by id, so the id-based
 // tombstones and merge cannot see it. Its own pair, on the natural key.
-function _attKey(a){ return String(a.StaffId)+'|'+a.date+'|'+a.shift; }
+function _attKey(a){ return String(a.staffId)+'|'+a.date+'|'+a.shift; }
 
 function _mergeAttendance(local, remote){
   const out={}, localOnly=[];
@@ -13371,11 +13371,11 @@ function _mergeAttendance(local, remote){
   (remote||[]).forEach(function(r){
     if(!r)return;
     const k=_attKey(r);
-    if(_tombHas('Staff_attendance',k)){
+    if(_tombHas('staff_attendance',k)){
       // Cleared here, still there on the server: ask again rather than let the
       // mark come back the next time somebody opens the page.
       if(typeof sbDeleteAttendance==='function')
-        sbDeleteAttendance(r.StaffId,r.date,r.shift);
+        sbDeleteAttendance(r.staffId,r.date,r.shift);
       return;
     }
     out[k]={row:r,fromLocal:false};   // no timestamp on the row: server wins
@@ -13390,36 +13390,36 @@ function _mergeAttendance(local, remote){
 async function sbSaveAttendance(a){
   if(!_currentUser)return;   // no _supa: _sbUpsert queues it
   try{
-    // Conflict key is (Staff_id,date,shift) — see MF_CONFLICT_KEY. Routed
+    // Conflict key is (staff_id,date,shift) — see MF_CONFLICT_KEY. Routed
     // through _sbUpsert so a failure queues instead of vanishing.
-    await _sbUpsert('Staff_attendance', {user_id:_currentUser.id,Staff_id:a.StaffId,
+    await _sbUpsert('staff_attendance', {user_id:_currentUser.id,staff_id:a.staffId,
       date:a.date, shift:a.shift, status:a.status, notes:a.notes||''});
   }catch(e){console.error('Save attendance failed:',e.message);}
 }
-// Staff_attendance is keyed on (Staff_id, date, shift), not on id, so the
+// staff_attendance is keyed on (staff_id, date, shift), not on id, so the
 // generic single-column delete cannot express it.
-async function sbDeleteAttendance(StaffId,date,shift){
+async function sbDeleteAttendance(staffId,date,shift){
   if(!_currentUser)return;
-  _tombAdd('Staff_attendance', String(StaffId)+'|'+date+'|'+shift);
-  const where={user_id:_currentUser.id, Staff_id:StaffId, date:date, shift:shift};
+  _tombAdd('staff_attendance', String(staffId)+'|'+date+'|'+shift);
+  const where={user_id:_currentUser.id, staff_id:staffId, date:date, shift:shift};
   if(!_supa||(typeof navigator!=='undefined'&&navigator.onLine===false)){
-    _outboxQueue('Staff_attendance','deleteWhere',where,null,'offline'); return;
+    _outboxQueue('staff_attendance','deleteWhere',where,null,'offline'); return;
   }
   try{
-    const {error}=await _supa.from('Staff_attendance').delete()
-      .eq('user_id',_currentUser.id).eq('Staff_id',StaffId).eq('date',date).eq('shift',shift);
+    const {error}=await _supa.from('staff_attendance').delete()
+      .eq('user_id',_currentUser.id).eq('staff_id',staffId).eq('date',date).eq('shift',shift);
     if(error)throw new Error(error.message);
   }catch(e){
     console.warn('Attendance delete queued for retry:',e.message);
-    _outboxQueue('Staff_attendance','deleteWhere',where,null,e.message);
+    _outboxQueue('staff_attendance','deleteWhere',where,null,e.message);
   }
 }
 
 async function sbSavePayment(p){
   if(!_currentUser)return;   // no _supa: _sbUpsert queues it
   try{
-    await _sbUpsert('Staff_payments', {
-      id:Math.round(p.id),user_id:_currentUser.id,Staff_id:p.StaffId,
+    await _sbUpsert('staff_payments', {
+      id:Math.round(p.id),user_id:_currentUser.id,staff_id:p.staffId,
       date:p.date,type:p.type,amount:p.amount,notes:p.notes||'',
       advance_deducted:p.advanceDeducted||0,
       created_by:p.createdBy||_currentUser.username
@@ -13435,69 +13435,69 @@ async function sbSaveDrawing(d){
       updated_at:d.updatedAt||new Date().toISOString(),
       created_by:d.createdBy||_currentUser.username
     };
-    // `Owner` is a newer column (db/010). Retry without it rather than lose the
+    // `owner` is a newer column (db/010). Retry without it rather than lose the
     // drawing entirely on a database that has not been migrated yet.
     if(!_supa||(typeof navigator!=='undefined'&&navigator.onLine===false)){
-      await _sbUpsert('Owner_drawings', Object.assign({Owner:d.Owner||''},base)); return;
+      await _sbUpsert('owner_drawings', Object.assign({owner:d.owner||''},base)); return;
     }
     try{
-      const {error}=await _supa.from('Owner_drawings')
-        .upsert(Object.assign({Owner:d.Owner||''},base),{onConflict:'id'});
+      const {error}=await _supa.from('owner_drawings')
+        .upsert(Object.assign({owner:d.owner||''},base),{onConflict:'id'});
       if(error)throw error;
     }catch(e2){
-      console.warn('Owner_drawings rejected Owner/updated_at, retrying minimal:',e2.message);
+      console.warn('owner_drawings rejected owner/updated_at, retrying minimal:',e2.message);
       delete base.updated_at;
-      await _sbUpsert('Owner_drawings', base);
+      await _sbUpsert('owner_drawings', base);
     }
   }catch(e){console.error('Save drawing failed:',e.message);}
 }
 async function sbLoadStaffAll(){
   if(!_currentUser||!_supa)return;
   try{
-    const sR=await _supa.from('Staff').select('*').eq('user_id',_currentUser.id);
-    if(sR.error){console.warn('Staff read rejected:',sR.error.message);return;}
+    const sR=await _supa.from('staff').select('*').eq('user_id',_currentUser.id);
+    if(sR.error){console.warn('staff read rejected:',sR.error.message);return;}
     if(sR.data){
       // Replacing the array threw away anything added on this phone that had
-      // not reached the server yet — a new Staff member entered offline was
+      // not reached the server yet — a new staff member entered offline was
       // gone by the next sync. Same fault the shifts and ledger already fixed.
-      const remoteStaff=_dropDeleted('Staff',sR.data).map(r=>({
+      const remoteStaff=_dropDeleted('staff',sR.data).map(r=>({
         id:Number(r.id),name:r.name,role:r.role,phone:r.phone,
         monthlySalary:r.monthly_salary,joinedDate:r.joined_date,
         notes:r.notes,active:r.active,
         salaryHistory:r.salary_history||[]
       }));
-      const mS=_mergeById(StaffList,remoteStaff,null,'Staff');
-      StaffList=mS.merged; saveStaffLS();
+      const mS=_mergeById(staffList,remoteStaff,null,'staff');
+      staffList=mS.merged; saveStaffLS();
       for(const s of mS.localOnly){ try{ await sbSaveStaff(s); }catch(e){} }
     }
-    // 2000 was under a year for four Staff on two shifts. Older marks were
+    // 2000 was under a year for four staff on two shifts. Older marks were
     // dropped by the server AND wiped locally, taking the payroll with them.
     // .limit(8000) was capped at the server's 1000 rows — about five months
-    // of attendance for three Staff. Paged now.
-    const aR=await _sbSelectAll('Staff_attendance',q=>q.eq('user_id',_currentUser.id)
-      .order('date',{ascending:false}).order('Staff_id',{ascending:true}).order('shift',{ascending:true}));
-    if(aR.error){console.warn('Staff_attendance read rejected:',aR.error.message);}
+    // of attendance for three staff. Paged now.
+    const aR=await _sbSelectAll('staff_attendance',q=>q.eq('user_id',_currentUser.id)
+      .order('date',{ascending:false}).order('staff_id',{ascending:true}).order('shift',{ascending:true}));
+    if(aR.error){console.warn('staff_attendance read rejected:',aR.error.message);}
     else if(aR.data){
       const remoteAtt=aR.data.map(r=>({
-        id:Number(r.id),StaffId:Number(r.Staff_id),date:r.date,
+        id:Number(r.id),staffId:Number(r.staff_id),date:r.date,
         shift:r.shift,status:r.status,notes:r.notes
       }));
-      const mA=_mergeAttendance(StaffAttendance,remoteAtt);
-      StaffAttendance=mA.merged; saveAttLS();
+      const mA=_mergeAttendance(staffAttendance,remoteAtt);
+      staffAttendance=mA.merged; saveAttLS();
       for(const a of mA.localOnly){ try{ await sbSaveAttendance(a); }catch(e){} }
     }
-    const pR=await _sbSelectAll('Staff_payments',q=>q.eq('user_id',_currentUser.id)
+    const pR=await _sbSelectAll('staff_payments',q=>q.eq('user_id',_currentUser.id)
       .order('date',{ascending:false}).order('id',{ascending:true}));
-    if(pR.error){console.warn('Staff_payments read rejected:',pR.error.message);}
+    if(pR.error){console.warn('staff_payments read rejected:',pR.error.message);}
     else if(pR.data){
-      const remotePay=_dropDeleted('Staff_payments',pR.data).map(r=>({
-        id:Number(r.id),StaffId:Number(r.Staff_id),date:r.date,
+      const remotePay=_dropDeleted('staff_payments',pR.data).map(r=>({
+        id:Number(r.id),staffId:Number(r.staff_id),date:r.date,
         type:r.type,amount:r.amount,notes:r.notes,
         advanceDeducted:r.advance_deducted||0,
         createdBy:r.created_by
       }));
-      const mP=_mergeById(StaffPayments,remotePay,null,'Staff_payments');
-      StaffPayments=mP.merged; savePayLS();
+      const mP=_mergeById(staffPayments,remotePay,null,'staff_payments');
+      staffPayments=mP.merged; savePayLS();
       for(const p of mP.localOnly){ try{ await sbSavePayment(p); }catch(e){} }
     }
   }catch(e){console.warn('Staff sync failed (tables may not exist yet):',e.message);}
@@ -13505,19 +13505,19 @@ async function sbLoadStaffAll(){
 async function sbLoadDrawings(){
   if(!_currentUser||!_supa)return;
   try{
-    const r=await _supa.from('Owner_drawings').select('*').eq('user_id',_currentUser.id).order('date',{ascending:false}).limit(500);
+    const r=await _supa.from('owner_drawings').select('*').eq('user_id',_currentUser.id).order('date',{ascending:false}).limit(500);
     // supabase-js resolves with {error}; an unchecked read looked like an empty
     // table, so a permissions failure silently wiped the page.
-    if(r.error){console.warn('Owner_drawings read rejected:',r.error.message);return;}
+    if(r.error){console.warn('owner_drawings read rejected:',r.error.message);return;}
     const remote=(r.data||[]).map(x=>({
-      id:Number(x.id),date:x.date,amount:x.amount,Owner:x.Owner||'',
+      id:Number(x.id),date:x.date,amount:x.amount,owner:x.owner||'',
       purpose:x.purpose,notes:x.notes,createdBy:x.created_by,
       updatedAt:x.updated_at||x.created_at||''
     }));
     // Replacing the array destroyed any drawing recorded on this device and not
     // yet uploaded — the same fault the shift and ledger paths already fixed.
-    const m=_mergeById(OwnerDrawings,_dropDeleted('Owner_drawings',remote),'updatedAt','Owner_drawings');
-    OwnerDrawings=m.merged.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+    const m=_mergeById(ownerDrawings,_dropDeleted('owner_drawings',remote),'updatedAt','owner_drawings');
+    ownerDrawings=m.merged.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
     saveDrawingsLS();
     for(const d of m.localOnly){ await sbSaveDrawing(d); }
   }catch(e){console.warn('Drawings sync failed (table may not exist yet):',e.message);}
@@ -13962,7 +13962,7 @@ function showSyncHealth(){
   if(/column .* does not exist|Could not find the '.*' column/i.test(allErr))
     hint='A column the app writes is missing from the database. Run only the one migration that adds it (009 and 010 are the usual culprits). <b>Never run apply_all.sql or 004_grants.sql</b> — they switch the database security off.';
   else if(/row-level security|permission denied|401|JWT/i.test(allErr))
-    hint='The server refused this device: it is not signed in, or this account has no access. Sign out and sign in again; if it continues, the Owner checks the Members panel. These entries are kept until they go through. <b>Do not run 004_grants.sql</b> — it switches the database security off.';
+    hint='The server refused this device: it is not signed in, or this account has no access. Sign out and sign in again; if it continues, the owner checks the Members panel. These entries are kept until they go through. <b>Do not run 004_grants.sql</b> — it switches the database security off.';
   else if(/relation .* does not exist/i.test(allErr))
     hint='That table does not exist yet. Run <b>db/010_ensure_tables.sql</b>.';
   else if(/invalid input syntax|out of range/i.test(allErr))
@@ -14252,10 +14252,10 @@ function exportFullBackup(){
         packReg:JSON.parse(localStorage.getItem('packReg')||'[]'),
         packSizes:JSON.parse(localStorage.getItem('packSizes')||'[]'),
         rateHistory:JSON.parse(localStorage.getItem('rateHistory')||'[]'),
-        StaffList:JSON.parse(localStorage.getItem('StaffList')||'[]'),
-        StaffAttendance:JSON.parse(localStorage.getItem('StaffAttendance')||'[]'),
-        StaffPayments:JSON.parse(localStorage.getItem('StaffPayments')||'[]'),
-        OwnerDrawings:JSON.parse(localStorage.getItem('OwnerDrawings')||'[]'),
+        staffList:JSON.parse(localStorage.getItem('staffList')||'[]'),
+        staffAttendance:JSON.parse(localStorage.getItem('staffAttendance')||'[]'),
+        staffPayments:JSON.parse(localStorage.getItem('staffPayments')||'[]'),
+        ownerDrawings:JSON.parse(localStorage.getItem('ownerDrawings')||'[]'),
         notes:JSON.parse(localStorage.getItem('mfNotes')||'[]'),
         activityLogLocal:JSON.parse(localStorage.getItem('activityLogLocal')||'[]')
       }
@@ -14331,8 +14331,8 @@ function _tombWrite(t){
   try{ localStorage.setItem(MF_TOMB_KEY, JSON.stringify(t)); }catch(e){}
 }
 function _tombKey(id){
-  // Attendance uses "StaffId|date|shift", which parseFloat would truncate to
-  // the Staff id and tombstone every mark that person ever had.
+  // Attendance uses "staffId|date|shift", which parseFloat would truncate to
+  // the staff id and tombstone every mark that person ever had.
   const s=String(id);
   if(!/^-?\d+(\.\d+)?$/.test(s))return s;
   return String(Math.round(parseFloat(s))||s);
@@ -14456,7 +14456,7 @@ async function _outboxFlush(){
     try{
       let error=null;
       if(job.op==='deleteWhere'){
-        // Compound key (Staff_attendance is one). `rows` holds the whole
+        // Compound key (staff_attendance is one). `rows` holds the whole
         // where-clause rather than a single value.
         let q=_supa.from(job.table).delete();
         Object.keys(job.rows||{}).forEach(function(k){ q=q.eq(k, job.rows[k]); });
@@ -14506,7 +14506,7 @@ var MF_CONFLICT_KEY = {
   users:             'username',
   customer_profiles: 'customer_name',
   pack_sizes:        'size',
-  Staff_attendance:  'Staff_id,date,shift'
+  staff_attendance:  'staff_id,date,shift'
 };
 function _conflictKey(table){ return MF_CONFLICT_KEY[table] || 'id'; }
 
@@ -15392,7 +15392,7 @@ function lockFuelLoad(id){
   var load=fuelLoads.find(function(x){return x.id===id;});
   if(!load)return;
   if(!confirm('Lock this load?\n\nIt cannot be edited or deleted while locked. '+
-    'An Owner can unlock it again if a correction is needed.'))return;
+    'An owner can unlock it again if a correction is needed.'))return;
   load.locked=true;
   localStorage.setItem('fuelLoads',JSON.stringify(fuelLoads));
   if(_currentUser&&typeof sbSaveFuelLoad==='function')sbSaveFuelLoad(load).catch(console.error);
@@ -15648,7 +15648,7 @@ function startRealtimeSync(){
       .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_items' },      function(){ silentSync(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'oil_invoices' },     function(){ silentSync(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' },     function(){ silentSync(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'Owner_drawings' },   function(){ silentSync(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'owner_drawings' },   function(){ silentSync(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notes' },            function(){ silentSync(); })
       .subscribe(function(status){
         _realtimeLive = (status === 'SUBSCRIBED');
@@ -15692,7 +15692,7 @@ function _uiEditing(){
   // meter box on the shift entry page is never rebuilt, so blocking on it
   // would freeze the whole app's refresh for as long as the cursor sat there.
   const inRebuilt = a.closest && a.closest(
-    '#stock_sales,#master_stock,#page-ledger,#page-history,#page-oilreg,#page-fuelload,#page-notes,#page-drawings,#page-Staff');
+    '#stock_sales,#master_stock,#page-ledger,#page-history,#page-oilreg,#page-fuelload,#page-notes,#page-drawings,#page-staff');
   if(!inRebuilt)return false;
   // And only if they are actually typing. A page that focuses its first input
   // on open would otherwise defer every redraw indefinitely. Twenty seconds is
@@ -15809,8 +15809,8 @@ function stopAllSync(){
 // ── MF_PUSH_V1 — phone notifications ─────────────────────────────────────
 // Each phone turns notifications on for itself (user menu → Notifications).
 // The server (mf-push) encrypts every message for that phone only. What a
-// person may receive is decided on the server by their role: Owners and
-// Managers can get everything, Staff get missed-shift and stock reminders.
+// person may receive is decided on the server by their role: owners and
+// managers can get everything, staff get missed-shift and stock reminders.
 var MF_PUSH_CATS={
   cash:  {icon:'🔴', label:'Cash short / over',   hint:'Beyond the limit set below'},
   shift: {icon:'✅', label:'Every saved shift',    hint:'Litres, sales, credit, cash result'},
@@ -15948,9 +15948,9 @@ async function mfOpenNotify(note){
   msg('Loading…');
   var sub=await _mfPushSub();
   var st=await _mfRpc('mf_push_status',{p_endpoint:sub?sub.endpoint:''});
-  if(!st.ok)return msg(st.missing?'Notifications are not set up on the server yet — the Owner follows <b>docs/NOTIFICATIONS_SETUP.md</b>.':'✗ '+_esc(st.msg));
+  if(!st.ok)return msg(st.missing?'Notifications are not set up on the server yet — the owner follows <b>docs/NOTIFICATIONS_SETUP.md</b>.':'✗ '+_esc(st.msg));
   var s=st.data||{};
-  if(!s.ready)return msg('The server is almost ready — the <b>mf-push</b> function has not run yet. The Owner follows <b>docs/NOTIFICATIONS_SETUP.md</b> step 3.');
+  if(!s.ready)return msg('The server is almost ready — the <b>mf-push</b> function has not run yet. The owner follows <b>docs/NOTIFICATIONS_SETUP.md</b> step 3.');
   var kr=await _mfRpc('mf_push_key'); _mfPushKey=kr.ok?kr.data:null; _mfPushRegC=await _mfPushReg();
   // a subscription made with an older server key can never be delivered to: replace it
   if(sub&&_mfPushKey&&_mfSubKey(sub)&&_mfSubKey(sub)!==_mfPushKey){
@@ -15978,7 +15978,7 @@ async function mfOpenNotify(note){
          '<input type="checkbox" data-cat="'+c+'"'+chk+' onchange="mfPushSetCat(\''+c+'\',this.checked)" style="margin-top:3px">'+
          '<span><b>'+m.icon+' '+m.label+'</b><br><span style="color:var(--muted);font-size:10px">'+m.hint+'</span></span></label>';
     });
-    if((s.allowed||[]).length<6)h+='<div style="color:var(--muted);font-size:10px;margin-top:6px">Sales and cash alerts go to Owners and Managers.</div>';
+    if((s.allowed||[]).length<6)h+='<div style="color:var(--muted);font-size:10px;margin-top:6px">Sales and cash alerts go to owners and managers.</div>';
     h+='<div style="display:flex;gap:8px;margin-top:12px">'+
        '<button class="btn btn-g" style="flex:1;padding:8px" onclick="mfPushTest()">SEND A TEST</button>'+
        '<button class="btn btn-d" style="flex:1;padding:8px" onclick="mfPushDisable()">TURN OFF HERE</button></div>';
@@ -15996,7 +15996,7 @@ async function mfOpenNotify(note){
     var hr=function(id,v){ var o=''; for(var i=0;i<24;i++)o+='<option value="'+i+'"'+(i===+v?' selected':'')+'>'+(i===0?'12 AM':i<12?i+' AM':i===12?'12 PM':(i-12)+' PM')+'</option>'; return '<select id="'+id+'" style="'+fs+'">'+o+'</select>'; };
     var lab=function(t){ return '<div style="font-size:10px;color:var(--muted);margin:8px 0 4px">'+t+'</div>'; };
     h+='<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">'+
-       '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:4px;font-weight:700">FOR EVERYONE (Owner)</div>'+
+       '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:4px;font-weight:700">FOR EVERYONE (OWNER)</div>'+
        '<label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="checkbox" id="mfn_on"'+(x.enabled?' checked':'')+'> Notifications switched on for the station</label>'+
        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
          '<div>'+lab('Flag cash short from ₹')+'<input id="mfn_short" type="number" min="0" step="50" value="'+x.short_alert+'" style="'+fs+'"></div>'+
@@ -16036,7 +16036,7 @@ async function mfPushRefresh(){
 // Tapping a notification opens its page (#page=… when the app was closed,
 // a message from sw.js when it was already open).
 function _mfOpenPage(p){
-  var ok=['dashboard','entry','history','report','dip','stock','ledger','fuelload','Staff'];
+  var ok=['dashboard','entry','history','report','dip','stock','ledger','fuelload','staff'];
   if(ok.indexOf(p)<0||!_currentUser)return false;
   try{ showPage(p); return true; }catch(e){ return false; }
 }
