@@ -660,6 +660,9 @@ function _mfGenTemp(){
   for(var i=0;i<8;i++)s+=a[r[i]%a.length];
   return s.slice(0,4)+'-'+s.slice(4);
 }
+// MF_ROLE_LABEL_V1: roles are stored lowercase (owner / manager / staff — the
+// database only accepts those); shown with a capital. Change labels here only.
+function _roleLabel(r){ r=String(r||''); return r?r.charAt(0).toUpperCase()+r.slice(1):''; }
 async function mfOpenMembers(note){
   var d=document.getElementById('user-dropdown'); if(d)d.remove();
   if(!_isOwner){ showToast('🔒 Owners only'); return; }
@@ -678,7 +681,7 @@ async function mfOpenMembers(note){
     var me=_currentUser&&m.username===_currentUser.username;
     var col=m.status==='active'?'var(--green)':(/locked/.test(m.status)?'var(--red)':'var(--diesel)');
     return '<tr><td style="padding:7px 6px"><b>'+_esc(m.username)+'</b><div style="color:var(--muted);font-size:10px">'+_esc(m.display||'')+'</div></td>'+
-      '<td style="padding:7px 6px">'+_esc(m.role)+'</td>'+
+      '<td style="padding:7px 6px">'+_esc(_roleLabel(m.role))+'</td>'+
       '<td style="padding:7px 6px;color:'+col+'">'+_esc(m.status)+
         (m.last_sign_in?'<div style="color:var(--muted);font-size:10px">last in '+new Date(m.last_sign_in).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})+'</div>':'')+'</td>'+
       '<td style="padding:7px 0 7px 6px;text-align:right;width:1%">'+
@@ -699,7 +702,7 @@ async function mfOpenMembers(note){
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
         '<input id="mfm_u" placeholder="username (e.g. ravi)" style="'+fs+'">'+
         '<input id="mfm_n" placeholder="full name" style="'+fs+'">'+
-        '<select id="mfm_r" style="'+fs+'"><option value="staff">staff</option><option value="manager">manager</option><option value="owner">owner</option></select>'+
+        '<select id="mfm_r" style="'+fs+'"><option value="staff">Staff</option><option value="manager">Manager</option><option value="owner">Owner</option></select>'+
         '<button class="save-btn" style="margin:0;padding:8px" onclick="mfMemberAdd()">INVITE</button></div>'+
       '<div style="color:var(--muted);font-size:10px;margin-top:8px;line-height:1.6">They get a temporary password to sign in with once; the app then makes them choose their own. '+
       'Staff: the app hides owner pages (P&amp;L, drawings, activity log, this panel). The database itself keeps drawings and the activity log owners-only and lets only owners delete records permanently; '+
@@ -14125,7 +14128,7 @@ function toggleUserMenu(){
   var who=_currentUser?((_currentUser.display||_currentUser.username)):'';
   var h='<div style="font-size:11px;color:var(--muted);margin-bottom:6px">SIGNED IN AS</div>';
   h+='<div style="font-size:13px;color:var(--text);margin-bottom:2px">'+_esc(who)+'</div>';
-  h+='<div style="font-size:10px;color:var(--muted);margin-bottom:8px">'+_esc(_currentUser?_currentUser.username+' · '+_currentUser.role:'')+'</div>';
+  h+='<div style="font-size:10px;color:var(--muted);margin-bottom:8px">'+_esc(_currentUser?_currentUser.username+' · '+_roleLabel(_currentUser.role):'')+'</div>';
   h+='<div style="border-top:1px solid var(--border);padding-top:10px">';
   h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="syncNow()">&#8635; SYNC NOW</button>';
   h+='<button class="nav-tab" style="width:100%;padding:8px;margin-bottom:4px" onclick="this.closest(\'#user-dropdown\').remove();showSyncHealth()">&#9877; SYNC HEALTH</button>';
