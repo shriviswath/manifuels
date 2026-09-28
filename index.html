@@ -2688,9 +2688,15 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
       <div class="flabel" style="margin:0;color:var(--petrol)">OPENING AS OF</div>
       <input type="date" id="opening_asof" onchange="setOpeningAsOf(this.value)" style="width:170px">
+      <!-- MF_OPENING_SLOT_V1 -->
+      <select id="opening_asof_slot" onchange="setOpeningAsOfSlot(this.value)" style="width:auto;padding:5px 9px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px">
+        <option value="open">before Morning shift (6 PM, day before)</option>
+        <option value="mid">after Morning shift (9 AM)</option>
+        <option value="close">after Night shift (6 PM)</option>
+      </select>
       <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);flex:1;min-width:220px;line-height:1.5">
-        The date those litres were measured — stock at the start of that date's Morning shift (6 PM the evening before).
-        Shifts dated before it are not taken off the tank again. A dip taken later always overrides this.
+        When those litres were measured. Only shifts saved after that point are taken off the tank.
+        Measured in the afternoon? Pick “after Morning shift”. A dip taken later always overrides this.
       </div>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
@@ -3417,6 +3423,7 @@ function _deviceConfig(){
                   hsd:parseFloat(localStorage.getItem('fuelOpeningCostHSD'))||0},
     openingLocked: localStorage.getItem('fuelOpeningLocked')==='1',
     openingAsOf: localStorage.getItem('fuelOpeningAsOf')||'',   // MF_TANK_PACK_V1
+    openingAsOfSlot: localStorage.getItem('fuelOpeningAsOfSlot'),   // MF_OPENING_SLOT_V1 (null = never set)
     // Stamped so a device that has been offline cannot push a month-old
     // config over a fresh one just by syncing later.
     savedAt: new Date().toISOString()
@@ -3493,6 +3500,10 @@ function _applyDeviceConfig(cfg){
     localStorage.setItem('fuelOpeningAsOf',cfg.openingAsOf||'');
     _setInputIfIdle('opening_asof',cfg.openingAsOf||'');
   }
+  if(cfg.openingAsOfSlot!=null){   // MF_OPENING_SLOT_V1
+    localStorage.setItem('fuelOpeningAsOfSlot',cfg.openingAsOfSlot);
+    _setInputIfIdle('opening_asof_slot',cfg.openingAsOfSlot);
+  }
   if(cfg.openingLocked!=null){
     localStorage.setItem('fuelOpeningLocked',cfg.openingLocked?'1':'0');
     if(typeof applyOpeningLock==='function')applyOpeningLock();
@@ -3529,7 +3540,9 @@ const _hsdC=localStorage.getItem('fuelOpeningCostHSD');
 if(_msdC&&parseFloat(_msdC)>0)document.getElementById('msd_opening_cost').value=_msdC;
 if(_hsdC&&parseFloat(_hsdC)>0)document.getElementById('hsd_opening_cost').value=_hsdC;
 { const _ao=localStorage.getItem('fuelOpeningAsOf'), _ae=document.getElementById('opening_asof');   // MF_TANK_PACK_V1
-  if(_ae&&_ao)_ae.value=_ao; }
+  if(_ae&&_ao)_ae.value=_ao;
+  const _se=document.getElementById('opening_asof_slot');   // MF_OPENING_SLOT_V1
+  if(_se)_se.value=(typeof _openingAsOfSlot==='function')?_openingAsOfSlot():(localStorage.getItem('fuelOpeningAsOfSlot')||'open'); }
 if(_msdOp||_hsdOp){document.getElementById('opening_chip').textContent=
   `MSD ${parseFloat(_msdOp||0).toFixed(0)}L${_msdC>0?' @ ₹'+parseFloat(_msdC).toFixed(2):' (no cost)'} | `+
   `HSD ${parseFloat(_hsdOp||0).toFixed(0)}L${_hsdC>0?' @ ₹'+parseFloat(_hsdC).toFixed(2):' (no cost)'}`;}
@@ -4923,6 +4936,19 @@ function validateContinuity(){
             expected.toFixed(3)+' L ('+(gap>0?'+':'')+gap.toFixed(3)+' L unaccounted)'});
     }
   });
+  // MF_OPENING_SLOT_V1: packs on the counter should carry over exactly too —
+  // a gap here is packs that left without being sold.
+  const _chk=function(label,expected,entered){
+    if(expected==null||!isFinite(expected)||entered==null)return;
+    const gap=entered-expected;
+    if(Math.abs(gap)>=1)issues.push({level:'warn',machine:label,
+      msg:'Opening '+entered+' packs does not follow the last closing '+expected+' ('+(gap>0?'+':'')+gap+' packs)'});
+  };
+  const _p40=(typeof _lastPackClose==='function')?_lastPackClose():null;
+  if(_p40)_chk('40 ml packs',parseFloat(_p40.meters.pack_cur),_vn('pack_prev'));
+  (typeof packSizesConfig!=='undefined'?packSizesConfig:[]).filter(function(p){return p.enabled;}).forEach(function(p){
+    _chk(p.size+' ml packs',_lastPackCloseFor(p.size),_vn('pack'+p.size+'_prev'));
+  });
   return issues;
 }
 
@@ -4951,6 +4977,11 @@ function carryForwardMeters(silent){
     const _pe=document.getElementById('pack_prev');
     if(_pe&&isFinite(_pv)&&(silent?!_pe.value:true)){_pe.value=_pv;n++;}
   }
+  // MF_OPENING_SLOT_V1: the other pack sizes too.
+  (typeof packSizesConfig!=='undefined'?packSizesConfig:[]).filter(function(p){return p.enabled;}).forEach(function(p){
+    const cv=_lastPackCloseFor(p.size), el=document.getElementById('pack'+p.size+'_prev');
+    if(el&&cv!=null&&isFinite(cv)&&(silent?!el.value:true)){el.value=cv;n++;}
+  });
   if(n){calc(); if(!silent)showToast('✓ Opening readings carried from '+prev.id);}
   else if(!silent)showToast('Opening readings already filled');
 }
@@ -5101,6 +5132,24 @@ function _pack40Hint(){
   h.style.color='var(--muted)';
   h.textContent='Opening '+(a||0)+(add.units?' + '+add.units+' unit'+(add.units>1?'s':'')+' ('+add.packs+' packs)':'')+
     ' = '+avail+' available'+(b!=null?' − closing '+b+' = '+(avail-b)+' sold':'');
+}
+// MF_OPENING_SLOT_V1: opening/closing for every enabled extra pack size.
+function _packExtraReadings(){
+  var o={};
+  (typeof packSizesConfig!=='undefined'?packSizesConfig:[]).filter(function(p){return p.enabled;}).forEach(function(p){
+    var a=_vn('pack'+p.size+'_prev'), b=_vn('pack'+p.size+'_cur');
+    if(a!=null||b!=null)o[p.size]={prev:a,cur:b};
+  });
+  return o;
+}
+// Last saved closing count for one extra pack size.
+function _lastPackCloseFor(size){
+  const d=document.getElementById('shiftDate')?.value||'';
+  const prior=records.filter(r=>r.meters&&r.meters.packs&&r.meters.packs[size]&&r.meters.packs[size].cur!=null&&
+      (r.date<d||(r.date===d&&r.shift!==shift)))
+    .sort((a,b)=>String(b.date).localeCompare(String(a.date))||
+      (b.shift==='night'?1:-1)-(a.shift==='night'?1:-1));
+  return prior.length?parseFloat(prior[0].meters.packs[size].cur):null;
 }
 // Closing packs of the shift before this one, for the carry-forward.
 function _lastPackClose(){
@@ -5924,6 +5973,7 @@ function _doSaveShift(){
             // MF_TANK_PACK_V1: 40 ml counter readings, so the next shift can
             // carry the closing forward and History can show units opened.
             pack_prev:_vn('pack_prev'), pack_cur:_vn('pack_cur'), pack_units:c.packUnits||0,
+            packs:_packExtraReadings(),   // MF_OPENING_SLOT_V1: 20 / 30 ml … by size
             exp:{tmsd:v('e_tmsd'),thsd:v('e_thsd'),toil:v('e_toil'),items:v('e_items'),
                  tea:v('e_tea'),chit:v('e_chit'),other:v('e_other')}},
     looseOilUnits:c.bottlesOpened||0,   // whole bottles, so the reversal on delete is whole too
@@ -9287,25 +9337,35 @@ function _openingAsOf(){
   var d=localStorage.getItem('fuelOpeningAsOf')||'';
   return /^\d{4}-\d{2}-\d{2}$/.test(d)?d:'';
 }
+// MF_OPENING_SLOT_V1: open = before the Morning shift (6 PM the day before),
+// mid = after the Morning shift (9 AM), close = after the Night shift (6 PM).
+function _openingAsOfSlot(){
+  var s=localStorage.getItem('fuelOpeningAsOfSlot')||'open';
+  return (s==='mid'||s==='close')?s:'open';
+}
 function bookStock(type,date,slot){
   var rank=_slotRank(slot);
   var anchor=_anchorDip(type,date,rank);
   var _asOf=_openingAsOf();
   if(_asOf){
     var _opV=(type==='MSD'?(fuelOpeningMSD||0):(fuelOpeningHSD||0));
-    var _opP={date:_asOf,rank:0};
+    // MF_OPENING_SLOT_V1: the opening sits at the point in the day it was
+    // measured, not always before the Morning shift.
+    var _opS=_openingAsOfSlot(), _opR=_slotRank(_opS);
+    var _opP={date:_asOf,rank:_opR};
+    var _opL='opening '+_asOf+(_opS==='mid'?' 9 AM':(_opS==='close'?' 6 PM':''));
     // The opening measurement wins over any dip taken before it.
-    if(_posCmp(_asOf,0,date,rank)<0 &&
-       (!anchor||_posCmp(_asOf,0,anchor.date,_slotRank(anchor.slot))>0)){
+    if(_posCmp(_asOf,_opR,date,rank)<0 &&
+       (!anchor||_posCmp(_asOf,_opR,anchor.date,_slotRank(anchor.slot))>0)){
       var _mo=_tankMovement(type,_opP,{date:date,rank:rank});
       return {open:_opV,loaded:_mo.loaded,sold:_mo.sold,tested:_mo.tested,
-              book:_opV+_mo.loaded-_mo.sold+_mo.tested,anchor:null,since:'opening '+_asOf};
+              book:_opV+_mo.loaded-_mo.sold+_mo.tested,anchor:null,since:_opL};
     }
     if(!anchor){
-      // A point at or before the opening date: count backwards from it.
+      // A point at or before the opening: count backwards from it.
       var _mb=_tankMovement(type,{date:date,rank:rank},_opP);
       return {open:_opV,loaded:-_mb.loaded,sold:-_mb.sold,tested:-_mb.tested,
-              book:_opV-_mb.loaded+_mb.sold-_mb.tested,anchor:null,since:'opening '+_asOf};
+              book:_opV-_mb.loaded+_mb.sold-_mb.tested,anchor:null,since:_opL};
     }
   }
   var base=anchor?(parseFloat(anchor.observed)||0)
@@ -9956,6 +10016,12 @@ function applyOpeningLock(){
     _ao.disabled=_lk; _ao.style.opacity=_lk?'.55':'';
     _ao.title=_lk?'Locked. An owner can unlock it.':'';
   }
+  const _as=document.getElementById('opening_asof_slot');   // MF_OPENING_SLOT_V1
+  if(_as){
+    const _lk2=locked&&localStorage.getItem('fuelOpeningAsOfSlot')!=null;
+    _as.disabled=_lk2; _as.style.opacity=_lk2?'.55':'';
+    _as.title=_lk2?'Locked. An owner can unlock it.':'';
+  }
   const b=document.getElementById('opening_lock_badge');
   if(b){
     b.textContent=locked?'🔒 LOCKED':'✎ EDITABLE';
@@ -10036,6 +10102,27 @@ function setOpeningAsOf(val){
   if(typeof renderFuelLoads==='function')renderFuelLoads();
   if(typeof renderDashTanks==='function'&&document.getElementById('dashFuelTanks'))renderDashTanks();
   showToast(d?'✓ Opening stock dated '+d:'Opening date cleared');
+}
+// MF_OPENING_SLOT_V1: same rule as the date — the first set is allowed while
+// locked, changing it afterwards needs the owner unlock.
+function setOpeningAsOfSlot(val){
+  var had=localStorage.getItem('fuelOpeningAsOfSlot')!=null, cur=_openingAsOfSlot();
+  var e=document.getElementById('opening_asof_slot');
+  var s=(val==='mid'||val==='close')?val:'open';
+  if(s===cur&&had)return;
+  if(openingLocked()&&had){
+    showToast('🔒 Unlock the opening stock to change when it was measured');
+    if(e)e.value=cur; return;
+  }
+  localStorage.setItem('fuelOpeningAsOfSlot',s);
+  var lbl={open:'before Morning shift',mid:'after Morning shift (9 AM)',close:'after Night shift (6 PM)'};
+  if(typeof logActivity==='function')logActivity('opening_asof','settings','opening',
+    'Opening stock measured '+lbl[s]+(had?' (was '+lbl[cur]+')':''));
+  saveOpeningNow();
+  applyOpeningLock();
+  if(typeof renderFuelLoads==='function')renderFuelLoads();
+  if(typeof renderDashTanks==='function'&&document.getElementById('dashFuelTanks'))renderDashTanks();
+  showToast('✓ Opening stock measured '+lbl[s]);
 }
 function saveOpeningNow(){
   _settingsDirty=true;
