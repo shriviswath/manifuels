@@ -1425,6 +1425,9 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
             <div><label>OPENING (packs)</label><input type="number" id="pack_prev" placeholder="0" oninput="calc()"></div>
             <div><label>CLOSING (packs)</label><input type="number" id="pack_cur" placeholder="0" oninput="calc()"></div>
           </div>
+          <!-- MF_TANK_PACK_V1 -->
+          <div class="frow"><span class="flabel">Units opened (40 packs each)</span><input type="number" id="pack_units" min="0" step="1" placeholder="0" inputmode="numeric" oninput="calc()"></div>
+          <div id="pack_units_hint" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin:2px 0 6px;line-height:1.5"></div>
           <div class="frow"><span class="flabel">Rate (₹/pack)</span><input type="number" id="pack_rate" oninput="queueSaveRates();calc()" onchange="saveRatesNow()"></div>
           <div class="res"><span class="res-lbl">Packs Sold</span><span class="res-val b" id="pack_sold">—</span></div>
           <div class="res"><span class="res-lbl">40ml Value</span><span class="res-val b" id="pack_val">—</span></div>
@@ -2663,7 +2666,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <div>
         <div class="flabel" style="color:var(--petrol)">MSD OPENING VOLUME (L)</div>
         <input type="number" id="msd_opening" placeholder="e.g. 12500.000" step="0.001" inputmode="decimal" oninput="calcOpeningStock()" onchange="saveOpeningNow()">
-        <div style="font-size:10px;color:var(--muted);margin-top:3px">Petrol in the tank right now</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">Petrol in the tank on the “as of” date</div>
       </div>
       <div>
         <div class="flabel" style="color:var(--petrol)">MSD LANDED COST (₹/L)</div>
@@ -2673,12 +2676,21 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <div>
         <div class="flabel" style="color:var(--diesel)">HSD OPENING VOLUME (L)</div>
         <input type="number" id="hsd_opening" placeholder="e.g. 8000.000" step="0.001" inputmode="decimal" oninput="calcOpeningStock()" onchange="saveOpeningNow()">
-        <div style="font-size:10px;color:var(--muted);margin-top:3px">Diesel in the tank right now</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">Diesel in the tank on the “as of” date</div>
       </div>
       <div>
         <div class="flabel" style="color:var(--diesel)">HSD LANDED COST (₹/L)</div>
         <input type="number" id="hsd_opening_cost" placeholder="e.g. 90.41" step="0.01" inputmode="decimal" oninput="calcOpeningStock()" onchange="saveOpeningNow()">
         <div style="font-size:10px;color:var(--muted);margin-top:3px">What that diesel cost you, per litre</div>
+      </div>
+    </div>
+    <!-- MF_TANK_PACK_V1 -->
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+      <div class="flabel" style="margin:0;color:var(--petrol)">OPENING AS OF</div>
+      <input type="date" id="opening_asof" onchange="setOpeningAsOf(this.value)" style="width:170px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);flex:1;min-width:220px;line-height:1.5">
+        The date those litres were measured — stock at the start of that date's Morning shift (6 PM the evening before).
+        Shifts dated before it are not taken off the tank again. A dip taken later always overrides this.
       </div>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
@@ -3404,6 +3416,7 @@ function _deviceConfig(){
     openingCost: {msd:parseFloat(localStorage.getItem('fuelOpeningCostMSD'))||0,
                   hsd:parseFloat(localStorage.getItem('fuelOpeningCostHSD'))||0},
     openingLocked: localStorage.getItem('fuelOpeningLocked')==='1',
+    openingAsOf: localStorage.getItem('fuelOpeningAsOf')||'',   // MF_TANK_PACK_V1
     // Stamped so a device that has been offline cannot push a month-old
     // config over a fresh one just by syncing later.
     savedAt: new Date().toISOString()
@@ -3476,6 +3489,10 @@ function _applyDeviceConfig(cfg){
     _setInputIfIdle('msd_opening_cost',cfg.openingCost.msd||'');
     _setInputIfIdle('hsd_opening_cost',cfg.openingCost.hsd||'');
   }
+  if(cfg.openingAsOf!=null){   // MF_TANK_PACK_V1 — absent from older devices: keep ours
+    localStorage.setItem('fuelOpeningAsOf',cfg.openingAsOf||'');
+    _setInputIfIdle('opening_asof',cfg.openingAsOf||'');
+  }
   if(cfg.openingLocked!=null){
     localStorage.setItem('fuelOpeningLocked',cfg.openingLocked?'1':'0');
     if(typeof applyOpeningLock==='function')applyOpeningLock();
@@ -3511,6 +3528,8 @@ const _msdC=localStorage.getItem('fuelOpeningCostMSD');
 const _hsdC=localStorage.getItem('fuelOpeningCostHSD');
 if(_msdC&&parseFloat(_msdC)>0)document.getElementById('msd_opening_cost').value=_msdC;
 if(_hsdC&&parseFloat(_hsdC)>0)document.getElementById('hsd_opening_cost').value=_hsdC;
+{ const _ao=localStorage.getItem('fuelOpeningAsOf'), _ae=document.getElementById('opening_asof');   // MF_TANK_PACK_V1
+  if(_ae&&_ao)_ae.value=_ao; }
 if(_msdOp||_hsdOp){document.getElementById('opening_chip').textContent=
   `MSD ${parseFloat(_msdOp||0).toFixed(0)}L${_msdC>0?' @ ₹'+parseFloat(_msdC).toFixed(2):' (no cost)'} | `+
   `HSD ${parseFloat(_hsdOp||0).toFixed(0)}L${_hsdC>0?' @ ₹'+parseFloat(_hsdC).toFixed(2):' (no cost)'}`;}
@@ -4706,30 +4725,38 @@ function renderDashTanks(){
   const CAP_HSD = cfg.capHSD || 20000;
 
   const bMSD = tankLevel('MSD'), bHSD = tankLevel('HSD');
-  const liveMSD = Math.max(0, bMSD.book);
-  const liveHSD = Math.max(0, bHSD.book);
-
-  const pctMSD = CAP_MSD ? Math.min(100,(liveMSD/CAP_MSD)*100) : 0;
-  const pctHSD = CAP_HSD ? Math.min(100,(liveHSD/CAP_HSD)*100) : 0;
-
-  document.getElementById('dashFuelTanks').innerHTML = `
+  // MF_TANK_PACK_V1: show the real book figure. Clamping a negative to 0 hid
+  // the fault — the card read "0.0 L" with nothing to say why.
+  const firstShift = records.reduce((m,r)=>(r.date&&(!m||String(r.date)<m))?String(r.date):m,'');
+  const nf = (n,d)=>Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:d||0});
+  const tankRow = (name,col,cls,b,cap,disp)=>{
+    const lvl=b.book, pct=cap?Math.min(100,Math.max(0,(lvl/cap)*100)):0;
+    const bad = lvl<0 || (cap>0 && lvl>cap*1.02);
+    let warn='';
+    if(bad){
+      const why = lvl<0
+        ? (b.since==='opening stock'
+            ? 'The opening figure has no date, so every shift since '+(firstShift||'the first record')+
+              ' is being taken off it. Set “Opening as of” on Fuel Loads, or record a dip.'
+            : 'More fuel metered out than the book holds — a tanker is missing from Fuel Loads, or the '+
+              b.since+' figure is wrong.')
+        : 'Above tank capacity — a load entered twice, or the '+b.since+' figure is too high.';
+      warn='<div style="font-size:10px;color:var(--red);margin-top:4px;line-height:1.5">⚠ '+_esc(why)+'</div>';
+    }
+    return `
     <div class="fuel-tank">
       <div class="fuel-tank-top">
-        <span class="fuel-tank-name" style="color:var(--petrol)">● MSD (Petrol)</span>
-        <span class="fuel-tank-vol" style="color:var(--petrol)">${liveMSD.toFixed(1)} L</span>
+        <span class="fuel-tank-name" style="color:${col}">● ${name}</span>
+        <span class="fuel-tank-vol" style="color:${bad?'var(--red)':col}">${nf(lvl,1)} L</span>
       </div>
-      <div class="fuel-tank-bar"><div class="fuel-tank-fill msd" style="width:${pctMSD}%"></div></div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:4px">${pctMSD.toFixed(0)}% of ${CAP_MSD}L • today ${dispMSD.toFixed(1)}L • since ${bMSD.since}</div>
-    </div>
-    <div class="fuel-tank">
-      <div class="fuel-tank-top">
-        <span class="fuel-tank-name" style="color:var(--diesel)">● HSD (Diesel)</span>
-        <span class="fuel-tank-vol" style="color:var(--diesel)">${liveHSD.toFixed(1)} L</span>
-      </div>
-      <div class="fuel-tank-bar"><div class="fuel-tank-fill hsd" style="width:${pctHSD}%"></div></div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:4px">${pctHSD.toFixed(0)}% of ${CAP_HSD}L • today ${dispHSD.toFixed(1)}L • since ${bHSD.since}</div>
-    </div>
-  `;
+      <div class="fuel-tank-bar"><div class="fuel-tank-fill ${cls}" style="width:${pct}%"></div></div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:4px;line-height:1.6">${pct.toFixed(0)}% of ${nf(cap)} L • today ${nf(disp,1)} L<br>${_esc(b.since)}: ${nf(b.open)} + in ${nf(b.loaded)} − out ${nf(b.sold)}${b.tested?' + test '+nf(b.tested,1):''}</div>
+      ${warn}
+    </div>`;
+  };
+  document.getElementById('dashFuelTanks').innerHTML =
+    tankRow('MSD (Petrol)','var(--petrol)','msd',bMSD,CAP_MSD,dispMSD)+
+    tankRow('HSD (Diesel)','var(--diesel)','hsd',bHSD,CAP_HSD,dispHSD);
 
   const rates = JSON.parse(localStorage.getItem('fuelRates')||'{}');
   document.getElementById('dashRateMsd').textContent = '₹'+(rates.msd||'—')+'/L';
@@ -4917,6 +4944,13 @@ function carryForwardMeters(silent){
     const _le=document.getElementById('oil_prev');
     if(_le&&isFinite(_lv)&&(silent?!_le.value:true)){_le.value=_lv;n++;}
   }
+  // MF_TANK_PACK_V1: 40 ml counter starts where the last shift left it.
+  const _pp=(typeof _lastPackClose==='function')?_lastPackClose():null;
+  if(_pp){
+    const _pv=parseFloat(_pp.meters.pack_cur);
+    const _pe=document.getElementById('pack_prev');
+    if(_pe&&isFinite(_pv)&&(silent?!_pe.value:true)){_pe.value=_pv;n++;}
+  }
   if(n){calc(); if(!silent)showToast('✓ Opening readings carried from '+prev.id);}
   else if(!silent)showToast('Opening readings already filled');
 }
@@ -5040,6 +5074,43 @@ function confirmSaveShift(){
 function v(id){return parseFloat(document.getElementById(id)?.value)||0}
 function fmt(n){return '₹'+n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function fmtL(n){return n.toLocaleString('en-IN',{minimumFractionDigits:3,maximumFractionDigits:3})+' L'}
+// MF_TANK_PACK_V1 — 40 ml packs come 6 units to a box, 40 packs to a unit.
+// When the counter runs low mid-shift a unit is opened and its 40 packs join
+// the counter. Sold = opening + units opened × 40 − closing. Without the units
+// the closing count came out higher than the opening and the sale clamped to 0.
+// Opening a unit is a move from box to counter, not a sale: the Pack Register
+// balance is untouched by it.
+var PACK40_PER_UNIT=40, PACK40_UNITS_PER_BOX=6;
+function _vn(id){var e=document.getElementById(id);return e&&e.value!==''?(parseFloat(e.value)||0):null;}
+function _pack40Added(){
+  var u=Math.max(0,Math.round(v('pack_units')));
+  return {units:u,packs:u*PACK40_PER_UNIT};
+}
+function _pack40Hint(){
+  var h=document.getElementById('pack_units_hint'); if(!h)return;
+  var a=_vn('pack_prev'), b=_vn('pack_cur'), add=_pack40Added();
+  if(a==null&&b==null&&!add.units){h.textContent='';return;}
+  var avail=(a||0)+add.packs;
+  if(b!=null&&b>avail){
+    var need=Math.ceil((b-avail)/PACK40_PER_UNIT);
+    h.style.color='var(--red)';
+    h.textContent='⚠ Closing '+b+' is more than the '+avail+' available. If a unit was opened, '+
+      (add.units?'enter '+(add.units+need)+' units':'enter '+need+' above')+' (1 unit = '+PACK40_PER_UNIT+' packs).';
+    return;
+  }
+  h.style.color='var(--muted)';
+  h.textContent='Opening '+(a||0)+(add.units?' + '+add.units+' unit'+(add.units>1?'s':'')+' ('+add.packs+' packs)':'')+
+    ' = '+avail+' available'+(b!=null?' − closing '+b+' = '+(avail-b)+' sold':'');
+}
+// Closing packs of the shift before this one, for the carry-forward.
+function _lastPackClose(){
+  const d=document.getElementById('shiftDate')?.value||'';
+  const prior=records.filter(r=>r.meters&&r.meters.pack_cur!=null&&
+      (r.date<d||(r.date===d&&r.shift!==shift)))
+    .sort((a,b)=>String(b.date).localeCompare(String(a.date))||
+      (b.shift==='night'?1:-1)-(a.shift==='night'?1:-1));
+  return prior.length?prior[0]:null;
+}
 function setEl(id,val,cls){const e=document.getElementById(id);if(!e)return;e.textContent=val;if(cls!==undefined){e.className='res-val'+(cls?' '+cls:'')}}
 
 function calc(){
@@ -5078,7 +5149,7 @@ function calc(){
   } else {
     hsdV = hsdT * v('hsd_rate');
   }
-  const ps=Math.max(0,v('pack_prev')-v('pack_cur'));
+  const ps=Math.max(0,v('pack_prev')+_pack40Added().packs-v('pack_cur'));   // MF_TANK_PACK_V1
   // A bottle gets opened when the jar runs dry, which is in the middle of a
   // shift, twice or three times on a busy day — not tidily before it starts.
   // So the litres available are the opening level PLUS everything tipped in,
@@ -5100,7 +5171,7 @@ function calc(){
   document.getElementById('msd_value').textContent=fmt(msdV);
   setEl('hsd1_disp',fmtL(h1),'d');setEl('hsd2_disp',fmtL(h2),'d');
   document.getElementById('hsd_value').textContent=fmt(hsdV);
-  setEl('pack_sold',ps+' packs','b');setEl('pack_val',fmt(pv),'b');
+  setEl('pack_sold',ps+' packs','b');setEl('pack_val',fmt(pv),'b');_pack40Hint();
   setEl('oil_sold',os.toFixed(2)+' L','b');setEl('oil_val',fmt(ov),'b');
   const _ou=document.getElementById('oil_units');
   if(_ou){
@@ -5591,7 +5662,7 @@ function getCalcVals(){
   } else {
     hsdV = hsdT * v('hsd_rate');
   }
-  const ps=Math.max(0,v('pack_prev')-v('pack_cur'));
+  const ps=Math.max(0,v('pack_prev')+_pack40Added().packs-v('pack_cur'));   // MF_TANK_PACK_V1
   const looseAdded=_looseAdded();
   const os=Math.max(0,v('oil_prev')+looseAdded.litres-v('oil_cur'));
   let pv=ps*v('pack_rate');
@@ -5625,6 +5696,7 @@ function getCalcVals(){
   const bottlesOpened=looseAdded.bottles;
   return {msdT,hsdT,msdV,hsdV,ps,os,pv,ov,stRev,gpay,paytm,cash,exp,handover,credit,credBack,leftTotal,rightTotal,extraPackSold,
     bottlesOpened, looseOpened:looseAdded.items, looseCost:looseAdded.cost,
+    packUnits:_pack40Added().units,   // MF_TANK_PACK_V1
     testMSDL:_tf.msdL,testHSDL:_tf.hsdL,
     bal:leftTotal-rightTotal,
     etmsd:v('e_tmsd'),ethsd:v('e_thsd'),etoil:v('e_toil'),eitems:v('e_items'),etea:v('e_tea'),echit:v('e_chit'),eother:v('e_other')};
@@ -5849,6 +5921,9 @@ function _doSaveShift(){
             // Not columns on shift_records: without riding here they never
             // left this device and the next sync wiped them everywhere.
             ps:c.ps||0, os:c.os||0, handover:_r2(c.handover||0), looseOpened:c.looseOpened||[],
+            // MF_TANK_PACK_V1: 40 ml counter readings, so the next shift can
+            // carry the closing forward and History can show units opened.
+            pack_prev:_vn('pack_prev'), pack_cur:_vn('pack_cur'), pack_units:c.packUnits||0,
             exp:{tmsd:v('e_tmsd'),thsd:v('e_thsd'),toil:v('e_toil'),items:v('e_items'),
                  tea:v('e_tea'),chit:v('e_chit'),other:v('e_other')}},
     looseOilUnits:c.bottlesOpened||0,   // whole bottles, so the reversal on delete is whole too
@@ -5869,7 +5944,7 @@ function _doSaveShift(){
   // Reset all entry fields
   ['msd1_prev','msd1_cur','msd2_prev','msd2_cur',
    'hsd1_prev','hsd1_cur','hsd2_prev','hsd2_cur',
-   'pack_prev','pack_cur','oil_prev','oil_cur',
+   'pack_prev','pack_cur','pack_units','oil_prev','oil_cur',
   'msd_before_l','msd_rate1','msd_after_l','msd_rate2',
   'hsd_before_l','hsd_rate1','hsd_after_l','hsd_rate2',
    'p_gpay','p_paytm','p_cash',
@@ -7114,7 +7189,8 @@ function _stmtTransactions(from,to){
           ((r.testHSDL||0)>0?' · incl. '+_sL(r.testHSDL)+' L testing':'')});
     if((r.pv||0)>0){
       var p=_recPs40(r), ex=r.extraPackSold||{}, parts=[];
-      if(p.n>0)parts.push(_sL(p.n,0)+' × 40 ml'+(p.est?' (count estimated)':''));
+      if(p.n>0)parts.push(_sL(p.n,0)+' × 40 ml'+(p.est?' (count estimated)':'')+
+        ((r.meters&&r.meters.pack_units>0)?' ('+r.meters.pack_units+' unit'+(r.meters.pack_units>1?'s':'')+' opened)':''));   // MF_TANK_PACK_V1
       Object.keys(ex).forEach(function(k){ if(+ex[k]>0)parts.push(_sL(ex[k],0)+' × '+k+' ml'); });
       push({cr:r.pv,desc:'Pack oil sales',sub:parts.join(' · ')||'packs not recorded'});
     }
@@ -8849,7 +8925,8 @@ function renderPackStockHint(){
     var sz=+(card.getAttribute('data-pack-size')||40), p=bal[sz]; if(!p)return;
     var pre=sz===40?'pack':'pack'+sz;
     var a=parseFloat((document.getElementById(pre+'_prev')||{}).value), b=parseFloat((document.getElementById(pre+'_cur')||{}).value);
-    var now=(isFinite(a)&&isFinite(b)&&a>=b)?(a-b):0;
+    var _add=(sz===40&&typeof _pack40Added==='function')?_pack40Added().packs:0;   // MF_TANK_PACK_V1
+    var now=(isFinite(a)&&isFinite(b)&&a+_add>=b)?(a+_add-b):0;
     // A shift already saved is already in p.sold; don't count it twice.
     var sid=(document.getElementById('shiftId')||{}).textContent;
     if(sid&&(records||[]).some(function(r){return r.id===sid;}))now=0;
@@ -8867,7 +8944,7 @@ function renderPackStockHint(){
 }
 document.addEventListener('input',function(e){
   var id=e.target&&e.target.id||'';
-  if(/^pack\d*_(prev|cur)$/.test(id))renderPackStockHint();
+  if(/^pack\d*_(prev|cur|units)$/.test(id))renderPackStockHint();   // MF_TANK_PACK_V1
 });
 
 // ── LOOSE / L-UNIT SETUP, reachable from the shift entry ─────────────────
@@ -8984,7 +9061,11 @@ function updatePackPreview(){
   const qty=parseFloat(document.getElementById('pr_qty')?.value)||0;
   const cost=parseFloat(document.getElementById('pr_cost')?.value)||0;
   const prev=document.getElementById('pr_preview');
-  if(prev)prev.textContent=qty&&cost?'Total cost: ₹'+(qty*cost).toLocaleString('en-IN',{minimumFractionDigits:2}):'';
+  // MF_TANK_PACK_V1: 1 box = 6 units = 240 packs of 40 ml
+  const _sz=(document.getElementById('pr_size')||{}).value;
+  const _per=(typeof PACK40_PER_UNIT!=='undefined')?PACK40_PER_UNIT:40, _upb=(typeof PACK40_UNITS_PER_BOX!=='undefined')?PACK40_UNITS_PER_BOX:6;
+  const _bx=(String(_sz)==='40'&&qty>0)?' · = '+(+(qty/(_per*_upb)).toFixed(2))+' box / '+(+(qty/_per).toFixed(2))+' units':'';
+  if(prev)prev.textContent=(qty&&cost?'Total cost: ₹'+(qty*cost).toLocaleString('en-IN',{minimumFractionDigits:2}):'')+_bx;
 }
 
 function submitPackEntry(){
@@ -9173,8 +9254,11 @@ function _tankMovement(type,from,to){
   var loaded=0,sold=0,tested=0;
   (typeof fuelLoads!=='undefined'?fuelLoads:[]).forEach(function(l){
     if(l.type!==type)return;
-    // A tanker has no clock time, so it counts from the first shift of its day.
-    var lr=1;
+    // MF_TANK_PACK_V1: a tanker has no clock time. Tankers come in daylight,
+    // which at this station is the Night shift (D 9 AM - 6 PM). At rank 1 a
+    // load after a Shift-change dip counted as before it and was lost from the
+    // book for good. 1.5 = during the day shift.
+    var lr=1.5;
     if(from&&_posCmp(l.date,lr,from.date,from.rank)<=0)return;
     if(_posCmp(l.date,lr,to.date,to.rank)>0)return;
     loaded+=(parseFloat(l.vol)||0);
@@ -9194,9 +9278,36 @@ function _tankMovement(type,from,to){
 // Anchoring on the opening figure instead would make every variation
 // cumulative, and the running total in the table would then count the same
 // loss over and over.
+// MF_TANK_PACK_V1: opening stock is a measurement taken at a point in time,
+// exactly like a dip. Without that point every shift ever recorded was taken
+// off it — including the ones before it was measured — and the tank read
+// negative. Stored as a date; the stock is as at the start of that date's
+// Morning shift (6 PM the evening before).
+function _openingAsOf(){
+  var d=localStorage.getItem('fuelOpeningAsOf')||'';
+  return /^\d{4}-\d{2}-\d{2}$/.test(d)?d:'';
+}
 function bookStock(type,date,slot){
   var rank=_slotRank(slot);
   var anchor=_anchorDip(type,date,rank);
+  var _asOf=_openingAsOf();
+  if(_asOf){
+    var _opV=(type==='MSD'?(fuelOpeningMSD||0):(fuelOpeningHSD||0));
+    var _opP={date:_asOf,rank:0};
+    // The opening measurement wins over any dip taken before it.
+    if(_posCmp(_asOf,0,date,rank)<0 &&
+       (!anchor||_posCmp(_asOf,0,anchor.date,_slotRank(anchor.slot))>0)){
+      var _mo=_tankMovement(type,_opP,{date:date,rank:rank});
+      return {open:_opV,loaded:_mo.loaded,sold:_mo.sold,tested:_mo.tested,
+              book:_opV+_mo.loaded-_mo.sold+_mo.tested,anchor:null,since:'opening '+_asOf};
+    }
+    if(!anchor){
+      // A point at or before the opening date: count backwards from it.
+      var _mb=_tankMovement(type,{date:date,rank:rank},_opP);
+      return {open:_opV,loaded:-_mb.loaded,sold:-_mb.sold,tested:-_mb.tested,
+              book:_opV-_mb.loaded+_mb.sold-_mb.tested,anchor:null,since:'opening '+_asOf};
+    }
+  }
   var base=anchor?(parseFloat(anchor.observed)||0)
                  :(type==='MSD'?(fuelOpeningMSD||0):(fuelOpeningHSD||0));
   var from=anchor?{date:anchor.date,rank:_slotRank(anchor.slot)}:null;
@@ -9683,7 +9794,7 @@ function orderAdvice(){
         (f.cv>0.6?' and daily volumes swing widely':'')+
         ' — treat this as a rough estimate, not a forecast.'});
   }
-  if(f.since && f.since==='opening stock'){
+  if(f.since && /^opening/.test(f.since)){   // MF_TANK_PACK_V1
     out.notes.push({level:'info',
       text:'Tank level is counted from the opening figure, not a dip. Record a dip '+
         'to anchor it on a real measurement.'});
@@ -9839,6 +9950,12 @@ function applyOpeningLock(){
     e.style.opacity=locked?'.55':'';
     e.title=locked?'Locked. An owner can unlock it.':'';
   });
+  const _ao=document.getElementById('opening_asof');   // MF_TANK_PACK_V1
+  if(_ao){
+    const _lk=locked&&(typeof _openingAsOf==='function')&&!!_openingAsOf();
+    _ao.disabled=_lk; _ao.style.opacity=_lk?'.55':'';
+    _ao.title=_lk?'Locked. An owner can unlock it.':'';
+  }
   const b=document.getElementById('opening_lock_badge');
   if(b){
     b.textContent=locked?'🔒 LOCKED':'✎ EDITABLE';
@@ -9898,6 +10015,27 @@ function calcOpeningStock(){
     ? `MSD ${msd.toFixed(0)}L${cm?' @ ₹'+cm.toFixed(2):' (no cost)'} | HSD ${hsd.toFixed(0)}L${ch?' @ ₹'+ch.toFixed(2):' (no cost)'}`
     : 'Not set';
   queueSettingsSave();   // oninput fires per keystroke — debounced like rates
+}
+// MF_TANK_PACK_V1: date the opening stock. Setting it the first time is
+// allowed while locked (it only fixes a missing fact); changing it after that
+// moves every tank figure, so it needs the owner unlock like the volume does.
+function setOpeningAsOf(val){
+  var cur=_openingAsOf();
+  var e=document.getElementById('opening_asof');
+  if(openingLocked()&&cur){
+    showToast('🔒 Unlock the opening stock to change its date');
+    if(e)e.value=cur; return;
+  }
+  var d=/^\d{4}-\d{2}-\d{2}$/.test(val||'')?val:'';
+  if(d===cur)return;
+  localStorage.setItem('fuelOpeningAsOf',d);
+  if(typeof logActivity==='function')logActivity('opening_asof','settings','opening',
+    'Opening stock dated '+(d||'(cleared)')+(cur?' (was '+cur+')':''));
+  saveOpeningNow();
+  applyOpeningLock();
+  if(typeof renderFuelLoads==='function')renderFuelLoads();
+  if(typeof renderDashTanks==='function'&&document.getElementById('dashFuelTanks'))renderDashTanks();
+  showToast(d?'✓ Opening stock dated '+d:'Opening date cleared');
 }
 function saveOpeningNow(){
   _settingsDirty=true;
