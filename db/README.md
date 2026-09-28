@@ -24,6 +24,7 @@ SQL editor, in this order (all are safe to run again):
 | `017_five_features.sql` | `fuel_loads.receipt`; tank line in the evening report | 015 |
 | `018_oil_stock_register.sql` | `oil_invoices.payments`, `stock_items.adjustments` | — |
 | `019_fuel_load_payments.sql` | `fuel_loads.payments` — dated tanker payments | — |
+| `020_staff_register.sql` | staff left date / advance plan, payment month / mode / ref; staff pay owners + managers only | the lock |
 
 The app keeps working if a column is missing — the extra detail stays on the
 phone that entered it until the migration runs.
