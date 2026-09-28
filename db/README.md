@@ -9,7 +9,28 @@ paste the whole set if you are unsure what has already been applied.
 
 ## Order
 
-Or just run `apply_all.sql`, which is 001–003 concatenated.
+### Current database (locked with sign-in) — run these one at a time
+
+`apply_all.sql` bundles **001–014 only** and turns row-level security off, so it
+**refuses to run** once `stage2_lock.sql` has locked the database. Do not add
+later migrations to it. On the live database, run each of these by itself in the
+SQL editor, in this order (all are safe to run again):
+
+| File | What it does | Needs |
+|---|---|---|
+| `stage1_accounts.sql`, `stage2_lock.sql` | Sign-in accounts and row-level security | — (done) |
+| `015_notifications.sql` | Phone notifications, shift clock, evening report | the lock, and the `mf-push` edge function deployed first |
+| `016_resaved_shifts.sql` | Steps 1–2 only read; step 3 (optional) marks re-saved shifts live | — |
+| `017_five_features.sql` | `fuel_loads.receipt`; tank line in the evening report | 015 |
+| `018_oil_stock_register.sql` | `oil_invoices.payments`, `stock_items.adjustments` | — |
+
+The app keeps working if a column is missing — the extra detail stays on the
+phone that entered it until the migration runs.
+
+### Rebuilding an unlocked database from scratch
+
+`apply_all.sql` (001–014), then `stage1_accounts.sql`, `stage2_lock.sql`, then the
+table above from 015.
 
 | File | What it does | Status |
 |---|---|---|
