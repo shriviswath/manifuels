@@ -845,6 +845,12 @@ initAuth();
 .dash-quick-btn.primary:hover{filter:brightness(1.1);color:#000}
 
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:14px}
+/* MF_DASH_V5: six dashboard tiles as 3 × 2 (2 × 3 on phones) — auto-fit left one alone on a row */
+#kpiGrid{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:700px){#kpiGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:380px){#kpiGrid{grid-template-columns:1fr}}
+/* a chart drawn wider (rotation, resize) must not push the page sideways */
+.dash-grid>*{min-width:0}
 .kpi{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:14px;position:relative;overflow:hidden;transition:transform .15s,border-color .15s}
 .kpi:hover{transform:translateY(-2px);border-color:var(--border2)}
 .kpi-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
@@ -4524,53 +4530,58 @@ function renderDashKPIs(){
   const today=_todayISO();
   // date>=_daysAgo(7) is EIGHT days inclusive, so this tile disagreed with
   // the weekly P&L widget and the 7d report range, both of which use six.
-  const weekAgo=_daysAgo(6);
   const todayRecs = records.filter(r=>r.date===today);
-  const weekRecs  = records.filter(r=>r.date>=weekAgo);
-  const prevWeekRecs = records.filter(r=>r.date>=_daysAgo(13)&&r.date<weekAgo);
+  // MF_DASH_V5: complete days only. Today joins once its Night shift is over
+  // (6 PM); before that the comparison ran a part-day against full days.
+  const _now=new Date();
+  const _endIso=(typeof mfSlotEnd==='function'&&mfSlotEnd({date:today,shift:'night'})>_now)?_daysAgo(1):today;
+  const _addD=(iso,n)=>{const d=new Date(iso+'T00:00:00');d.setDate(d.getDate()+n);return _isoLocal(d);};
+  const weekAgo=_addD(_endIso,-6), prevFrom=_addD(_endIso,-13), prevTo=_addD(_endIso,-7);
+  const weekRecs  = records.filter(r=>r.date>=weekAgo&&r.date<=_endIso);
+  const prevWeekRecs = records.filter(r=>r.date>=prevFrom&&r.date<=prevTo);
 
   const todayRev = _plCore(todayRecs, today, today).revenue;
   const todayMSD = todayRecs.reduce((s,r)=>s+(r.msdT||0),0);
   const todayHSD = todayRecs.reduce((s,r)=>s+(r.hsdT||0),0);
   const todayBal = todayRecs.reduce((s,r)=>s+(r.bal||0),0);
 
-  const weekRev = _plCore(weekRecs, weekAgo, today).revenue;
-  const prevWeekRev = _plCore(prevWeekRecs, _daysAgo(13), _daysAgo(7)).revenue;
+  const weekRev = _plCore(weekRecs, weekAgo, _endIso).revenue;
+  const prevWeekRev = _plCore(prevWeekRecs, prevFrom, prevTo).revenue;
+  const _endLbl = new Date(_endIso+'T00:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short'});
   const weekChange = prevWeekRev>0 ? ((weekRev-prevWeekRev)/prevWeekRev*100) : 0;
 
   // Credit outstanding
-  const outstanding = ledger.reduce((s,e)=>s+Math.max(0,(e.amount||0)-(e.paidBack||0)),0);
-  const outstandingCustomers = new Set(ledger.filter(e=>(e.amount||0)>(e.paidBack||0)).map(e=>e.customer)).size;
+  // MF_DASH_V5: net of advances, per customer — the ledger page's figure.
+  let outstanding=0, outstandingCustomers=0;
+  [...new Set(ledger.map(e=>e.customer))].forEach(function(n){
+    const p=_custPosition(n); if(p.net>0.5){ outstanding+=p.net; outstandingCustomers++; } });
 
-  // Stock value
-  const stockValue = stock.reduce((s,x)=>s+((x.qty||0)*(x.rate||0)),0);
-  const lowStockCount = stock.filter(x=>(x.qty||0)>0 && (x.qty||0)<=2).length;
-  const outOfStock = stock.filter(x=>(x.qty||0)<=0).length;
-
-  // Fuel load dues (if fuelLoads exists)
-  let fuelDues = 0;
-  try{
-    const loads = JSON.parse(localStorage.getItem('fuelLoads')||'[]');
-    // amountDue is maintained as totalCost - amountPaid, so subtracting
-    // amountPaid again halved every outstanding balance.
-    fuelDues = loads.reduce((s,l)=>s+Math.max(0,(l.totalCost!=null?l.totalCost:(l.amountDue||0))-(l.amountPaid||0)),0);
-  }catch(e){}
+  // MF_DASH_V5: tankers AND oil invoices, from the synced lists in memory.
+  const _sd=_supplierDues();
+  const fuelDues=_sd.total;
+  // Today's profit
+  const _Pt=_plCore(todayRecs, today, today);
+  const _lt=(_Pt.soldMSDL||0)+(_Pt.soldHSDL||0);
+  const _fuelMarginL=_lt>0?((_Pt.revFuel||0)-(_Pt.cogsFuel||0))/_lt:0;
 
   const kpis = [
     {cls:'petrol', icon:'☀', lbl:"TODAY'S REVENUE", val:fmt(todayRev),
      sub: todayRecs.length ? `${todayRecs.length} shift${todayRecs.length>1?'s':''} • ${(todayMSD+todayHSD).toFixed(0)}L total` : 'No shift saved yet'},
-    {cls:'blue', icon:'📅', lbl:'LAST 7 DAYS', val:fmt(weekRev),
-     sub: prevWeekRev>0 ? `${weekChange>=0?'▲':'▼'} ${Math.abs(weekChange).toFixed(1)}% vs prev week` : `${weekRecs.length} shifts`},
+    {cls:'blue', icon:'📅', lbl:'LAST 7 FULL DAYS', val:fmt(weekRev),
+     sub: (prevWeekRev>0 ? `${weekChange>=0?'▲':'▼'} ${Math.abs(weekChange).toFixed(1)}% vs the 7 before` : `${weekRecs.length} shifts`)+` · to ${_endLbl}`},
     {cls: todayBal>=0?'green':'red', icon: todayBal>=0?'✓':'⚠', lbl:"TODAY'S CASH",
      val: (todayBal>=0?'+':'')+fmt(todayBal).replace('₹',todayBal>=0?'₹':'-₹').replace('-₹-','-₹'),
      sub: todayBal>=0?'Surplus / balanced':'Cash shortage — check tally'},
     {cls: outstanding>50000?'red':(outstanding>0?'diesel':'green'), icon:'📒', lbl:'CREDIT OUTSTANDING',
      val: fmt(outstanding),
      sub: outstandingCustomers>0 ? `${outstandingCustomers} customer${outstandingCustomers>1?'s':''} pending` : 'All cleared'},
-    {cls: fuelDues>0?'diesel':'green', icon:'⛽', lbl:'FUEL LOAD DUES', val:fmt(fuelDues),
-     sub: fuelDues>0?'Pending supplier payments':'No pending dues'},
-    {cls: lowStockCount+outOfStock>0?'red':'purple', icon:'📦', lbl:'STOCK VALUE', val:fmt(stockValue),
-     sub: outOfStock>0 ? `${outOfStock} out of stock, ${lowStockCount} low` : (lowStockCount>0?`${lowStockCount} items low`:'Stock healthy')},
+    {cls: fuelDues>0?'diesel':'green', icon:'⛽', lbl:'SUPPLIER DUES', val:fmt(fuelDues),
+     sub: fuelDues>0?('Tankers '+fmt(_sd.fuel)+' · oil '+fmt(_sd.oil)):'No pending dues'},
+    // MF_DASH_V5: today's profit instead of stock value
+    {cls: !todayRecs.length?'purple':(_Pt.netProfit>=0?'green':'red'), icon:'💹', lbl:"TODAY'S PROFIT",
+     val: todayRecs.length?fmt(_Pt.netProfit):'—',
+     sub: !todayRecs.length?'No shift saved yet':(_Pt.fuelUncosted?'⚠ fuel cost missing — enter the tanker loads':
+          ('fuel margin ₹'+_fuelMarginL.toFixed(2)+'/L · '+(_Pt.netMarginPct||0).toFixed(1)+'% net'))},
   ];
 
   document.getElementById('kpiGrid').innerHTML = kpis.map(k=>`
@@ -4639,12 +4650,12 @@ function computeAlerts(){
   }
   // Low / out of stock
   const outOfStock = stock.filter(x=>(x.qty||0)<=0);
-  const lowStock = stock.filter(x=>(x.qty||0)>0 && (x.qty||0)<=2);
+  const lowStock = stock.filter(x=>(x.qty||0)>0 && _stockLow(x));   // MF_DASH_V5: days of cover
   if(outOfStock.length){
     alerts.push({type:'danger',icon:'📦',title:`${outOfStock.length} item${outOfStock.length>1?'s':''} out of stock`,desc:outOfStock.slice(0,3).map(x=>x.name).join(', ')+(outOfStock.length>3?'…':''),action:'STOCK',page:'stock'});
   }
   if(lowStock.length){
-    alerts.push({type:'info',icon:'📉',title:`${lowStock.length} item${lowStock.length>1?'s':''} running low`,desc:lowStock.slice(0,3).map(x=>`${x.name} (${x.qty})`).join(', ')+(lowStock.length>3?'…':''),action:'STOCK',page:'stock'});
+    alerts.push({type:'info',icon:'📉',title:`${lowStock.length} item${lowStock.length>1?'s':''} running low`,desc:lowStock.slice(0,3).map(x=>{const c=_stockCover(x);return `${x.name} (${x.qty}${c.days!=null?' ≈'+Math.floor(c.days)+'d':''})`;}).join(', ')+(lowStock.length>3?'…':''),action:'STOCK',page:'stock'});
   }
 
   // Fuel load dues
@@ -4701,6 +4712,9 @@ function _dipAlerts(){
 
 function renderDashAlerts(){
   const alerts=computeAlerts();
+  // MF_DASH_V5: red first, then amber, then info — order within a level kept.
+  alerts.forEach(function(a,i){a._i=i;});
+  alerts.sort(function(a,b){return ((_ALERT_RANK[a.type]!=null?_ALERT_RANK[a.type]:2)-(_ALERT_RANK[b.type]!=null?_ALERT_RANK[b.type]:2))||(a._i-b._i);});
   // Empty state
   const el = document.getElementById('dashAlerts');
   document.getElementById('dashAlertCount').textContent = alerts.length ? `${alerts.length} item${alerts.length>1?'s':''}` : 'All clear';
@@ -4784,6 +4798,7 @@ function _renderDashChartInner(canvas){
   const labels=[];
   const msdData=[];
   const hsdData=[];
+  const profitData=[];   // MF_DASH_V5
   for(let i=13;i>=0;i--){
     const d=new Date();d.setDate(d.getDate()-i);
     const iso=_isoLocal(d);
@@ -4792,6 +4807,9 @@ function _renderDashChartInner(canvas){
     const dayRecs = records.filter(r=>r.date===iso);
     msdData.push(dayRecs.reduce((s,r)=>s+(r.msdV||0),0));
     hsdData.push(dayRecs.reduce((s,r)=>s+(r.hsdV||0),0));
+    // MF_DASH_V5: net profit for the day; a gap where nothing was saved
+    let _p=null; try{ if(dayRecs.length)_p=Math.round(_plCore(dayRecs,iso,iso).netProfit); }catch(e){}
+    profitData.push(_p);
   }
 
   if(_dashChart){try{_dashChart.destroy();}catch(e){}}
@@ -4810,7 +4828,10 @@ function _renderDashChartInner(canvas){
       labels,
       datasets:[
         {label:'MSD Revenue',data:msdData,borderColor:'#00d4a0',backgroundColor:petrolGrad,borderWidth:2,tension:.35,fill:true,pointRadius:2,pointHoverRadius:5,pointBackgroundColor:'#00d4a0'},
-        {label:'HSD Revenue',data:hsdData,borderColor:'#ffb020',backgroundColor:dieselGrad,borderWidth:2,tension:.35,fill:true,pointRadius:2,pointHoverRadius:5,pointBackgroundColor:'#ffb020'}
+        {label:'HSD Revenue',data:hsdData,borderColor:'#ffb020',backgroundColor:dieselGrad,borderWidth:2,tension:.35,fill:true,pointRadius:2,pointHoverRadius:5,pointBackgroundColor:'#ffb020'},
+        // MF_DASH_V5: profit on its own scale — it is a tenth of revenue and
+        // would be a flat line on the revenue axis.
+        {label:'Net profit',data:profitData,yAxisID:'y1',borderColor:'#8ab4ff',backgroundColor:'transparent',borderWidth:2,borderDash:[5,4],tension:.3,fill:false,spanGaps:false,pointRadius:3,pointHoverRadius:6,pointBackgroundColor:'#8ab4ff'}
       ]
     },
     options:{
@@ -4822,7 +4843,9 @@ function _renderDashChartInner(canvas){
       },
       scales:{
         x:{grid:{color:'rgba(47,47,47,.9)'},ticks:{color:'#AAAAAA',font:{family:'JetBrains Mono',size:9}}},
-        y:{grid:{color:'rgba(47,47,47,.9)'},ticks:{color:'#AAAAAA',font:{family:'JetBrains Mono',size:9},callback:v=>'₹'+(v>=1000?(v/1000).toFixed(0)+'k':v)}}
+        y:{grid:{color:'rgba(47,47,47,.9)'},ticks:{color:'#AAAAAA',font:{family:'JetBrains Mono',size:9},callback:v=>'₹'+(v>=1000?(v/1000).toFixed(0)+'k':v)}},
+        y1:{position:'right',grid:{drawOnChartArea:false},ticks:{color:'#8ab4ff',font:{family:'JetBrains Mono',size:9},
+            callback:v=>'₹'+(Math.abs(v)>=1000?(v/1000).toFixed(1)+'k':v)}}   // MF_DASH_V5
       }
     }
   });
@@ -4913,19 +4936,54 @@ function renderDashRecent(){
   }).join('');
 }
 
+// MF_DASH_V5 ── helpers ─────────────────────────────────────────────────
+function _supplierDues(){
+  var fuel=(typeof fuelLoads!=='undefined'?fuelLoads:[]).reduce(function(s,l){
+    return s+Math.max(0,(l.totalCost!=null?l.totalCost:(l.amountDue||0))-(l.amountPaid||0));},0);
+  var oil=(typeof oilReg!=='undefined'?oilReg:[]).reduce(function(s,i){return s+Math.max(0,+i.amountDue||0);},0);
+  return {fuel:_r2(fuel),oil:_r2(oil),total:_r2(fuel+oil)};
+}
+// Units of an oil item that left the shelf per day over the last 30 days:
+// sold in shifts plus whole bottles opened for the loose-oil jar.
+function _stockCover(item){
+  var from=_daysAgo(30), used=0;
+  (records||[]).forEach(function(r){
+    if(String(r.date)<from)return;
+    (r.stockSold||[]).forEach(function(s){ if(String(s.id)===String(item.id))used+=(+s.qty||0); });
+    (Array.isArray(r.looseOpened)?r.looseOpened:[]).forEach(function(o){ if(String(o.id)===String(item.id))used+=(+o.qty||0); });
+  });
+  var perDay=used/30;
+  return {perDay:perDay, days:perDay>0?(item.qty||0)/perDay:null};
+}
+function _stockLow(item){
+  var c=_stockCover(item);
+  return c.days!=null ? c.days<10 : (item.qty||0)<=2;
+}
+var _ALERT_RANK={danger:0,warn:1,info:2,ok:3};
 function renderDashOverdue(){
   const el=document.getElementById('dashOverdue');
   const today=new Date();today.setHours(0,0,0,0);
   const THRESHOLD_DAYS=14;
+  // MF_DASH_V5: a customer's own credit-day limit, where one is set
+  const _lim=n=>{ try{ const L=_custLimit(n); return L.days>0?L.days:THRESHOLD_DAYS; }catch(e){ return THRESHOLD_DAYS; } };
+  const _netOwed={}; [...new Set(ledger.map(e=>e.customer))].forEach(n=>{ _netOwed[n]=_custPosition(n).net; });
+  const _T=[0,0,0,0];
+  [...new Set(ledger.map(e=>e.customer))].forEach(n=>{ try{ _custAgeing(n).forEach((v,i)=>_T[i]+=v); }catch(e){} });
+  const _tot=_T[0]+_T[1]+_T[2]+_T[3];
+  const _ageHead=_tot>0.5?'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px">'+
+    _T.map((v,i)=>'<div style="background:var(--s3);border-radius:4px;padding:4px;text-align:center;font-family:\'JetBrains Mono\',monospace">'+
+      '<div style="font-size:8px;color:var(--muted)">'+_AGE_LBL[i]+'d</div><div style="font-size:11px;font-weight:700;color:'+(v>0.5?_AGE_COL[i]:'var(--muted)')+'">'+
+      (v>0.5?'₹'+Math.round(v/1000*10)/10+'k':'—')+'</div></div>').join('')+'</div>':'';
 
   // Group unpaid ledger entries by customer, find oldest unpaid date per customer
   const byCust={};
   ledger.forEach(e=>{
     const due=(e.amount||0)-(e.paidBack||0);
     if(due<=0)return;
+    if(!(_netOwed[e.customer]>0.5))return;   // MF_DASH_V5: advance covers it
     const entryDate=new Date(e.date+'T00:00:00');
     const ageDays=Math.floor((today-entryDate)/(1000*60*60*24));
-    if(ageDays<THRESHOLD_DAYS)return;
+    if(ageDays<_lim(e.customer))return;   // MF_DASH_V5
     if(!byCust[e.customer])byCust[e.customer]={name:e.customer,totalDue:0,oldestDate:e.date,oldestAge:ageDays,entries:0};
     byCust[e.customer].totalDue+=due;
     byCust[e.customer].entries++;
@@ -4938,16 +4996,16 @@ function renderDashOverdue(){
   const overdue=Object.values(byCust).sort((a,b)=>b.oldestAge-a.oldestAge);
 
   if(!overdue.length){
-    el.innerHTML=`<div class="empty-state"><div class="big">✓</div>No customers overdue<br><span style="color:var(--muted)">All credit within 14 days</span></div>`;
+    el.innerHTML=_ageHead+`<div class="empty-state"><div class="big">✓</div>No customers overdue<br><span style="color:var(--muted)">All credit within each customer's allowed days (14 if not set)</span></div>`;
     return;
   }
 
-  el.innerHTML=overdue.map(c=>{
+  el.innerHTML=_ageHead+overdue.map(c=>{   // MF_DASH_V5
     const urgent=c.oldestAge>=30;
     const dateStr=new Date(c.oldestDate+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
-    return `<div class="overdue-item ${urgent?'urgent':''}" onclick="showPage('ledger');setTimeout(()=>{if(typeof openLedgerDetail==='function')openLedgerDetail(${JSON.stringify(c.name)})},150)">
+    return `<div class="overdue-item ${urgent?'urgent':''}" data-name="${_esc(c.name)}" onclick="var n=this.getAttribute('data-name');showPage('ledger');setTimeout(function(){if(typeof openLedgerDetail==='function')openLedgerDetail(n)},150)">
       <div class="overdue-body">
-        <div class="overdue-name">${c.name}</div>
+        <div class="overdue-name">${_esc(c.name)}${_lim(c.name)!==THRESHOLD_DAYS?' <span style="font-size:9px;color:var(--muted)">(limit '+_lim(c.name)+'d)</span>':''}</div>
         <div class="overdue-meta">${c.entries} unpaid entr${c.entries>1?'ies':'y'} • oldest: ${dateStr}</div>
       </div>
       <div>
@@ -8736,7 +8794,8 @@ function _custLimitState(name,adding){
   var pos=_custPosition(name), exp=_r2(pos.net+(adding||0));
   var un=_custUnpaid(name), oldest=un.length?un[0].date:null;
   var age=oldest?Math.floor((Date.parse(_isoLocal())-Date.parse(oldest))/86400000):0;
-  return {L:L, exposure:exp, over:L.limit>0&&exp>L.limit+0.5, late:L.days>0&&age>L.days, age:age, oldest:oldest};
+  return {L:L, exposure:exp, over:L.limit>0&&exp>L.limit+0.5,
+          late:L.days>0&&age>L.days&&exp>0.5, age:age, oldest:oldest};   // MF_DASH_V5: advance covers it
 }
 function _custLimitMsg(name,st){
   var m=[];
