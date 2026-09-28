@@ -1964,6 +1964,13 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
       <button class="range-btn" id="lp_all"       onclick="setLedgerPeriod('all')">ALL TIME</button>
       <input type="text" id="led_search" placeholder="Search customer…" oninput="renderLedger()"
         style="width:180px;height:32px;margin-left:auto">
+      <!-- MF_LEDGER_SEARCH_V1 -->
+      <select id="led_sort" onchange="try{localStorage.setItem('mf_led_sort',this.value)}catch(e){};renderLedger()"
+        style="height:32px;padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px">
+        <option value="az">A → Z</option>
+        <option value="owes">Owes most</option>
+        <option value="oldest">Oldest unpaid</option>
+      </select>
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);white-space:nowrap">
         <input type="checkbox" id="led_hide_settled" checked onchange="renderLedger()"> hide settled
       </label>
@@ -5738,7 +5745,7 @@ function saveStockLS(){localStorage.setItem('fuelStock',JSON.stringify(stock));i
 function addCredBack(){
   credbackCount++;
   const id=credbackCount;
-  const names=[...new Set(ledger.map(e=>e.customer))].sort();
+  const names=[...new Set(ledger.map(e=>e.customer))].sort(_nameCmp);
   const hasExisting=names.length>0;
   const opts=names.map(n=>`<option value="${n}">${n}</option>`).join('');
   const d=document.createElement('div');d.className='cred-row-3';d.id='cb_'+id;
@@ -5776,7 +5783,7 @@ function toggleNewCredBackInput(sel,id){
 }
 
 function refreshCredBackSelects(){
-  const names=[...new Set(ledger.map(e=>e.customer))].sort();
+  const names=[...new Set(ledger.map(e=>e.customer))].sort(_nameCmp);
   document.querySelectorAll('#credback_list .credback-name-sel').forEach(sel=>{
     const cur=sel.value;
     const opts=names.map(n=>`<option value="${n}"${n===cur?' selected':''}>${n}</option>`).join('');
@@ -5787,7 +5794,7 @@ function refreshCredBackSelects(){
 function addCredit(){
   creditCount++;
   const id=creditCount;
-  const names=[...new Set(ledger.map(e=>e.customer))].sort();
+  const names=[...new Set(ledger.map(e=>e.customer))].sort(_nameCmp);
   const hasExisting=names.length>0;
   const opts=names.map(n=>`<option value="${n}">${n}</option>`).join('');
   const d=document.createElement('div');d.className='cred-row';d.id='cr_'+id;
@@ -5829,7 +5836,7 @@ function toggleNewCustInput(sel,id){
 }
 
 function refreshCreditSelects(){
-  const names=[...new Set(ledger.map(e=>e.customer))].sort();
+  const names=[...new Set(ledger.map(e=>e.customer))].sort(_nameCmp);
   document.querySelectorAll('#cred_list .cred-name-sel').forEach(sel=>{
     const cur=sel.value;
     const opts=names.map(n=>`<option value="${n}"${n===cur?' selected':''}>${n}</option>`).join('');
@@ -8321,11 +8328,15 @@ function setLedgerPeriod(p){ LED_PERIOD=p; renderLedger(); }
 
 // Is something on the ledger page half-finished? A background sync must not
 // wipe a form somebody is in the middle of typing into.
+// MF_LEDGER_SEARCH_V1: A–Z ignoring case and accents, numbers in order
+function _nameCmp(a,b){ return String(a).localeCompare(String(b),'en',{sensitivity:'base',numeric:true}); }
 function _ledgerBusy(){
   const open=['ledger_form','ledger_form2','adj_panel','pay_panel','cust_bill_panel','cust_disc_panel']
     .some(function(id){const e=document.getElementById(id);return e&&e.style.display==='block';});
   if(open)return true;
   const a=document.activeElement;
+  // MF_LEDGER_SEARCH_V1: the list's own filters must redraw it while focused.
+  if(a&&(a.id==='led_search'||a.id==='led_hide_settled'||a.id==='led_sort'))return false;
   return !!(a&&(a.tagName==='INPUT'||a.tagName==='SELECT'||a.tagName==='TEXTAREA')&&
             a.closest&&a.closest('#page-ledger'));
 }
@@ -8372,7 +8383,16 @@ function renderLedger(){
   // Whoever owes the most, first. Settled accounts sink to the bottom.
   const _bal=n=>{const c=customers[n];
     return (c.creditGiven-c.paid)-(c.advanceReceived-c.advanceUsed);};
-  const names=Object.keys(customers).sort((a,b)=>_bal(b)-_bal(a)||a.localeCompare(b));
+  // MF_LEDGER_SEARCH_V1: A–Z by default; owes most / oldest unpaid on request
+  const _sortEl=document.getElementById('led_sort');
+  if(_sortEl&&!_sortEl.dataset.init){ _sortEl.dataset.init='1';
+    try{ const _sv=localStorage.getItem('mf_led_sort'); if(_sv)_sortEl.value=_sv; }catch(e){} }
+  const _sort=(_sortEl&&_sortEl.value)||'az';
+  const _oldest=n=>{ const u=_custUnpaid(n); return u.length?String(u[0].date||''):'9999'; };
+  const names=Object.keys(customers).sort((a,b)=>
+    _sort==='owes'   ? (_bal(b)-_bal(a)||_nameCmp(a,b)) :
+    _sort==='oldest' ? (_oldest(a).localeCompare(_oldest(b))||_nameCmp(a,b)) :
+                       _nameCmp(a,b));
   if(!names.length){
     nl.style.display='block';cards.style.display='none';
     document.getElementById('led_total_given').textContent='₹0';
@@ -8425,7 +8445,8 @@ function renderLedger(){
     }
 
     // Over a few years most customers are settled and only clutter the page.
-    const _match=!_q||name.toLowerCase().indexOf(_q.toLowerCase())>=0;
+    const _match=!_q||name.toLowerCase().indexOf(_q.trim().toLowerCase())>=0||
+      (typeof _normName==='function'&&_normName(name).indexOf(_normName(_q))>=0);   // MF_LEDGER_SEARCH_V1
     if(!_match){ return; }
     // Searching by name always finds the customer, settled or not — hiding a
     // settled customer from a search looked exactly like the customer vanishing.
@@ -8887,7 +8908,7 @@ function _ledgerCanEdit(){
 }
 function _allCustomerNames(){
   return [...new Set(ledger.map(function(e){return e.customer;}).concat(Object.keys(customerProfiles||{})))]
-    .filter(Boolean).sort();
+    .filter(Boolean).sort(_nameCmp);
 }
 // Advance links, kept in the notes so they sync with the row:
 //   on a bill    [adv:<advance id>:<amount>]
