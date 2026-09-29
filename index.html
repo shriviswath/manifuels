@@ -1466,7 +1466,7 @@ input.input-error{border-color:var(--red)!important;background:rgba(255,77,106,.
         <div class="card pack-size-card" data-pack-size="40">
           <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:11px;letter-spacing:1px;color:var(--petrol);margin-bottom:6px">40 ML PACK</div>
           <div class="rg">
-            <div><label>OPENING (packs)</label><input type="number" id="pack_prev" placeholder="0" oninput="calc()"></div>
+            <div><label>OPENING (packs) — last shift's closing</label><input type="number" id="pack_prev" placeholder="0" oninput="calc()"></div>
             <div><label>CLOSING (packs)</label><input type="number" id="pack_cur" placeholder="0" oninput="calc()"></div>
           </div>
           <!-- MF_TANK_PACK_V1 -->
@@ -3490,7 +3490,7 @@ function renderExtraPackSizes(){
     <div class="card pack-size-card" data-pack-size="${ps.size}" style="margin-top:8px">
       <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:11px;letter-spacing:1px;color:var(--blue);margin-bottom:6px">${ps.size} ML PACK</div>
       <div class="rg">
-        <div><label>OPENING (packs)</label><input type="number" id="pack${ps.size}_prev" placeholder="0" oninput="calc()"></div>
+        <div><label>OPENING (packs) — last shift's closing</label><input type="number" id="pack${ps.size}_prev" placeholder="0" oninput="calc()"></div>
         <div><label>CLOSING (packs)</label><input type="number" id="pack${ps.size}_cur" placeholder="0" oninput="calc()"></div>
       </div>
       <div class="frow"><span class="flabel">Rate (₹/pack)</span><input type="number" id="pack${ps.size}_rate" value="${ps.rate}" oninput="updatePackRate(${ps.size},this.value);calc()"></div>
@@ -4826,7 +4826,7 @@ function _bottlesOpened(openL, prevCloseL, lpu){
 function _lastLooseClose(){
   const d=document.getElementById('shiftDate')?.value||'';
   const prior=records.filter(r=>r.meters&&r.meters.oil_cur!=null&&
-      (r.date<d||(r.date===d&&r.shift!==shift)))
+      (r.date<d||(r.date===d&&_shiftRank(r.shift)<_shiftRank(shift))))
     .sort((a,b)=>String(b.date).localeCompare(String(a.date))||
       (b.shift==='night'?1:-1)-(a.shift==='night'?1:-1));
   return prior.length?prior[0]:null;
@@ -5472,7 +5472,7 @@ function validateSplit(type,label){
 // checked it before because readings were never stored on the record.
 function _lastMeterClose(){
   const d=document.getElementById('shiftDate')?.value||'';
-  const prior=records.filter(r=>r.meters&&(r.date<d||(r.date===d&&r.shift!==shift)))
+  const prior=records.filter(r=>r.meters&&(r.date<d||(r.date===d&&_shiftRank(r.shift)<_shiftRank(shift))))
     .sort((a,b)=>String(b.date).localeCompare(String(a.date))||
       (b.shift==='night'?1:-1)-(a.shift==='night'?1:-1));
   return prior.length?prior[0]:null;
@@ -5528,18 +5528,16 @@ function carryForwardMeters(silent){
     const _le=document.getElementById('oil_prev');
     if(_le&&isFinite(_lv)&&(silent?!_le.value:true)){_le.value=_lv;n++;}
   }
-  // MF_TANK_PACK_V1: 40 ml counter starts where the last shift left it.
-  const _pp=(typeof _lastPackClose==='function')?_lastPackClose():null;
-  if(_pp){
-    const _pv=parseFloat(_pp.meters.pack_cur);
-    const _pe=document.getElementById('pack_prev');
-    if(_pe&&isFinite(_pv)&&(silent?!_pe.value:true)){_pe.value=_pv;n++;}
-  }
-  // MF_OPENING_SLOT_V1: the other pack sizes too.
-  (typeof packSizesConfig!=='undefined'?packSizesConfig:[]).filter(function(p){return p.enabled;}).forEach(function(p){
-    const cv=_lastPackCloseFor(p.size), el=document.getElementById('pack'+p.size+'_prev');
-    if(el&&cv!=null&&isFinite(cv)&&(silent?!el.value:true)){el.value=cv;n++;}
-  });
+  // MF_TANK_PACK_V1 / MF_PACK_CARRY_V1: each pack counter starts where the
+  // shift before left it. Filled by itself only from the shift immediately
+  // before; an older count is offered under the card, never slipped in.
+  [40].concat((typeof packSizesConfig!=='undefined'?packSizesConfig:[]).filter(function(p){return p.enabled;}).map(function(p){return +p.size;}))
+    .forEach(function(sz){
+      const ci=_packCloseInfo(sz), el=document.getElementById(sz===40?'pack_prev':'pack'+sz+'_prev');
+      if(!el||!ci.rec||!isFinite(ci.val))return;
+      if(silent&&(el.value||!ci.isPrev))return;
+      el.value=ci.val; n++;
+    });
   if(n){calc(); if(!silent)showToast('✓ Opening readings carried from '+prev.id);}
   else if(!silent)showToast('Opening readings already filled');
 }
@@ -5679,6 +5677,7 @@ function _pack40Added(){
   return {units:u,packs:u*PACK40_PER_UNIT};
 }
 function _pack40Hint(){
+  try{ if(typeof _renderPackCarryHints==='function')_renderPackCarryHints(); }catch(e){ console.warn('pack carry hint:',e); }   // MF_PACK_CARRY_V1
   var h=document.getElementById('pack_units_hint'); if(!h)return;
   var a=_vn('pack_prev'), b=_vn('pack_cur'), add=_pack40Added();
   if(a==null&&b==null&&!add.units){h.textContent='';return;}
@@ -5694,6 +5693,55 @@ function _pack40Hint(){
   h.textContent='Opening '+(a||0)+(add.units?' + '+add.units+' unit'+(add.units>1?'s':'')+' ('+add.packs+' packs)':'')+
     ' = '+avail+' available'+(b!=null?' − closing '+b+' = '+(avail-b)+' sold':'');
 }
+// ── MF_PACK_CARRY_V1 ────────────────────────────────────────────────────
+// The saved shift immediately before the one on the form.
+function _prevShiftRec(){
+  const d=document.getElementById('shiftDate')?.value||'';
+  const prior=records.filter(r=>r.date&&(r.date<d||(r.date===d&&_shiftRank(r.shift)<_shiftRank(shift))))
+    .sort((a,b)=>String(b.date).localeCompare(String(a.date))||(_shiftRank(b.shift)-_shiftRank(a.shift)));
+  return prior.length?prior[0]:null;
+}
+// Last saved closing count for a pack size: which shift, how many, and
+// whether that shift is the one immediately before.
+function _packCloseInfo(size){
+  const d=document.getElementById('shiftDate')?.value||'', sz=+size;
+  const val=function(r){ if(!r.meters)return NaN; const v=sz===40?r.meters.pack_cur:(r.meters.packs&&r.meters.packs[sz]?r.meters.packs[sz].cur:null);
+    return (v==null||v==='')?NaN:parseFloat(v); };
+  const has=function(r){ return isFinite(val(r)); };
+  const prior=records.filter(r=>has(r)&&(r.date<d||(r.date===d&&_shiftRank(r.shift)<_shiftRank(shift))))
+    .sort((a,b)=>String(b.date).localeCompare(String(a.date))||(_shiftRank(b.shift)-_shiftRank(a.shift)));
+  const prev=_prevShiftRec(), rec=prior.length?prior[0]:null;
+  return {rec:rec, val:rec?val(rec):NaN, prev:prev, isPrev:!!(rec&&prev&&rec.id===prev.id)};
+}
+function _slotTxt(r){ return r?String(r.date).slice(8,10)+'/'+String(r.date).slice(5,7)+' '+(r.shift==='night'?'NIGHT':'MORNING'):''; }
+function usePackCarry(size){
+  const ci=_packCloseInfo(size), el=document.getElementById(+size===40?'pack_prev':'pack'+size+'_prev');
+  if(!el||!ci.rec)return;
+  el.value=ci.val; calc();
+  showToast('✓ '+size+' ml opening set to '+ci.val+' — the closing of '+_slotTxt(ci.rec));
+}
+function _renderPackCarryHints(){
+  document.querySelectorAll('.pack-size-card').forEach(function(card){
+    const sz=+(card.getAttribute('data-pack-size')||40);
+    const el=document.getElementById(sz===40?'pack_prev':'pack'+sz+'_prev'); if(!el)return;
+    let h=card.querySelector('.pack-carry-hint');
+    if(!h){ h=document.createElement('div'); h.className='pack-carry-hint';
+      h.style.cssText="font-family:'JetBrains Mono',monospace;font-size:10px;margin:2px 0 6px;line-height:1.5";
+      const rg=card.querySelector('.rg'); if(rg&&rg.nextSibling)card.insertBefore(h,rg.nextSibling); else card.appendChild(h); }
+    const ci=_packCloseInfo(sz), cur=el.value===''?null:parseFloat(el.value);
+    const btn='<button class="btn btn-g" style="padding:1px 8px;font-size:9px;margin-left:6px" onclick="usePackCarry('+sz+')">USE '+ci.val+'</button>';
+    if(!ci.rec){ h.style.color='var(--muted)'; h.innerHTML='No earlier closing count for '+sz+' ml — count the counter and type the opening.'; return; }
+    if(ci.isPrev){
+      if(cur!=null&&Math.abs(cur-ci.val)<0.5){ h.style.color='var(--green)'; h.innerHTML='✓ Carried from '+_slotTxt(ci.rec)+' closing ('+ci.val+' packs)'; return; }
+      h.style.color=cur==null?'var(--muted)':'var(--diesel)';
+      h.innerHTML=(cur==null?'↻ ':'⚠ ')+_slotTxt(ci.rec)+' closed at <b>'+ci.val+'</b> packs'+(cur!=null?' — opening differs by '+(cur-ci.val>0?'+':'')+(cur-ci.val)+' packs':'')+btn;
+      return;
+    }
+    h.style.color='var(--diesel)';
+    h.innerHTML='⚠ '+_slotTxt(ci.prev)+' saved no '+sz+' ml closing. Last count: <b>'+ci.val+'</b> packs on '+_slotTxt(ci.rec)+
+      ' — packs sold since then are not in any shift.'+(cur==null||Math.abs(cur-ci.val)>=0.5?btn:'');
+  });
+}
 // MF_OPENING_SLOT_V1: opening/closing for every enabled extra pack size.
 function _packExtraReadings(){
   var o={};
@@ -5707,7 +5755,7 @@ function _packExtraReadings(){
 function _lastPackCloseFor(size){
   const d=document.getElementById('shiftDate')?.value||'';
   const prior=records.filter(r=>r.meters&&r.meters.packs&&r.meters.packs[size]&&r.meters.packs[size].cur!=null&&
-      (r.date<d||(r.date===d&&r.shift!==shift)))
+      (r.date<d||(r.date===d&&_shiftRank(r.shift)<_shiftRank(shift))))
     .sort((a,b)=>String(b.date).localeCompare(String(a.date))||
       (b.shift==='night'?1:-1)-(a.shift==='night'?1:-1));
   return prior.length?parseFloat(prior[0].meters.packs[size].cur):null;
@@ -5716,7 +5764,7 @@ function _lastPackCloseFor(size){
 function _lastPackClose(){
   const d=document.getElementById('shiftDate')?.value||'';
   const prior=records.filter(r=>r.meters&&r.meters.pack_cur!=null&&
-      (r.date<d||(r.date===d&&r.shift!==shift)))
+      (r.date<d||(r.date===d&&_shiftRank(r.shift)<_shiftRank(shift))))
     .sort((a,b)=>String(b.date).localeCompare(String(a.date))||
       (b.shift==='night'?1:-1)-(a.shift==='night'?1:-1));
   return prior.length?prior[0]:null;
@@ -9627,6 +9675,18 @@ function renderLedger(){
   }
 }
 
+// MF_LEDGER_ORDER_V1: a ledger row's place in time — its date, then the
+// shift (morning of D runs before night of D), then the order it was made.
+function _ledCmp(a,b){
+  return String(a.date||'').localeCompare(String(b.date||''))||
+    ((typeof _shiftRank==='function'?_shiftRank(a.shift)-_shiftRank(b.shift):0))||
+    ((a.id||0)-(b.id||0));
+}
+function _ledMonthLabel(ym){
+  const M=['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+  const m=parseInt(String(ym).slice(5,7),10);
+  return (m>=1&&m<=12?M[m-1]+' ':'')+String(ym).slice(0,4);
+}
 function openLedgerDetail(name){
   currentLedgerCustomer=name;
   document.getElementById('led_list_view').style.display='none';
@@ -9673,7 +9733,25 @@ function openLedgerDetail(name){
   _renderPayHistory(name);
 
   const tb=document.getElementById('detail_body');tb.innerHTML='';
-  entries.slice().reverse().forEach(e=>{
+  // MF_LEDGER_ORDER_V1: newest first by the bill's own date and shift — not by
+  // the order rows were typed in or arrived by sync — with a line per month.
+  const _sorted=entries.slice().sort((a,b)=>_ledCmp(b,a));
+  const _mTot={};
+  _sorted.forEach(e=>{ const k=String(e.date||'').slice(0,7), t=_mTot[k]||(_mTot[k]={n:0,given:0,due:0});
+    if((e.amount||0)>0){ t.n++; t.given+=e.amount; t.due+=Math.max(0,e.amount-(e.paidBack||0)); } });
+  let _lastM=null;
+  _sorted.forEach(e=>{
+    const _mk=String(e.date||'').slice(0,7);
+    if(_mk!==_lastM){
+      _lastM=_mk; const t=_mTot[_mk]||{n:0,given:0,due:0};
+      const hr=document.createElement('tr'); hr.className='led-month-row';
+      hr.innerHTML='<td colspan="8" style="padding:10px 8px 4px;border-bottom:1px solid var(--border);font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:1px;color:var(--muted)">'+
+        '<b style="color:var(--text)">'+_ledMonthLabel(_mk)+'</b>'+
+        (t.n?' &middot; '+t.n+' bill'+(t.n!==1?'s':'')+' &middot; &#8377;'+Math.round(t.given).toLocaleString('en-IN')+' given &middot; '+
+          (t.due>0.5?'<span style="color:var(--red)">&#8377;'+Math.round(t.due).toLocaleString('en-IN')+' due</span>':'<span style="color:var(--green)">settled</span>'):'')+
+        '</td>';
+      tb.appendChild(hr);
+    }
     const isAdvance=e.amount<0;
     const totalAbs=Math.abs(e.amount);
     const remaining=totalAbs-(e.paidBack||0);
@@ -13594,7 +13672,7 @@ function exportPDF(){
     </table>`;
     // Per-customer transaction detail
     customers.forEach(name=>{
-      const entries=ledger.filter(e=>e.customer===name);
+      const entries=ledger.filter(e=>e.customer===name).sort(_ledCmp);   // MF_LEDGER_ORDER_V1
       const given=entries.reduce((s,e)=>s+e.amount,0);
       const paid=entries.reduce((s,e)=>s+e.paidBack,0);
       const due=given-paid;
@@ -15836,9 +15914,7 @@ function submitLedgerAdjust(){
 function _custUnpaid(name){
   return ledger.filter(function(e){
     return e.customer===name && (e.amount||0)>0 && (e.paidBack||0) < e.amount-0.005;
-  }).sort(function(a,b){
-    return String(a.date||'').localeCompare(String(b.date||'')) || ((a.id||0)-(b.id||0));
-  });
+  }).sort(_ledCmp);   // MF_LEDGER_ORDER_V1: same date → morning bill before night
 }
 function _custPosition(name){
   var creditGiven=0,paid=0,advReceived=0,advUsed=0;
