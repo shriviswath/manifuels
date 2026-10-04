@@ -7,6 +7,34 @@ of the transaction layer. Requires `db/013_soft_deletes.sql` and
 `db/014_payments_and_locking.sql`; the client falls back safely if either is
 not applied.
 
+### Price revisions at 6 AM (`MF_PRICE_6AM_V1`, `patch_price_change_6am.py`)
+No migration: the 6 AM readings ride in `shift_records.meters.rates` (jsonb).
+- **Entry.** A revision takes effect at 6 AM, so "PRICE CHANGED AT 6 AM" is
+  offered on the Morning shift only. Staff enter the meter reading taken at
+  6 AM per machine; litres at the old rate are opening → 6 AM, at the new rate
+  6 AM → closing. Typed "litres before / after" are gone, so the split cannot
+  disagree with the meters. Each half is rounded to paise.
+- **The panel closes on save.** It used to stay open on the next shift and
+  block it with "Split is 0.000 L but meters show …".
+- **The new rate goes everywhere on save**: rate box, saved rates (synced to
+  every phone), rate history stamped 06:00, activity log. A corrected or
+  back-filled older shift writes history only and never changes today's rate.
+- **Fuel is costed at a moving average.** Each load is blended into what is in
+  the tank when it arrives (book stock, capped at tank capacity); each shift is
+  costed at the tank's average when it sold. The all-time average barely moved
+  after a revision, so profit stayed wrong by nearly the whole revision for
+  months. With flat prices the two methods give identical figures; historical
+  profit moves only in periods after a cost change.
+- **Stock gain / loss on a revision** — stock in the tank at the change × the
+  change — is shown on the entry panel, shift detail, P&L cards, CA workings
+  (2A-iv), statement, Petrol vs Diesel report and dashboard. It is a memo, not
+  an extra profit line: it reaches gross profit as that stock is sold.
+- The dashboard no longer raises "cost vs pump rate — check the tanker
+  entries" when a recent revision explains the margin; a price cut is listed
+  as a stock loss instead.
+- Statement and "Pump rate periods" show both rates of a revised shift rather
+  than a blended rate.
+
 ### Added
 - **Payments are records.** Money received used to be added to `paid_back` on
   the bill and nothing else was kept, so a payment had no date of its own, no
