@@ -120,7 +120,8 @@ type Attempt = { status: number; body: unknown; retryAfter: number; model: strin
 
 async function ask(model: string, messages: Msg[], tools: unknown[]): Promise<Attempt> {
   const payload: Record<string, unknown> = {
-    model, messages, temperature: 0.2, max_completion_tokens: MAX_OUT_TOKENS, stream: false,
+    // 0: the same question must pick the same figure every time
+    model, messages, temperature: 0, max_completion_tokens: MAX_OUT_TOKENS, stream: false,
   };
   if (tools.length) { payload.tools = tools; payload.tool_choice = "auto"; }
   // The gpt-oss models think before answering; that thinking is billed as

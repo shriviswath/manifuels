@@ -18971,6 +18971,9 @@ function _aiMissing(from,to){
   return out;
 }
 function _aiRecs(R){ return records.filter(function(r){ return r.date>=R.from&&r.date<=R.to; }); }
+function _aiMissNote(miss){
+  return miss.length+' shift'+(miss.length!==1?'s were':' was')+' not entered ('+miss.slice(0,4).join(', ')+(miss.length>4?', …':'')+') — these figures are short by '+(miss.length!==1?'those shifts':'that shift')+'.';
+}
 
 // ── names: forgiving, but never guessing between two people ───────────────
 function _aiNorm(s){ return String(s||'').toLowerCase().replace(/[^\p{L}\p{N}\p{M}]+/gu,' ').trim(); }
@@ -19021,8 +19024,8 @@ var _AI_PER={period:{type:'string'},from:{type:'string'},to:{type:'string'}};
 function _aiP(extra){ var o={}; Object.keys(extra||{}).forEach(function(k){ o[k]=extra[k]; }); Object.keys(_AI_PER).forEach(function(k){ o[k]=_AI_PER[k]; }); return o; }
 
 _aiTool('sales',{roles:['owner','manager'],say:'Reading the shifts…',
-  d:'Litres sold, sales value, collections by mode, credit given, shift expenses and cash short/over for a period. by=day adds a daily list.',
-  p:_aiP({by:{type:'string',enum:['total','day']}}),
+  d:'Litres sold, sales value, collections by mode, credit given, shift expenses and cash short/over for a period. by=day adds a daily list; compare=true adds the period before.',
+  p:_aiP({by:{type:'string',enum:['total','day']},compare:{type:'boolean'}}),
   run:function(a){
     var R=_aiPeriod(a); if(R.error)return {data:{error:R.error}};
     var recs=_aiRecs(R), miss=_aiMissing(R.from,R.to);
@@ -19041,11 +19044,34 @@ _aiTool('sales',{roles:['owner','manager'],say:'Reading the shifts…',
       shift_expenses:_aiM(P.opex),cash_short_or_over:_aiM(bal),shifts_short:shorts.length,
       note:'Litres and sales exclude testing fuel. Cash short/over is the drawer tally, not profit.'};
     if(P.handoverTotal>0)d.cash_handed_over=_aiM(P.handoverTotal);
+    if(miss.length)d.caution=_aiMissNote(miss);
     var card={t:'Sales · '+_aiSpan(R.from,R.to),s:recs.length+' shift'+(recs.length!==1?'s':'')+' saved',page:'history',rows:[
       ['Petrol (MSD)',_aiL(P.soldMSDL)],['Diesel (HSD)',_aiL(P.soldHSDL)],['Sales value',_aiMx(P.revenue),'b'],
       ['Cash',_aiMx(S('cash'))],['GPay',_aiMx(S('gpay'))],['Paytm',_aiMx(S('paytm'))],['Credit given',_aiMx(S('credit'))],
       ['Shift expenses',_aiMx(P.opex)],['Cash short / over',_aiMx(bal),bal<-50?'r':(bal>50?'a':'g')]]};
     if(miss.length)card.foot='⚠ Not entered: '+miss.slice(0,6).join(', ')+(miss.length>6?' …':'')+' — these totals are short by those shifts.';
+    var cards=[card], summary='Sales for '+R.label+': '+_aiM(P.revenue)+' from '+recs.length+' shift'+(recs.length!==1?'s':'')+' — petrol '+_aiL(P.soldMSDL)+', diesel '+_aiL(P.soldHSDL)+'. Cash tally '+_aiSign(bal)+'.';
+    if(a.compare===true||a.compare==='true'){
+      var RB=_aiPrev(R), rb=_aiRecs(RB);
+      if(!rb.length)d.compared_with={period:RB.label,note:'No shift is saved for the period before.'};
+      else {
+        // changes are taken between the figures as shown, so they can be checked by eye
+        var PB=_plCore(rb,RB.from,RB.to), dv=Math.round(P.revenue)-Math.round(PB.revenue), dm=Math.round(P.soldMSDL)-Math.round(PB.soldMSDL), dh=Math.round(P.soldHSDL)-Math.round(PB.soldHSDL);
+        var verdict=dv?('Sales '+(dv>0?'ROSE':'FELL')+' by '+_aiM(Math.abs(dv))+': '+_aiM(P.revenue)+' for '+R.label+' against '+_aiM(PB.revenue)+' for '+RB.label+'.')
+                      :('Sales were unchanged: '+_aiM(P.revenue)+' for '+R.label+' and for '+RB.label+'.');
+        d=Object.assign({verdict:verdict},d);
+        d.compared_with={period:RB.label,shifts_saved:rb.length,sales_value:_aiM(PB.revenue),petrol_sold:_aiL(PB.soldMSDL),diesel_sold:_aiL(PB.soldHSDL)};
+        d.change_in_sales=_aiSign(dv)+(PB.revenue>=1?' ('+_aiSign((P.revenue-PB.revenue)/PB.revenue*100,_aiPct)+')':'');
+        d.change_in_petrol=_aiSign(dm,_aiL); d.change_in_diesel=_aiSign(dh,_aiL);
+        var uneven=recs.length!==rb.length;
+        if(uneven)d.caution=(d.caution?d.caution+' ':'')+'The two periods do not hold the same number of shifts ('+recs.length+' vs '+rb.length+'), so part of the change is simply shifts not yet in.';
+        cards.push({t:'Against '+_aiSpan(RB.from,RB.to),s:rb.length+' shift'+(rb.length!==1?'s':'')+' then · '+recs.length+' now',page:'history',
+          rows:[['Sales value',_aiMx(PB.revenue)+' → '+_aiMx(P.revenue)],['Change in sales',d.change_in_sales,dv>=0?'g':'r'],
+                ['Petrol',_aiL(PB.soldMSDL)+' → '+_aiL(P.soldMSDL)+' · '+_aiSign(dm,_aiL),dm>=0?'g':'r'],['Diesel',_aiL(PB.soldHSDL)+' → '+_aiL(P.soldHSDL)+' · '+_aiSign(dh,_aiL),dh>=0?'g':'r']],
+          foot:uneven?'⚠ The two periods do not hold the same number of shifts ('+recs.length+' vs '+rb.length+').':''});
+        summary=verdict+' Petrol '+_aiSign(dm,_aiL)+', diesel '+_aiSign(dh,_aiL)+'.';
+      }
+    }
     if(String(a.by)==='day'){
       var days={}; recs.forEach(function(r){ (days[r.date]=days[r.date]||[]).push(r); });
       var keys=Object.keys(days).sort();
@@ -19057,8 +19083,7 @@ _aiTool('sales',{roles:['owner','manager'],say:'Reading the shifts…',
         if(list.some(function(x){ return x.n<2; }))card.foot=(card.foot?card.foot+' ':'')+'* one shift only.';
       }
     }
-    return {data:d,cards:[card],
-      summary:'Sales for '+R.label+': '+_aiM(P.revenue)+' from '+recs.length+' shift'+(recs.length!==1?'s':'')+' — petrol '+_aiL(P.soldMSDL)+', diesel '+_aiL(P.soldHSDL)+'. Cash tally '+_aiSign(bal)+'.'};
+    return {data:d,cards:cards,summary:summary};
   }});
 
 // Profit of a period from the one engine, and — when asked — why it moved.
@@ -19095,6 +19120,7 @@ _aiTool('profit',{roles:['owner'],say:'Working out the profit…',
       shift_expenses:_aiM(P.opex),net_profit:_aiM(P.netProfit),net_margin:_aiPct(P.netMarginPct),
       litres_sold:_aiL(A.L),fuel_margin_per_litre:_aiRate(A.m),
       net_profit_basis:'After shift expenses'+(extra?'; before credit discounts'+(X.includeWages?' and wages':''):'')+'. Same figure as the dashboard.'};
+    if(A.miss.length)d.caution=_aiMissNote(A.miss);
     var F=A.F.filter(function(f){ return f.sold>0&&f.mL!=null; });
     if(F.length){ d.by_fuel={}; F.forEach(function(f){ d.by_fuel[f.n]={sold:_aiL(f.sold),sales:_aiM(f.rev),selling_rate:_aiRate(f.rate),cost_per_litre:_aiRate(f.wac),margin_per_litre:_aiRate(f.mL),margin:_aiM(f.mg)}; });
       if(F.length===2)d.higher_margin_per_litre=(F[0].mL>=F[1].mL?F[0].n:F[1].n); }
@@ -19123,25 +19149,31 @@ _aiTool('profit',{roles:['owner'],say:'Working out the profit…',
       var B=_aiPL(_aiPrev(R)), Q=B.P;
       if(!B.recs.length||Q.fuelUncosted){ d.compared_with={period:B.R.label,note:'Nothing comparable is saved for the period before.'}; }
       else {
-        var dNet=P.netProfit-Q.netProfit, vol=(A.L-B.L)*B.m, mar=A.L*(A.m-B.m), oth=A.otherGP-B.otherGP, ox=-(P.opex-Q.opex);
+        // The change is taken between the figures AS SHOWN (whole rupees, whole
+        // litres), so anyone subtracting the two numbers on screen gets this one.
+        var dReal=P.netProfit-Q.netProfit, dNet=Math.round(P.netProfit)-Math.round(Q.netProfit), dL=Math.round(A.L)-Math.round(B.L), vol=(A.L-B.L)*B.m, mar=A.L*(A.m-B.m), oth=A.otherGP-B.otherGP, ox=-(P.opex-Q.opex);
         var parts=[
-          {v:vol,t:'Fuel volume: '+_aiL(Math.abs(A.L-B.L))+(A.L>=B.L?' more':' fewer')+' sold ('+_aiL(A.L)+' vs '+_aiL(B.L)+')'},
+          {v:vol,t:'Fuel volume: '+_aiL(Math.abs(dL))+(dL>=0?' more':' fewer')+' sold ('+_aiL(A.L)+' vs '+_aiL(B.L)+')'},
           {v:mar,t:'Fuel margin: '+_aiRate(A.m)+' vs '+_aiRate(B.m)},
           {v:oth,t:'Oil, packs and counter stock'},
           {v:ox,t:'Shift expenses: '+_aiM(P.opex)+' vs '+_aiM(Q.opex)}
         ].filter(function(x){ return Math.abs(x.v)>=1; }).sort(function(x,y){ return Math.abs(y.v)-Math.abs(x.v); });
-        var rest=dNet-(vol+mar+oth+ox); if(Math.abs(rest)>=1)parts.push({v:rest,t:'Other differences'});
+        var rest=dReal-(vol+mar+oth+ox); if(Math.abs(rest)>=1)parts.push({v:rest,t:'Other differences'});
         d.compared_with={period:B.R.label,shifts_saved:B.recs.length,shifts_not_entered:B.miss.length?B.miss.slice(0,4):'none',
           sales_value:_aiM(Q.revenue),net_profit:_aiM(Q.netProfit),net_margin:_aiPct(Q.netMarginPct),litres_sold:_aiL(B.L),fuel_margin_per_litre:_aiRate(B.m)};
+        var way=dNet>0.5?'ROSE':(dNet<-0.5?'FELL':null);
+        var verdict=way?('Net profit '+way+' by '+_aiM(Math.abs(dNet))+': '+_aiM(P.netProfit)+' for '+R.label+' against '+_aiM(Q.netProfit)+' for '+B.R.label+'.')
+                       :('Net profit was unchanged: '+_aiM(P.netProfit)+' for '+R.label+' and for '+B.R.label+'.');
+        d=Object.assign({verdict:verdict},d);          // first key: the first thing the model reads
         d.change_in_net_profit=_aiSign(dNet);
         if(Math.abs(Q.netProfit)>=1)d.change_in_net_profit_percent=_aiSign(dNet/Math.abs(Q.netProfit)*100,_aiPct);
-        if(Q.revenue>=1)d.change_in_sales=_aiSign(P.revenue-Q.revenue)+' ('+_aiSign((P.revenue-Q.revenue)/Q.revenue*100,_aiPct)+')';
-        d.reasons_largest_first=parts.map(function(x){ return x.t+' → '+_aiSign(x.v); });
-        if(A.recs.length!==B.recs.length)d.caution='The two periods do not hold the same number of shifts ('+A.recs.length+' vs '+B.recs.length+'), so part of the change is simply shifts not yet in.';
+        if(Q.revenue>=1)d.change_in_sales=_aiSign(Math.round(P.revenue)-Math.round(Q.revenue))+' ('+_aiSign((P.revenue-Q.revenue)/Q.revenue*100,_aiPct)+')';
+        d.reasons_largest_first=parts.map(function(x){ return x.t+' → '+_aiSign(x.v)+(x.v>=0?' (raised profit)':' (lowered profit)'); });
+        if(A.recs.length!==B.recs.length)d.caution=(d.caution?d.caution+' ':'')+'The two periods do not hold the same number of shifts ('+A.recs.length+' vs '+B.recs.length+'), so part of the change is simply shifts not yet in.';
         cards.push({t:'Why it moved · vs '+_aiSpan(B.R.from,B.R.to),s:'Net profit '+_aiMx(Q.netProfit)+' → '+_aiMx(P.netProfit),
           rows:parts.map(function(x){ return [x.t,_aiSign(x.v),x.v>=0?'g':'r']; }).concat([['Change in net profit',_aiSign(dNet),dNet>=0?'g':'r']]),
-          foot:d.caution?'⚠ '+d.caution:'Volume and margin parts add up exactly to the change in fuel gross profit.',page:'report'});
-        summary+=' That is '+_aiSign(dNet)+' against '+B.R.label+(parts.length?' — biggest reason: '+parts[0].t.charAt(0).toLowerCase()+parts[0].t.slice(1)+' ('+_aiSign(parts[0].v)+').':'.');
+          foot:A.recs.length!==B.recs.length?'⚠ The two periods do not hold the same number of shifts ('+A.recs.length+' vs '+B.recs.length+').':'Volume and margin together are the whole change in fuel gross profit. Each line is rounded to the rupee.',page:'report'});
+        summary=verdict+' Fuel margin '+_aiRate(A.m)+'.'+(parts.length?' Biggest reason: '+parts[0].t.charAt(0).toLowerCase()+parts[0].t.slice(1)+' ('+_aiSign(parts[0].v)+').':'');
       }
     }
     return {data:d,cards:cards,summary:summary};
@@ -19311,6 +19343,7 @@ _aiTool('shifts',{roles:['owner','manager'],say:'Going through the shifts…',
       shifts_short:sh.length,total_short:_aiM(sAmt),shifts_over:ov.length,total_over:_aiM(oAmt),net_cash_short_or_over:_aiM(recs.reduce(function(s,r){ return s+(r.bal||0); },0)),
       worst_shortages:worst.length?worst.map(function(r){ return {shift:nm(r),short_by:_aiM(-r.bal)}; }):'none',unlocked_shifts:unl,
       note:'A shift counts as short or over beyond ₹50. Short/over is collections against sales, not profit.'};
+    if(miss.length)d.caution=_aiMissNote(miss);
     var sold=function(r){ return _recSoldL(r); };      // testing fuel left out, as everywhere else
     if(recs.length<=16)d.shifts=recs.map(function(r){ var q=sold(r); return {shift:nm(r),petrol:_aiL(q.msd),diesel:_aiL(q.hsd),cash_tally:_aiM(r.bal)}; });
     return {data:d,
@@ -19434,7 +19467,9 @@ _aiTool('document',{roles:['owner','manager'],say:'Preparing the document…',
       doc.name=n; doc.t=K.label+' · '+n;
       doc.s=a.kind==='customer_invoice'?('Unpaid bills '+_aiMx(p.due)+' · takes the next invoice number'):('Whole account · '+(p.net>0.5?'owes '+_aiMx(p.net):(p.net<-0.5?'advance '+_aiMx(-p.net):'settled')));
       d.document=K.label+' for '+n;
-      if(a.kind==='customer_statement'&&(a.period||a.from))note='A customer statement always covers the whole account from the first entry; it cannot be cut to a period yet.';
+      // The model often adds a period nobody asked for, so only exact dates count as a request for one.
+      if(a.kind==='customer_statement'){ d.covers='the whole account, from the first entry to today';
+        if(a.from||a.to)note='A customer statement always covers the whole account; it cannot be cut to a period yet.'; }
       if(a.kind==='customer_statement')d.closing_position=p.net>0.5?n+' owes '+_aiM(p.net):(p.net<-0.5?'advance of '+_aiM(-p.net)+' held':'settled');
     } else if(K.who==='staff'){
       if(!_staffPayOk())return {data:{error:'Staff statements are for owners and managers only.'}};
@@ -19676,7 +19711,7 @@ function _aiSystem(){
     '1. Figures: every amount, litre figure, percentage or count you state must be copied from a tool result in this conversation, exactly as written. Never estimate, re-round, convert to lakh, or work out a total, difference or percentage yourself. If it is not in a tool result, say the app does not have it.',
     '2. Call the tool that covers the question before answering anything about the business, one tool at a time. Periods: today, yesterday, this_week, last_week, last_7_days, last_30_days, this_month, last_month, this_fy. Never work out dates yourself; use period=custom with from/to (YYYY-MM-DD) only when the person names exact dates.',
     '3. Keys ending _est are forecasts or estimates: say "about". Everything else is the app\'s calculated figure.',
-    '4. If a result has a caution, shifts not entered, or an error, say so in one short sentence. If it has did_you_mean, ask which one. If it has next, do that.',
+    '4. If a result has a verdict, lead with it, even when the person assumed the opposite (asked why profit fell when it rose: say it rose). If it has a caution or an error, say so in one short sentence. If it has did_you_mean, ask which one. If it has next, do that.',
     '5. You cannot change records. propose_payment and propose_note only show a card; the person must tap CONFIRM. Say "tap CONFIRM on the card" and never say it was recorded or saved. Ask for a missing amount or payment mode; do not assume one.',
     '6. For a PDF or statement use document; the card has the button.',
     '7. For how the app works or what a figure means, call help. If the question is not about this station or app, say in one line that you only handle ManiFuels.',
@@ -19822,7 +19857,11 @@ function _aiNameIn(s,names){
 }
 function _aiRoute(text){
   var s=' '+String(text||'').toLowerCase()+' ', a={}, has=function(re){ return re.test(s); };
-  if(has(/yesterday/))a.period='yesterday';
+  // "compare this week with last week": the period asked about is THIS week
+  var cmp=has(/compare|\bvs\b|than (last|the)|against|more than|less than/);
+  if(cmp&&has(/this week/))a.period='this_week';
+  else if(cmp&&has(/this month/))a.period='this_month';
+  else if(has(/yesterday/))a.period='yesterday';
   else if(has(/last week/))a.period='last_week';
   else if(has(/this week/))a.period='this_week';
   else if(has(/last month/))a.period='last_month';
@@ -19853,7 +19892,7 @@ function _aiRoute(text){
   if(has(/audit|leak|unusual|discrepan|\bchecks?\b/))return {tool:'checks',args:per('this_month')};
   if(has(/alert|problem|wrong|attention|issue|anything i should/))return {tool:'alerts',args:{}};
   if(has(/\boil\b|lubricant|\bpack|low stock|out of stock|\bstock\b/))return {tool:'stock',args:{}};
-  if(has(/sale|sold|sell|revenue|litre|liter|diesel|petrol|\bmsd\b|\bhsd\b|collect|gpay|paytm|turnover/))return {tool:'sales',args:Object.assign({by:has(/day by day|each day|daily|per day/)?'day':'total'},per('today'))};
+  if(has(/sale|sold|sell|revenue|litre|liter|diesel|petrol|\bmsd\b|\bhsd\b|collect|gpay|paytm|turnover/))return {tool:'sales',args:Object.assign({by:has(/day by day|each day|daily|per day/)?'day':'total',compare:cmp},per('today'))};
   return null;
 }
 function _aiLocal(text){

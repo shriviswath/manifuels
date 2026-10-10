@@ -29,6 +29,14 @@ them the ⚡ buttons still work: they read the app directly.
   gross profit is split exactly into a volume part and a margin part, plus
   oil/stock and expenses, and the answer says when the two periods do not
   hold the same number of shifts.
+- **A comparison says which way it went, first.** Asked "why was profit
+  lower?" on a day it rose, the live model listed the things that pulled it
+  down and never said it rose — every figure real, the answer wrong. The
+  comparison tools (profit and sales) now open with a verdict written by the
+  app ("Net profit ROSE by ₹110: …"), each reason is marked as having raised
+  or lowered profit, and the change is the difference of the two figures as
+  shown, so it can be checked by eye. A period with a shift missing carries a
+  plain caution sentence.
 - **Statement PDFs**: customer statement and invoice, business statement and
   business report for a period, staff statement. The assistant opens the
   document the app already prints, from a button on a card.

@@ -120,10 +120,13 @@ It does not keep what was asked or answered.
 ## Limits
 
 Groq's free plan, per model, in October 2026: 30 requests a minute, 1,000 a day,
-8,000 tokens a minute, 200,000 tokens a day. A typical question is two requests.
-The app uses two models in turn (`openai/gpt-oss-120b`, then `openai/gpt-oss-20b`),
-so in practice that is a question or two a minute at the worst and a few hundred
-a day. These numbers are Groq's and can change without notice.
+8,000 tokens a minute, 200,000 tokens a day. Tokens are what runs out first.
+Measured on 10 October 2026 with the station's own key: a request uses 1,500 to
+2,200 tokens and takes half a second to a second, and a typical question is two
+requests. That is about two questions a minute on one model. The app uses two
+models in turn (`openai/gpt-oss-120b`, then `openai/gpt-oss-20b`), each with its
+own allowance, so about four a minute between them, and around a hundred
+questions a day. These numbers are Groq's and can change without notice.
 
 When the free allowance runs out for a moment, the assistant says so and shows
 the app's own figures for the question anyway. On top of Groq's limits the
