@@ -7,6 +7,50 @@ of the transaction layer. Requires `db/013_soft_deletes.sql` and
 `db/014_payments_and_locking.sql`; the client falls back safely if either is
 not applied.
 
+### Assistant (`MF_AI_V1`, `patch_ai_assistant.py`)
+Needs `db/021_ai_assistant.sql`, the `mf-ai` edge function and a free Groq key
+to answer typed questions — steps in `docs/AI_ASSISTANT_SETUP.md`. Without
+them the ⚡ buttons still work: they read the app directly.
+- **Ask in plain words**, from ✦ ASK in the header, the menu or the dashboard:
+  sales and litres for any period, profit and why it moved, petrol vs diesel
+  margin, who owes and who is overdue, one customer's account, supplier dues,
+  tank levels and when to order, oil stock, staff pay, expenses, tanker loads,
+  the audit checks, and how the app itself works.
+- **The figures are the app's.** Each answer comes from a tool that wraps the
+  existing engine (`_plCore`, `_plExtras`, `_custPosition`, `orderAdvice`,
+  `payrollFor`, `_plAuditChecks`, `computeAlerts`…) — there is no second set
+  of arithmetic to disagree with Reports. The model picks the tool and words
+  the result; it never sees the database. Cards under the answer are drawn
+  from the tool result, not from the model's text.
+- **Invented figures are caught.** Every amount, litre figure and percentage
+  in the model's sentence is checked against what the tools returned (or the
+  exact sum or difference of two of them) and flagged ⚠ if it is not there.
+- **"Why was profit lower" is arithmetic, not opinion**: the change in fuel
+  gross profit is split exactly into a volume part and a margin part, plus
+  oil/stock and expenses, and the answer says when the two periods do not
+  hold the same number of shifts.
+- **Statement PDFs**: customer statement and invoice, business statement and
+  business report for a period, staff statement. The assistant opens the
+  document the app already prints, from a button on a card.
+- **Nothing is recorded without a tap.** "Record ₹5,000 from Kumar by GPay"
+  and "make a note…" produce a card showing exactly what will happen; CONFIRM
+  runs the app's own save. The activity log line ends "via assistant". A card
+  older than 15 minutes refuses.
+- **Owners and managers only**, decided on the server. Managers get no
+  profit, margins, drawings, business statement or audit checks — those tools
+  are not offered to the model for a manager, and refuse if called anyway.
+- **The key is not in this file.** The `mf-ai` edge function holds it, checks
+  the caller through `mf_ai_gate()` (role, per-minute and per-day limits), and
+  falls back to a second model when the first is rate-limited. `mf_ai.usage`
+  counts calls and tokens; it has no column for questions or answers.
+- **Out of reach is not out of use.** No internet, allowance used up, or the
+  server part not installed: the assistant says which, and answers the plain
+  questions straight from the tools.
+- `submitBulkPayment()` is split at its `confirm()`: the save is now
+  `_bulkPayCommit()` — the same lines, moved not rewritten (only the
+  activity-log line gains an optional "via" label) — shared by the ledger's
+  RECORD button and the assistant's CONFIRM. No figure moves.
+
 ### Price revisions at 6 AM (`MF_PRICE_6AM_V1`, `patch_price_change_6am.py`)
 No migration: the 6 AM readings ride in `shift_records.meters.rates` (jsonb).
 - **Entry.** A revision takes effect at 6 AM, so "PRICE CHANGED AT 6 AM" is
