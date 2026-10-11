@@ -186,6 +186,55 @@ the console. **Sync Health** (user menu, or tap the "n unsent" chip) shows the
 per-table rejection message, maps the common ones to the migration that fixes
 them, and offers retry, discard, and copy-diagnostics.
 
+## The assistant
+
+```
+ question ─► _aiAsk ──► mf-ai (edge function) ──► language model
+                │            │  holds the key; mf_ai_gate(): role + limits
+                │            ◄── "call tool sales{period:this_week}"
+                ├─ _aiRun('sales') ── _plCore, _recSoldL …   (on the phone)
+                │       ├─ data   → back to the model, as short ready-made strings
+                │       ├─ cards  → drawn under the answer, never via the model
+                │       └─ summary→ the sentence used when there is no model
+                ◄── the model's sentence ── _aiVerify ── ⚠ if a figure is not in `data`
+```
+
+Three rules hold it together, and each exists because of a way this goes wrong.
+
+**The model does no arithmetic.** A tool (`_aiTool(...)` in the `MF_AI_V1` block)
+is a thin wrapper over an engine that already exists — `_plCore`, `_plExtras`,
+`_custPosition`, `orderAdvice`, `payrollFor`, `_plAuditChecks`. There is no
+second profit formula for the assistant; that is the bug this file spent August
+removing from the dashboard. If a new question needs a new figure, add it to the
+engine and expose it through a tool. Periods are resolved by `_aiPeriod`, not by
+the model, so "last week" is the same dates as on Reports.
+
+**The model's text is not trusted.** Amounts go to the model as finished strings
+(`₹2,83,333`) so it copies rather than formats. `_aiVerify` then checks every
+rupee amount, litre figure, percentage and large number in its sentence against
+`MF_AI.nums` — every number any tool returned in the conversation — accepting
+only an exact match or the exact sum or difference of two of them. Percentages
+must come from a tool: with a few hundred numbers on hand a ratio would match
+almost anything. The cards are built from the tool result directly, so they are
+right even when the sentence is not. Model output is escaped before it is shown.
+
+**A write is a card, then the app's own save.** `propose_payment` only computes
+`_bulkPayPlan` and draws it. CONFIRM calls `_bulkPayCommit` — the body of
+`submitBulkPayment`, split off at its `confirm()` so both buttons end in the
+same lines. The alternative, a copy of the save inside the assistant, is the
+"recurring fault" above waiting to happen: the next change to the ledger's save
+would not reach it.
+
+Role limits are applied three times, on purpose: owner-only tools are not in the
+list sent to the model for a manager, `_aiRun` refuses them if called anyway,
+and the document and confirm buttons check again when tapped. The server side
+(`mf_ai_gate`) decides who may use the model at all; it reads no business data.
+
+The provider's free allowance is counted in tokens per minute, so the tool list
+is kept short (period names live once in the instructions, not in every tool)
+and tool results are capped. The instructions and tool list are the same on
+every call, which lets the provider cache them.
+
 ## Known sharp edges
 
 * `user_id` is the username, so each owner has a separate set of books.

@@ -25,6 +25,7 @@ SQL editor, in this order (all are safe to run again):
 | `018_oil_stock_register.sql` | `oil_invoices.payments`, `stock_items.adjustments` | — |
 | `019_fuel_load_payments.sql` | `fuel_loads.payments` — dated tanker payments | — |
 | `020_staff_register.sql` | staff left date / advance plan, payment month / mode / ref; staff pay owners + managers only | the lock |
+| `021_ai_assistant.sql` | The assistant's gate: who may use it, per-minute and per-day limits, a usage count (no questions or answers are stored). Touches no business table | the lock, and the `mf-ai` edge function deployed with its `GROQ_API_KEY` secret |
 
 The app keeps working if a column is missing — the extra detail stays on the
 phone that entered it until the migration runs.

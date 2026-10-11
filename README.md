@@ -7,7 +7,7 @@
 Built for **Mani Fuels, Karamadai**: morning and night shifts, petrol (MSD) and diesel (HSD),
 lubricants, customer credit, staff and owners' books.
 
-[**Open the app → manifuels.vercel.app**](https://manifuels.vercel.app) · [Architecture](docs/ARCHITECTURE.md) · [Database](db/README.md) · [Security cutover](docs/SECURITY_CUTOVER.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](CHANGELOG.md)
+[**Open the app → manifuels.vercel.app**](https://manifuels.vercel.app) · [Architecture](docs/ARCHITECTURE.md) · [Database](db/README.md) · [Security cutover](docs/SECURITY_CUTOVER.md) · [Assistant](docs/AI_ASSISTANT_SETUP.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](CHANGELOG.md)
 
 </div>
 
@@ -67,6 +67,15 @@ when the connection comes back.
 
 > Rolled out through [`docs/SECURITY_CUTOVER.md`](docs/SECURITY_CUTOVER.md). Until stage 2 of that guide is run, the database is still open to the public key.
 
+### Assistant (MF_AI_V1)
+- **Ask in plain words** — *"how much diesel did we sell this week"*, *"who owes us the most"*, *"why was yesterday's profit lower"*, *"statement PDF for Kumar"*. Owners and managers only.
+- **Every figure is the app's own.** The assistant's tools wrap the same engines as Reports, the Credit Ledger and the Order Advisor; the language model only chooses a tool and words the result. Cards under each answer show the figures as the app worked them out, and a number in the sentence that is not among them is flagged ⚠.
+- **Nothing is recorded without a tap.** A payment or note is prepared as a card and saved only on CONFIRM, through the app's own save, with an Activity Log entry.
+- **Statement PDFs on request:** customer statement and invoice, business statement, business report, staff statement.
+- **Works without the model too.** The ⚡ buttons, and the plain questions when there is no internet, are answered straight from the app.
+
+> Set up through [`docs/AI_ASSISTANT_SETUP.md`](docs/AI_ASSISTANT_SETUP.md): a free Groq key held by the `mf-ai` edge function, and `db/021_ai_assistant.sql`.
+
 ### Works offline
 - Installable PWA. The app shell and the Supabase client are precached, so it opens and records with no signal.
 - Writes go to the phone first. Anything the server has not accepted waits in an **outbox** (the orange *"n unsent"* badge) and is never silently dropped.
@@ -115,7 +124,10 @@ db/                     SQL migrations — see db/README.md
   stage1_accounts.sql     accounts, members, invites        (security stage 1)
   stage2_lock.sql         row-level security, history, guard (security stage 2)
   stage2_unlock.sql       emergency undo of stage 2
-docs/                   ARCHITECTURE, ROADMAP, SECURITY_CUTOVER
+  021_ai_assistant.sql    who may use the assistant, limits, usage count
+supabase/functions/
+  mf-ai/index.ts          assistant gateway: holds the model key (edge function)
+docs/                   ARCHITECTURE, ROADMAP, SECURITY_CUTOVER, AI_ASSISTANT_SETUP
 .github/workflows/      nightly database backup
 ```
 
