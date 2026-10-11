@@ -7,6 +7,38 @@ of the transaction layer. Requires `db/013_soft_deletes.sql` and
 `db/014_payments_and_locking.sql`; the client falls back safely if either is
 not applied.
 
+### The assistant can change a statement — not its figures (`MF_STATEMENT_EDIT_V1`, `patch_statement_edit.py`)
+Needs `patch_custom_report.py` first; run `patch_ai_assistant.py` after. No
+database change.
+- **Say what to change** after a statement is prepared: "remove the petrol
+  section", "leave out stock health", "hide cost and margins", "add a note to
+  the statement: …", "change the heading to …", "make it for August",
+  "landscape". Each change gives a new card; the earlier cards still open
+  what they showed.
+- **Cut down, never altered.** Every change removes or labels. Tables are
+  still printed from the entries by the same functions as the full report, so
+  a figure that stays on the page is the figure in the books — tested by
+  checking that every number on a shaped statement is on the plain one.
+- **No way to change a figure.** The tool has no such option. Asked to
+  ("change the diesel credit to 200000 in the pdf"), the answer is the app's
+  own refusal: correct the entry, which is logged, and print again.
+- **A note or heading carries only what was typed.** A number in it that the
+  person did not type is refused, so the model cannot write a figure onto the
+  page by way of a note. Printed as text, never as markup.
+- **An extract says it is one.** With cost hidden or a table left out, a line
+  under the heading says so. Hiding cost removes cost, margin, profit and
+  stock-value columns and cards, the price-revision gain table, and the
+  profit and checks sections.
+- **Works when the model does not.** The change is read from the wording too,
+  so the app makes it when the model only says it did. Only while the
+  statement is fresh in the conversation, or is named ("…from the pdf"), so a
+  question or a reminder ("make a note to call IOC") is not taken for an edit.
+- **Costs nothing until used.** The tool and its instruction are sent to the
+  model only once a statement exists in the conversation.
+- `exportPeriodReport` takes `note`, `hideCost`, `drop` and `orient`;
+  `mfReportParts(from, to, sections)` lists a statement's tables. With none
+  of these the output is byte-for-byte what it was.
+
 ### A statement with only what was asked for (`MF_CUSTOM_REPORT_V1`, `patch_custom_report.py`)
 Needs `patch_credit_by_fuel.py` first. No database change.
 - **Ask the assistant for it**: "statement PDF of oil stock, MSD and HSD
