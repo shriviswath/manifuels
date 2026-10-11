@@ -484,9 +484,10 @@ _aiTool('profit',{roles:['owner'],say:'Working out the profit…',
   }});
 
 _aiTool('credit',{roles:['owner','manager'],say:'Checking the credit ledger…',
-  d:'Customer credit overview: total outstanding, who owes most, overdue, ageing, advances held, payments in the last 7 days.',
-  p:{},
-  run:function(){
+  d:'Customer credit overview: total outstanding, who owes most, overdue, ageing, advances held, payments in the last 7 days. With a period: credit given and received in it, split by petrol (MSD) and diesel (HSD).',
+  p:_aiP({}),
+  run:function(a){
+    a=a||{};
     var names=[...new Set(ledger.map(function(e){ return e.customer; }))].filter(Boolean), today=_isoLocal();
     var list=names.map(function(n){
       var p=_custPosition(n), un=_custUnpaid(n), old=un.length?un[0].date:null, L=_custLimit(n);
@@ -511,9 +512,29 @@ _aiTool('credit',{roles:['owner','manager'],say:'Checking the credit ledger…',
             ['0–30 d',_aiMx(T[0])],['31–60 d',_aiMx(T[1]),T[1]>0.5?'a':''],['61–90 d',_aiMx(T[2]),T[2]>0.5?'a':''],['90+ d',_aiMx(T[3]),T[3]>0.5?'r':'']],
       tbl:owing.length?{h:['Customer','Owes','Oldest'],r:owing.slice(0,8).map(function(x){ return [x.n+(x.over?' ⚠':''),_aiM(x.net),x.age?x.age+' d'+(x.overdue?' !':''):'—']; })}:null,
       foot:(owing.length>8?'Top 8 of '+owing.length+'. ':'')+(overdue.length?'! = past the allowed days. ':'')+(owing.some(function(x){ return x.over; })?'⚠ = over credit limit.':'')}];
+    // Asked about a period: what went out on credit in it and what came back,
+    // by the fuel saved on each bill — the statement's own engine (_creditByFuel).
+    var pre='';
+    if((a.period||a.from||a.to)&&typeof _creditByFuel==='function'){
+      var R=_aiPeriod(a);
+      if(R.error)d.period_error=R.error;
+      else {
+        var B=_creditByFuel(R.from,R.to), act=B.rows.filter(function(r){ return r.bills||Math.abs(r.recv)>0.005; });
+        var one=function(k){ var r=B.rows.find(function(x){ return x.key===k; }); return r?r.given:0; }, rest=B.tot.given-one('MSD')-one('HSD');
+        d=Object.assign({in_period:{period:R.label,credit_given:_aiM(B.tot.given),bills:B.tot.bills,received_against_bills:_aiM(B.tot.recv),
+          by_fuel:act.map(function(r){ return {fuel:r.label,credit_given:_aiM(r.given),bills:r.bills,received:_aiM(r.recv),unpaid_today:_aiM(r.unpaid)}; }),
+          most_credit_taken:B.customers.slice(0,5).map(function(c){ return {customer:c.name,credit_given:_aiM(c.total)}; }),
+          note:'By the fuel saved on each bill; received is by the bill each payment settled. unpaid_today is on all bills, not only this period\'s.'}},d);
+        cards.unshift({t:'Credit by fuel · '+_aiSpan(R.from,R.to),s:B.tot.bills+' bill'+(B.tot.bills!==1?'s':'')+' in the period',page:'ledger',
+          rows:[['Credit given',_aiMx(B.tot.given),'a'],['Received against bills',_aiMx(B.tot.recv),'g']],
+          tbl:act.length?{h:['Fuel','Given','Received'],r:act.map(function(r){ return [r.short,_aiM(r.given),_aiM(r.recv)]; })}:null,
+          foot:'By the fuel saved on each bill. The business statement prints this customer by customer.'});
+        pre='Credit given '+R.label+' was '+_aiM(B.tot.given)+': petrol '+_aiM(one('MSD'))+', diesel '+_aiM(one('HSD'))+(rest>0.5?', other '+_aiM(rest):'')+'. ';
+      }
+    }
     return {data:d,cards:cards,
-      summary:owing.length?('Credit outstanding is '+_aiM(total)+' across '+owing.length+' customer'+(owing.length!==1?'s':'')+'. '+owing[0].n+' owes the most: '+_aiM(owing[0].net)+'.'+(overdue.length?' '+overdue.length+' overdue.':''))
-                          :'Nobody owes anything — the credit ledger is clear.'};
+      summary:pre+(owing.length?('Credit outstanding is '+_aiM(total)+' across '+owing.length+' customer'+(owing.length!==1?'s':'')+'. '+owing[0].n+' owes the most: '+_aiM(owing[0].net)+'.'+(overdue.length?' '+overdue.length+' overdue.':''))
+                          :'Nobody owes anything — the credit ledger is clear.')};
   }});
 
 _aiTool('customer',{roles:['owner','manager'],say:'Opening the customer account…',
@@ -755,13 +776,13 @@ var MF_AI_DOCS={
   // has: what is printed in it — the section headings of the document itself.
   // The model describes a document with these words and no others.
   business_statement:{label:'Business statement',btn:'OPEN STATEMENT',period:true,roles:['owner'],pair:'period_report',
-    has:'every transaction with a running balance, shift and meter register, customer credit given and received, fuel stock register, purchases and supplier dues, staff, profit and loss, exceptions'},
+    has:'every transaction with a running balance, shift and meter register, customer credit given and received with a split by petrol and diesel, fuel stock register, purchases and supplier dues, staff, profit and loss, exceptions'},
   period_report:{label:'Business report',btn:'OPEN & SAVE AS PDF',period:true,roles:['owner'],pair:'business_statement',
     has:'profit and loss, petrol against diesel, sales day by day, oil and pack sales with oil stock on hand, expenses, dues, staff on duty against cash, audit checks'},
   staff_statement:{label:'Staff statement',btn:'OPEN STATEMENT',who:'staff',roles:['owner','manager']}
 };
 _aiTool('document',{roles:['owner','manager'],say:'Preparing the document…',
-  d:'Prepare a printable PDF and show its button; the only way a document card appears. kind: customer_statement (a customer\'s whole account), customer_invoice (what a customer owes now), business_statement (transactions, credit, fuel stock, purchases for a period; owners), period_report (profit and loss, petrol vs diesel, oil sales and oil stock for a period; owners), staff_statement.',
+  d:'Prepare a printable PDF and show its button; the only way a document card appears. kind: customer_statement (a customer\'s whole account), customer_invoice (what a customer owes now), business_statement (transactions, credit by customer and by petrol/diesel, fuel stock, purchases for a period; owners), period_report (profit and loss, petrol vs diesel, oil sales and oil stock for a period; owners), staff_statement.',
   p:_aiP({kind:{type:'string',enum:['customer_statement','customer_invoice','business_statement','period_report','staff_statement']},name:{type:'string',description:'customer or staff'}}),req:['kind'],
   run:function(a){
     var K=MF_AI_DOCS[a.kind]; if(!K)return {data:{error:'Unknown document. Kinds: '+Object.keys(MF_AI_DOCS).join(', ')+'.'}};
@@ -1271,7 +1292,7 @@ function _aiRoute(text){
   if(has(/profit|margin|p ?& ?l\b|\bloss\b|earn/))return {tool:'profit',args:Object.assign({compare:has(/why|lower|higher|less|more|compare|\bvs\b|than|drop|fell|down|up\b/)},per('today'))};
   if(has(/supplier|tanker bill|we owe|payable|dues to|owe (to )?(ioc|bpc|hpc|supplier)/))return {tool:'suppliers',args:{}};
   if(cust&&!has(/sold|sale|litre|liter/))return {tool:'customer',args:{name:cust}};
-  if(has(/owe|credit|outstanding|overdue|debtor|receivable/))return {tool:'credit',args:{}};
+  if(has(/owe|credit|outstanding|overdue|debtor|receivable/))return {tool:'credit',args:(a.period&&has(/credit|given|gave|took|taken/))?{period:a.period}:{}};
   if(has(/\btank|order|run out|next (fuel |tanker )?load|need.{0,30}load|left in|in the tank|days left|dip\b/))return {tool:'tanks',args:{}};
   if(has(/salary|salaries|staff|wage|attendance|payroll/))return {tool:'staff',args:{}};
   if(has(/expens|spent|spend|drawing|money out/))return {tool:'expenses',args:per('this_month')};

@@ -74,7 +74,7 @@ Open the app as an owner → **✦ ASK** (top of the screen, or in the menu) →
 |---|---|
 | Sales, litres, collections, cash short/over, for any period | the shift records, through the Reports engine |
 | Profit, margins, petrol vs diesel, *why* profit moved | the same P&L engine as Reports (owners only) |
-| Who owes, who is overdue, one customer's account | the Credit Ledger |
+| Who owes, who is overdue, one customer's account, credit given in a month split by petrol and diesel | the Credit Ledger |
 | What we owe suppliers | Fuel Loads and the Oil Register |
 | Tank levels, days left, when to order | the Order Advisor |
 | Oil and pack stock, anything needing attention | Oil Stock and the alert bell |

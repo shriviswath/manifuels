@@ -55,7 +55,7 @@ when the connection comes back.
 ### Reports
 - **Profit & loss** from one engine (`_plCore`): revenue excluding credit repaid, weighted-average landed cost of fuel sold, line-level cost for oil, packs and counter stock, operating expenses, and gross and net margin.
 - **CA workings:** the full statement with Notes 1–8, shift-by-shift schedules, tie-outs, and a *"where money can leak"* checks section.
-- **Business statement:** a bank-statement-style ledger of every money movement with a running balance. Printable A4 and CSV.
+- **Business statement:** a bank-statement-style ledger of every money movement with a running balance. Printable A4 and CSV. Its customer-credit section splits credit given, received and unpaid by petrol and diesel, read from the fuel saved on each bill.
 - **Export report** of all business data, and a weekly profit comparison on the dashboard.
 - Every printed document paginates on A4 with repeated table headers and a "Page x of y" footer.
 

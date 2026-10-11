@@ -7,6 +7,26 @@ of the transaction layer. Requires `db/013_soft_deletes.sql` and
 `db/014_payments_and_locking.sql`; the client falls back safely if either is
 not applied.
 
+### Credit by fuel (`MF_CREDIT_FUEL_V1`, `patch_credit_by_fuel.py`)
+No database change; nothing is written to the ledger.
+- **Business statement → 3. Customer credit** gains two tables. *Credit by
+  fuel*: bills in the period, credit given, received and unpaid today, a row
+  each for Petrol (MSD) and Diesel (HSD), and for Oil, Other and "MSD/HSD"
+  bills where there are any. *Credit given in the period, by customer and
+  fuel*.
+- **Read, not estimated.** Every credit bill is saved with its fuel and every
+  payment row with the bill it settled, so `_creditByFuel(from, to)` only
+  adds them up. Given and received are the customer table's totals, split;
+  unpaid today less advances held is its "Balance today". The statement
+  prints that reconciliation under the table.
+- **What cannot be split is shown as such.** A bill saved as "MSD/HSD" is its
+  own row, not shared out between petrol and diesel. Money received without a
+  bill is its own row. A balance moved between customers is not "credit
+  given".
+- **Assistant** (when installed): "how much diesel credit did we give in
+  September?" — the credit tool takes a period and answers from the same
+  engine; the statement's card says the split is in it.
+
 ### Assistant (`MF_AI_V1`, `patch_ai_assistant.py`)
 Needs `db/021_ai_assistant.sql`, the `mf-ai` edge function and a free Groq key
 to answer typed questions — steps in `docs/AI_ASSISTANT_SETUP.md`. Without
