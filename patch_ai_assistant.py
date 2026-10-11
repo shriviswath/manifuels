@@ -23,6 +23,11 @@ db/021_ai_assistant.sql. Until that is done the ⚡ buttons still work — they
 read the app directly and need no server.
 
 Usage:  python3 patch_ai_assistant.py [path/to/index.html]   (idempotent)
+
+Run on a file without the assistant, it installs it. Run on a file that has
+it, it swaps the assistant's block for this version (or does nothing when
+they are the same). So after any patch that the assistant should know about —
+patch_credit_by_fuel.py, patch_custom_report.py — run this one last.
 """
 import re, os, sys, shutil, subprocess, tempfile
 
@@ -779,15 +784,49 @@ var MF_AI_DOCS={
     has:'every transaction with a running balance, shift and meter register, customer credit given and received with a split by petrol and diesel, fuel stock register, purchases and supplier dues, staff, profit and loss, exceptions'},
   period_report:{label:'Business report',btn:'OPEN & SAVE AS PDF',period:true,roles:['owner'],pair:'business_statement',
     has:'profit and loss, petrol against diesel, sales day by day, oil and pack sales with oil stock on hand, expenses, dues, staff on duty against cash, audit checks'},
+  // One PDF with only what was asked for: sections of the business report for
+  // the dates given. The app prints it (exportPeriodReport with sections); the
+  // assistant only chooses which sections.
+  custom_statement:{label:'Statement',btn:'OPEN & SAVE AS PDF',period:true,custom:true,roles:['owner']},
   staff_statement:{label:'Staff statement',btn:'OPEN STATEMENT',who:'staff',roles:['owner','manager']}
 };
+// The sections a statement can be made of, in print order, in the words used
+// to describe them. Keys are the app's own (MF_REPORT_SECTIONS).
+var MF_AI_SECTIONS={profit:'profit and loss',fuel:'petrol and diesel sold',daily:'sales day by day',
+  oil:'oil and pack sales by item, and oil stock on the shelf',credit:'customer credit by petrol and diesel, and by customer',
+  expenses:'expenses by head',dues:'what customers owe and what is owed to suppliers',staff:'staff on duty against cash',checks:'audit checks'};
+var MF_AI_SECTION_ALIAS={sales:'fuel',msd:'fuel',hsd:'fuel',petrol:'fuel',diesel:'fuel',fuel_sales:'fuel',oil_stock:'oil',oil_sales:'oil',stock:'oil',
+  lubricants:'oil',packs:'oil',pnl:'profit',pl:'profit',profit_and_loss:'profit',margin:'profit',expense:'expenses',exp:'expenses',
+  credit_by_fuel:'credit',customer_credit:'credit',due:'dues',suppliers:'dues',day_by_day:'daily',daily_sales:'daily',audit:'checks',check:'checks'};
+function _aiSections(x){      // what the model sent → known sections, in print order
+  var all=Object.keys(MF_AI_SECTIONS), got={};
+  (Array.isArray(x)?x:String(x==null?'':x).split(/[,;|]+/)).forEach(function(v){
+    var k=String(v||'').toLowerCase().trim().replace(/[\s-]+/g,'_');
+    if(k==='all'||k==='everything'){ all.forEach(function(a){ got[a]=1; }); return; }
+    k=MF_AI_SECTIONS[k]?k:MF_AI_SECTION_ALIAS[k]; if(k)got[k]=1;
+  });
+  return all.filter(function(a){ return got[a]; });
+}
+function _aiSectionsIn(text){ // what the person wrote → sections; none named → []
+  var s=' '+String(text||'').toLowerCase()+' ', got={}, has=function(re){ return re.test(s); };
+  if(has(/\boils?\b|lubricant|\bpacks?\b/))got.oil=1;
+  if(has(/credit/))got.credit=1;
+  if(has(/\bmsd\b|\bhsd\b|petrol|diesel|\blit(re|er)s?\b/)||(has(/\bsales?\b|\bsold\b/)&&!has(/(oil|pack) sales?/)))got.fuel=1;
+  if(has(/profit|p ?& ?l\b|\bmargins?\b/))got.profit=1;
+  if(has(/expens|\bspent\b/))got.expenses=1;
+  if(has(/\bdues?\b|suppliers?|payables?|outstanding|\bowe[sd]?\b/))got.dues=1;
+  if(has(/day by day|daily|each day|per day|day ?wise/))got.daily=1;
+  if(has(/audit|\bchecks?\b|leak/))got.checks=1;
+  return Object.keys(MF_AI_SECTIONS).filter(function(a){ return got[a]; });
+}
 _aiTool('document',{roles:['owner','manager'],say:'Preparing the document…',
-  d:'Prepare a printable PDF and show its button; the only way a document card appears. kind: customer_statement (a customer\'s whole account), customer_invoice (what a customer owes now), business_statement (transactions, credit by customer and by petrol/diesel, fuel stock, purchases for a period; owners), period_report (profit and loss, petrol vs diesel, oil sales and oil stock for a period; owners), staff_statement.',
-  p:_aiP({kind:{type:'string',enum:['customer_statement','customer_invoice','business_statement','period_report','staff_statement']},name:{type:'string',description:'customer or staff'}}),req:['kind'],
+  d:'Prepare a printable PDF and show its button; the only way a document card appears. kind: customer_statement (a customer\'s whole account), customer_invoice (what a customer owes now), business_statement (transactions, credit by customer and by petrol/diesel, fuel stock, purchases for a period; owners), period_report (profit and loss, petrol vs diesel, oil sales and oil stock for a period; owners), custom_statement (ONE PDF holding only the sections asked for, for a period; owners — use it whenever the person lists what they want in it, and pass sections), staff_statement.',
+  p:_aiP({kind:{type:'string',enum:['customer_statement','customer_invoice','business_statement','period_report','custom_statement','staff_statement']},name:{type:'string',description:'customer or staff'},
+    sections:{type:'array',items:{type:'string',enum:Object.keys(MF_AI_SECTIONS)},description:'custom_statement: what to put in it'}}),req:['kind'],
   run:function(a){
     var K=MF_AI_DOCS[a.kind]; if(!K)return {data:{error:'Unknown document. Kinds: '+Object.keys(MF_AI_DOCS).join(', ')+'.'}};
     if(K.roles.indexOf(_aiRole())<0)return {data:{error:'The '+K.label.toLowerCase()+' is for owners only. A manager can print a customer statement, a customer invoice or a staff statement.'}};
-    var doc={kind:a.kind,btn:K.btn}, d={ready:true}, note='', more=[];
+    var doc={kind:a.kind,btn:K.btn}, d={ready:true}, note='', more=[], tail='';
     if(K.who==='customer'){
       var f=_aiFind(a.name,_allCustomerNames()); if(!f.name)return {data:_aiNoName('customer',a.name,f)};
       var n=f.name, has=ledger.some(function(e){ return e.customer===n; }), p=_custPosition(n);
@@ -808,6 +847,21 @@ _aiTool('document',{roles:['owner','manager'],say:'Preparing the document…',
     } else {
       var R=_aiPeriod(a.period||a.from||a.to?a:{period:'this_month'}); if(R.error)return {data:{error:R.error}};
       var n2=_aiRecs(R).length, shifts=n2+' shift'+(n2!==1?'s':'');
+      if(K.custom){
+        // One PDF, only the sections asked for. Nothing named → all of them.
+        if(typeof MF_REPORT_SECTIONS==='undefined')return {data:{error:'This version of the app cannot print a statement by sections. Ask for the business report or the business statement.'}};
+        var secs=_aiSections(a.sections); if(!secs.length)secs=Object.keys(MF_AI_SECTIONS);
+        var what=secs.map(function(k){ return MF_AI_SECTIONS[k]; }).join('; ');
+        doc={kind:a.kind,btn:K.btn,from:R.from,to:R.to,sections:secs,t:K.label+' · '+_aiSpan(R.from,R.to),s:shifts+' in the period · one PDF with: '+what+'.'};
+        d.document=K.label+' for '+R.label; d.contains=what; d.sections=secs; d.shifts_in_period=n2;
+        // Three things in it are a snapshot of today, whatever the period.
+        var now=[]; if(secs.indexOf('oil')>=0)now.push('oil stock'); if(secs.indexOf('dues')>=0)now.push('dues'); if(secs.indexOf('credit')>=0)now.push('what each customer owes');
+        if(now.length&&R.to<_isoLocal()){
+          var nw=now.length>1?now.slice(0,-1).join(', ')+' and '+now[now.length-1]:now[0];
+          d.caution=nw.charAt(0).toUpperCase()+nw.slice(1)+' '+(now.length>1||now[0]==='dues'?'are':'is')+' printed as '+(now.length>1||now[0]==='dues'?'they stand':'it stands')+' today, not as on '+_aiDay(R.to)+'.';
+        }
+        tail=' In it: '+what+'.'+(d.caution?' '+d.caution:'');
+      } else {
       // The station prints two documents for a period and people ask for either
       // by either name, so both are offered — the one asked for first — each
       // saying what is in it. One tap each; nothing is opened until then.
@@ -816,12 +870,13 @@ _aiTool('document',{roles:['owner','manager'],say:'Preparing the document…',
       doc=mk(a.kind,K); doc.s=shifts+' in the period · '+doc.s;
       d.document=K.label+' for '+R.label; d.contains=K.has; d.shifts_in_period=n2;
       if(P2&&P2.roles.indexOf(_aiRole())>=0){ more=[mk(K.pair,P2)]; d.second_card={document:P2.label+' for the same period',contains:P2.has}; }
+      }
       if(!n2)note='No shift is saved in that period, so the document will be almost empty.';
     }
     d.how='A card with the button is shown under your answer. Tapping it opens the print dialog; choosing "Save as PDF" there saves the file.';
     if(note)d.note=note;
     return {data:d,docs:[doc].concat(more),
-      summary:(d.document||K.label)+(more.length?' and the '+MF_AI_DOCS[K.pair].label.toLowerCase()+' for the same period are':' is')+' ready — tap the button on '+(more.length?'a':'the')+' card, then choose "Save as PDF".'+(note?' '+note:'')};
+      summary:(d.document||K.label)+(more.length?' and the '+MF_AI_DOCS[K.pair].label.toLowerCase()+' for the same period are':' is')+' ready — tap the button on '+(more.length?'a':'the')+' card, then choose "Save as PDF".'+tail+(note?' '+note:'')};
   }});
 function _aiOpenDoc(itemId,idx){
   var it=MF_AI.items.find(function(x){ return x.id===itemId; }), d=it&&it.docs&&it.docs[idx]; if(!d)return;
@@ -831,6 +886,7 @@ function _aiOpenDoc(itemId,idx){
     if(d.kind==='customer_statement')generateCustomerStatement(d.name);
     else if(d.kind==='customer_invoice')generateCustomerInvoice(d.name);
     else if(d.kind==='staff_statement')staffStatement(d.id);
+    else if(d.kind==='custom_statement')exportPeriodReport({from:d.from,to:d.to,sections:d.sections,title:'Statement'});
     else if(d.kind==='business_statement'){
       openStatement();
       var f=document.getElementById('stmt_from'), t=document.getElementById('stmt_to');
@@ -953,7 +1009,7 @@ var MF_AI_HELP={
   staff:'Attendance is marked while entering a shift. Payroll works out wages earned from attendance on the payroll rules set on the Staff page. Advances are loans recovered from salary, not an expense. Payslips and a per-person statement print from the Staff page. Salaries and pay are visible to owners and managers only.',
   stock:'Oil Stock is the counter list with quantity and rate; a purchase invoice in Oil Register adds to it. 40 ml packs come 6 units to a box and 40 packs to a unit — record units opened in the shift. Loose oil is drawn from opened bottles. An item is "low" when it has under 10 days of cover at the last 30 days\' rate of sale (or 2 or fewer left if it has not been selling).',
   roles:'Owner: everything. Manager: everything except Reports and profit, Owner Drawings, the Activity Log, the Business Statement, backups and Members; a manager can record and reverse payments, set credit limits and handle staff pay. Staff: shift entry and the day-to-day pages; staff cannot use the assistant. Roles are set by an owner under Members and enforced by the server.',
-  documents:'Customer statement and invoice PDFs: Credit Ledger → the customer → STATEMENT PDF / INVOICE PDF. Business Statement (owners): menu → Business Statement, pick the period and sections, then PRINT / SAVE PDF or CSV. Export Report (PDF) and the P&L workings are on Reports. Payslips are on the Staff page. In the print dialog choose "Save as PDF". The assistant can open these too: ask for "statement for <customer>" or "business statement for last month".',
+  documents:'Customer statement and invoice PDFs: Credit Ledger → the customer → STATEMENT PDF / INVOICE PDF. Business Statement (owners): menu → Business Statement, pick the period and sections, then PRINT / SAVE PDF or CSV. Export Report (PDF) and the P&L workings are on Reports. Payslips are on the Staff page. In the print dialog choose "Save as PDF". The assistant can open these too: ask for "statement for <customer>" or "business statement for last month". For one PDF with only what you need, say what goes in it and the month: "statement PDF of oil sales, oil stock and credit by petrol and diesel for September" — profit, petrol and diesel sales, day by day, oil, credit, expenses, dues, staff and audit checks can be combined (owners).',
   assistant:'The assistant answers from figures the app works out on this phone — the same code as the Reports and Ledger pages — and words them with a language model. The cards under an answer are the app\'s own figures. It can open statement PDFs, and can prepare a customer payment or a note that is recorded only when you tap CONFIRM. It cannot edit or delete shifts, loads, stock or staff records. Owners and managers only; profit is owner-only.'
 };
 _aiTool('help',{roles:['owner','manager'],say:'Looking it up…',
@@ -1169,6 +1225,12 @@ function _aiGuard(q,txt,item,ran,take){
       }
     }
   }
+  // The person listed what they wanted in it and the model prepared a stock
+  // document instead: the one that was asked for goes first.
+  if(want&&route.args.kind==='custom_statement'&&item.docs.length&&!item.docs.some(function(x){ return x.kind==='custom_statement'; })){
+    var n0=item.docs.length, rc=_aiRun('document',route.args); take(rc);
+    var mine=item.docs.splice(n0); if(mine.length){ Array.prototype.unshift.apply(item.docs,mine); out.text=(out.text?out.text+'\n\n':'')+rc.summary; }
+  }
   if(!item.props.length&&MF_AI_SAYS_CONFIRM.test(out.text))
     out.warn=(out.warn?out.warn+' ':'')+'Nothing was prepared to confirm, so nothing can be recorded from this answer. Say it again with the customer, the amount and how it was paid.';
   out.swapped=!!txt&&!out.model;      // the model did answer; its sentence was not used
@@ -1282,6 +1344,9 @@ function _aiRoute(text){
     if(has(/invoice/)&&cust)return {tool:'document',args:{kind:'customer_invoice',name:cust}};
     if(staffN&&!cust)return {tool:'document',args:{kind:'staff_statement',name:staffN}};
     if(cust)return {tool:'document',args:{kind:'customer_statement',name:cust}};
+    // "…of oil stock, MSD and HSD credit and oil sales": one PDF with those sections
+    var secs=(typeof MF_REPORT_SECTIONS!=='undefined')?_aiSectionsIn(s):[];
+    if(secs.length)return {tool:'document',args:Object.assign({kind:'custom_statement',sections:secs},per('this_month'))};
     if(has(/customer|party|\bstaff\b|salary|employee/))return null;      // somebody's document, and nobody was named: ask, do not guess
     // Oil, profit and expenses are printed in the report; money in and out,
     // credit and fuel stock in the statement. Either way both cards are shown.
@@ -1404,7 +1469,7 @@ function _aiExamples(){
   var own=_aiRole()==='owner', names=[], seen={};
   try{ ledger.slice().sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); }).forEach(function(e){ if(e.customer&&!seen[e.customer]&&names.length<1){ seen[e.customer]=1; names.push(e.customer); } }); }catch(e){}
   var n=names[0]||'a customer';
-  return own?['How much diesel did we sell this week?','Why was yesterday\'s profit lower?','Which fuel has the higher margin this month?','Who owes us the most?','Statement PDF for '+n,'When do we need the next load?']
+  return own?['How much diesel did we sell this week?','Why was yesterday\'s profit lower?','Which fuel has the higher margin this month?','Who owes us the most?','Statement PDF for '+n,'Statement PDF of oil sales and credit by petrol and diesel for last month','When do we need the next load?']
             :['How much diesel did we sell this week?','Which shifts were short this week?','Who owes us the most?','What do we owe suppliers?','Statement PDF for '+n,'When do we need the next load?'];
 }
 function _aiChips(){
@@ -1619,10 +1684,55 @@ HUNKS = [
 ]
 
 
+BLOCK = "<style>\n" + AI_CSS + "\n</style>\n<script>\n" + AI_JS + "\n</script>\n"
+BLOCK_MARK = "// ── MF_AI_V1 — the assistant"
+BLOCK_END = "</body>\n</html>"
+
+
+def check_and_write(src, out, done):
+    scripts = re.findall(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", out, flags=re.S | re.I)
+    with tempfile.TemporaryDirectory() as td:
+        for i, js in enumerate(scripts):
+            p = os.path.join(td, f"s{i}.js"); open(p, "w", encoding="utf-8").write(js)
+            r = subprocess.run(["node", "--check", p], capture_output=True, text=True)
+            if r.returncode: sys.exit(f"✗ node --check failed on script #{i}:\n{r.stderr}\nNothing written.")
+    shutil.copyfile(PATH, PATH + ".bak")
+    open(PATH, "w", encoding="utf-8").write(out)
+    print(f"✓ {SENTINEL} {done}; node --check passed on {len(scripts)} script(s); backup {PATH}.bak")
+
+
+def upgrade(src):
+    """The assistant is already in the file: swap its block for this one.
+
+    The block is the last <style>…</style><script>…</script> before </body>.
+    The five small hooks elsewhere (buttons, _bulkPayCommit) do not change
+    between versions and are only checked.
+    """
+    for name, _old, new in HUNKS[:-1]:
+        if src.count(new) != 1:
+            sys.exit(f"✗ installed assistant is incomplete ({name}) — nothing written")
+    m = src.find(BLOCK_MARK)
+    if m < 0 or src.count(BLOCK_MARK) != 1:
+        sys.exit("✗ the assistant block was not found exactly once — nothing written")
+    a = src.rfind("<style>\n", 0, m)
+    b = src.find(BLOCK_END, m)
+    if a < 0 or b < 0 or not src[:a].endswith("})();\n</script>\n") or "<style" in src[a + 7:m] or src[b:].strip() != BLOCK_END:
+        sys.exit("✗ the assistant block is not laid out as expected — nothing written")
+    if src[a:b] == BLOCK:
+        print("Nothing to do — MF_AI_V1 is installed and up to date."); return
+    out = src[:a] + BLOCK + src[b:]
+    for must in ("function _bulkPayCommit(name,amt,date,mode,note,via){", "function mfAiOpen(", "CRITICAL BLOCK — AUTH / SESSION",
+                 "CRITICAL BLOCK — MULTI-DEVICE SYNC", "END CRITICAL BLOCK — AUTH / SESSION"):
+        if must not in out: sys.exit(f"✗ after patching, '{must}' is missing — nothing written")
+    if out[:a] != src[:a]: sys.exit("✗ internal: text before the assistant block changed — nothing written")
+    print("  ✓ assistant block replaced with this version")
+    check_and_write(src, out, "brought up to date")
+
+
 def main():
     src = open(PATH, encoding="utf-8").read()
     if SENTINEL in src:
-        print("Nothing to do — MF_AI_V1 already applied."); return
+        return upgrade(src)
     # every anchor must be there exactly once BEFORE anything is changed
     for name, old, _new in HUNKS:
         n = src.count(old)

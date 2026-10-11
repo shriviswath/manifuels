@@ -16,10 +16,10 @@ settled, so the split is read from the ledger — nothing is estimated.
    • Credit given in the period, by customer and fuel.
    Bills saved as "MSD/HSD" were never split and are shown as exactly that.
 
-2. ASSISTANT (only if it is installed — MF_AI_V1)
-   • "How much diesel credit did we give in September?" — the credit tool
-     takes a period and answers from the same engine.
-   • The statement's card and the document tool say the split is in it.
+2. ASSISTANT
+   "How much diesel credit did we give in September?" is answered from the
+   same engine. That part lives in patch_ai_assistant.py: run it after this
+   one — it installs the assistant, or brings an installed one up to date.
 
 No database change. Nothing is written to the ledger.
 
@@ -51,6 +51,8 @@ CF_JS = r'''// ═════════════════════�
 //           one settled. Advances are left out, as they are above.
 //   unpaid  what is still owed on every bill today, whenever it was raised.
 // A bill saved as "MSD/HSD" was never split and is shown as exactly that.
+// Returns rows (one per fuel), customers (credit given, by fuel), received
+// (payments in the period, by customer), tot, held and net.
 // `only` (a {name:1} map) limits it to those customers, so the statement's
 // figures tie to the table it prints above; without it, everyone.
 // ══════════════════════════════════════════════════════════════════
@@ -71,7 +73,7 @@ function _creditFuelKey(e){
   return 'OTHER';
 }
 function _creditByFuel(from,to,only){
-  var F={}, cust={}, bill={}, held=0;
+  var F={}, cust={}, bill={}, held=0, got={};
   var b=function(k){ return F[k]||(F[k]={given:0,bills:0,recv:0,unpaid:0}); };
   var inSet=function(n){ return !only||only[n]===1; };
   (typeof ledger!=='undefined'?ledger:[]).forEach(function(e){
@@ -91,6 +93,7 @@ function _creditByFuel(from,to,only){
     if(!p||p.kind==='advance'||!(p.date>=from&&p.date<=to)||!inSet(p.customer))return;
     var e=p.ledgerId==null?null:bill[String(p.ledgerId)];
     b(e?_creditFuelKey(e):'NONE').recv+=+p.amount||0;
+    got[p.customer]=(got[p.customer]||0)+(+p.amount||0);
   });
   b('MSD'); b('HSD');                              // always shown, even at zero
   var tot={given:0,bills:0,recv:0,unpaid:0};
@@ -105,7 +108,7 @@ function _creditByFuel(from,to,only){
     var t=0; Object.keys(cust[n]).forEach(function(k){ t+=cust[n][k]; });
     return {name:n,by:cust[n],total:_r2(t)};
   }).sort(function(a,b){ return b.total-a.total||String(a.name).localeCompare(String(b.name)); });
-  return {from:from,to:to,rows:rows,customers:customers,
+  return {from:from,to:to,rows:rows,customers:customers,received:got,
     tot:{given:_r2(tot.given),bills:tot.bills,recv:_r2(tot.recv),unpaid:_r2(tot.unpaid)},
     held:_r2(held),net:_r2(tot.unpaid-held)};
 }
@@ -141,80 +144,6 @@ function _stmtCreditFuelHtml(from,to,names){
 
 '''
 
-AI_HUNKS = [
-    ('assistant: the credit tool takes a period',
-    (
-        "  d:'Customer credit overview: total outstanding, who owes most, overdue, ageing, advances held, payments in the last 7 days.',\n"
-        '  p:{},\n'
-        '  run:function(){\n'
-        '    var names=[...new Set(ledger.map(function(e){ return e.customer; }))].filter(Boolean), today=_isoLocal();'
-    ),
-    (
-        "  d:'Customer credit overview: total outstanding, who owes most, overdue, ageing, advances held, payments in the last 7 days. With a period: credit given and received in it, split by petrol (MSD) and diesel (HSD).',\n"
-        '  p:_aiP({}),\n'
-        '  run:function(a){\n'
-        '    a=a||{};\n'
-        '    var names=[...new Set(ledger.map(function(e){ return e.customer; }))].filter(Boolean), today=_isoLocal();'
-    )),
-    ('assistant: credit given and received in the period, by fuel',
-    (
-        '    return {data:d,cards:cards,\n'
-        "      summary:owing.length?('Credit outstanding is '"
-    ),
-    (
-        '    // Asked about a period: what went out on credit in it and what came back,\n'
-        "    // by the fuel saved on each bill — the statement's own engine (_creditByFuel).\n"
-        "    var pre='';\n"
-        "    if((a.period||a.from||a.to)&&typeof _creditByFuel==='function'){\n"
-        '      var R=_aiPeriod(a);\n'
-        '      if(R.error)d.period_error=R.error;\n'
-        '      else {\n'
-        '        var B=_creditByFuel(R.from,R.to), act=B.rows.filter(function(r){ return r.bills||Math.abs(r.recv)>0.005; });\n'
-        "        var one=function(k){ var r=B.rows.find(function(x){ return x.key===k; }); return r?r.given:0; }, rest=B.tot.given-one('MSD')-one('HSD');\n"
-        '        d=Object.assign({in_period:{period:R.label,credit_given:_aiM(B.tot.given),bills:B.tot.bills,received_against_bills:_aiM(B.tot.recv),\n'
-        '          by_fuel:act.map(function(r){ return {fuel:r.label,credit_given:_aiM(r.given),bills:r.bills,received:_aiM(r.recv),unpaid_today:_aiM(r.unpaid)}; }),\n'
-        '          most_credit_taken:B.customers.slice(0,5).map(function(c){ return {customer:c.name,credit_given:_aiM(c.total)}; }),\n'
-        "          note:'By the fuel saved on each bill; received is by the bill each payment settled. unpaid_today is on all bills, not only this period\\'s.'}},d);\n"
-        "        cards.unshift({t:'Credit by fuel · '+_aiSpan(R.from,R.to),s:B.tot.bills+' bill'+(B.tot.bills!==1?'s':'')+' in the period',page:'ledger',\n"
-        "          rows:[['Credit given',_aiMx(B.tot.given),'a'],['Received against bills',_aiMx(B.tot.recv),'g']],\n"
-        "          tbl:act.length?{h:['Fuel','Given','Received'],r:act.map(function(r){ return [r.short,_aiM(r.given),_aiM(r.recv)]; })}:null,\n"
-        "          foot:'By the fuel saved on each bill. The business statement prints this customer by customer.'});\n"
-        "        pre='Credit given '+R.label+' was '+_aiM(B.tot.given)+': petrol '+_aiM(one('MSD'))+', diesel '+_aiM(one('HSD'))+(rest>0.5?', other '+_aiM(rest):'')+'. ';\n"
-        '      }\n'
-        '    }\n'
-        '    return {data:d,cards:cards,\n'
-        "      summary:pre+(owing.length?('Credit outstanding is '"
-    )),
-    ('assistant: credit summary carries the period line',
-    (
-        "                          :'Nobody owes anything — the credit ledger is clear.'};"
-    ),
-    (
-        "                          :'Nobody owes anything — the credit ledger is clear.')};"
-    )),
-    ('assistant: the statement card says credit is split by fuel',
-    (
-        'shift and meter register, customer credit given and received, fuel stock register,'
-    ),
-    (
-        'shift and meter register, customer credit given and received with a split by petrol and diesel, fuel stock register,'
-    )),
-    ('assistant: the document tool knows which document has credit by fuel',
-    (
-        'business_statement (transactions, credit, fuel stock, purchases for a period; owners)'
-    ),
-    (
-        'business_statement (transactions, credit by customer and by petrol/diesel, fuel stock, purchases for a period; owners)'
-    )),
-    ('assistant: "diesel credit in September" asks for the period, with no model',
-    (
-        "  if(has(/owe|credit|outstanding|overdue|debtor|receivable/))return {tool:'credit',args:{}};"
-    ),
-    (
-        "  if(has(/owe|credit|outstanding|overdue|debtor|receivable/))return {tool:'credit',args:(a.period&&has(/credit|given|gave|took|taken/))?{period:a.period}:{}};"
-    )),
-]
-
 def main():
     src = open(PATH, encoding="utf-8").read()
     if APPLIED in src:
@@ -229,19 +158,6 @@ def main():
             sys.exit(f"✗ {name}: anchor found {out.count(old)}× (need exactly 1) — nothing written")
         out = out.replace(old, new)
         print("  ✓", name)
-
-    # The assistant is a separate patch. With it: bring its credit tool in line.
-    # Without it: nothing to do here, and patch_ai_assistant.py carries the same lines.
-    if "MF_AI_V1" not in out:
-        print("  – assistant not installed: its part skipped")
-    else:
-        for name, old, new in AI_HUNKS:
-            if new in out:
-                print("  =", name, "(already)"); continue
-            if out.count(old) != 1:
-                sys.exit(f"✗ {name}: anchor found {out.count(old)}× (need exactly 1) — nothing written")
-            out = out.replace(old, new)
-            print("  ✓", name)
 
     # post-state: nothing that must survive was lost
     for must in ("function renderStatement(", "function _stmtTransactions(", "function _custPosition(",

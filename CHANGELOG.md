@@ -7,6 +7,33 @@ of the transaction layer. Requires `db/013_soft_deletes.sql` and
 `db/014_payments_and_locking.sql`; the client falls back safely if either is
 not applied.
 
+### A statement with only what was asked for (`MF_CUSTOM_REPORT_V1`, `patch_custom_report.py`)
+Needs `patch_credit_by_fuel.py` first. No database change.
+- **Ask the assistant for it**: "statement PDF of oil stock, MSD and HSD
+  credit and oil sales for September" gives **one card and one PDF** holding
+  those sections and nothing else. Profit and loss, petrol vs diesel, day by
+  day, oil and stock, customer credit by fuel, expenses, dues, staff and the
+  audit checks can be combined, for any period. Owners only.
+- **The assistant chooses the sections; the app prints them.**
+  `exportPeriodReport(opt)` takes `{from, to, sections, title}` and prints
+  the named sections in the report's own order, renumbered. Each is built by
+  the same function as the full report and the Reports page, so a figure
+  cannot differ between them. With no options — the menu's Export Report
+  (PDF) — the report is byte-for-byte what it was.
+- **It still works when the model does not.** The sections are read from the
+  wording as well, so the card is prepared by the app when the model forgets
+  to, and is put first when the model prepares a stock document instead.
+- **It says what is not month-end.** Oil stock, dues and what each customer
+  owes are printed as they stand today; the card and the answer say so when
+  the period has already ended.
+- **Customer credit by fuel** is a report section and a view on Reports
+  (💳 CREDIT BY FUEL, with CSV): by fuel, and by customer with received and
+  owes today.
+- **`patch_ai_assistant.py` now brings an installed assistant up to date**
+  instead of stopping at "already applied": it swaps the assistant's block
+  for its own version. Run it last, after any patch the assistant should know
+  about. Build order does not matter — three orders give the same file.
+
 ### Credit by fuel (`MF_CREDIT_FUEL_V1`, `patch_credit_by_fuel.py`)
 No database change; nothing is written to the ledger.
 - **Business statement → 3. Customer credit** gains two tables. *Credit by
@@ -23,9 +50,10 @@ No database change; nothing is written to the ledger.
   own row, not shared out between petrol and diesel. Money received without a
   bill is its own row. A balance moved between customers is not "credit
   given".
-- **Assistant** (when installed): "how much diesel credit did we give in
-  September?" — the credit tool takes a period and answers from the same
-  engine; the statement's card says the split is in it.
+- **Assistant**: "how much diesel credit did we give in September?" — the
+  credit tool takes a period and answers from the same engine; the
+  statement's card says the split is in it. (Run `patch_ai_assistant.py`
+  after this patch.)
 
 ### Assistant (`MF_AI_V1`, `patch_ai_assistant.py`)
 Needs `db/021_ai_assistant.sql`, the `mf-ai` edge function and a free Groq key
