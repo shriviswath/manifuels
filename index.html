@@ -8627,6 +8627,109 @@ function stmtRange(k,quiet){
   if(!quiet)renderStatement();
 }
 
+// ══════════════════════════════════════════════════════════════════
+// MF_CREDIT_FUEL_V1 — CREDIT BY FUEL
+// Every credit bill is saved with the fuel it was for, and every payment row
+// with the bill it settled. So "how much diesel went out on credit this
+// month, and how much of it came back" is read from the ledger — it is not
+// estimated from litres or rates.
+//   given   bills dated in the period. Balances moved between customers are
+//           left out: the same test as "Credit given in period" above it.
+//   recv    payments dated in the period, under the fuel of the bill each
+//           one settled. Advances are left out, as they are above.
+//   unpaid  what is still owed on every bill today, whenever it was raised.
+// A bill saved as "MSD/HSD" was never split and is shown as exactly that.
+// Returns rows (one per fuel), customers (credit given, by fuel), received
+// (payments in the period, by customer), tot, held and net.
+// `only` (a {name:1} map) limits it to those customers, so the statement's
+// figures tie to the table it prints above; without it, everyone.
+// ══════════════════════════════════════════════════════════════════
+var MF_CREDIT_FUELS=[
+  ['MSD','Petrol (MSD)','Petrol (MSD)'],['HSD','Diesel (HSD)','Diesel (HSD)'],
+  ['MIX','Petrol or diesel — not recorded which','Petrol / diesel'],
+  ['OIL','Oil','Oil'],['OTHER','Other','Other'],
+  ['ADJ','Balance moved from another customer','Moved'],
+  ['NONE','Not recorded against a bill','No bill']];
+function _creditFuelKey(e){
+  if(!e)return 'NONE';
+  if(e.kind==='adjust'||e.fuel==='ADJUST')return 'ADJ';
+  var f=String(e.fuel||'').trim().toUpperCase();
+  if(f==='MSD'||f==='PETROL')return 'MSD';
+  if(f==='HSD'||f==='DIESEL')return 'HSD';
+  if(f==='MSD/HSD'||f==='HSD/MSD')return 'MIX';
+  if(f==='OIL')return 'OIL';
+  return 'OTHER';
+}
+function _creditByFuel(from,to,only){
+  var F={}, cust={}, bill={}, held=0, got={};
+  var b=function(k){ return F[k]||(F[k]={given:0,bills:0,recv:0,unpaid:0}); };
+  var inSet=function(n){ return !only||only[n]===1; };
+  (typeof ledger!=='undefined'?ledger:[]).forEach(function(e){
+    if(!e)return;
+    bill[String(e.id)]=e;
+    if(!inSet(e.customer))return;
+    var amt=+e.amount||0, pb=+e.paidBack||0;
+    if(amt>0){
+      var k=_creditFuelKey(e); b(k).unpaid+=amt-pb;
+      if(k!=='ADJ'&&e.date>=from&&e.date<=to){
+        b(k).given+=amt; b(k).bills++;
+        var c=cust[e.customer]||(cust[e.customer]={}); c[k]=(c[k]||0)+amt;
+      }
+    } else held+=Math.abs(amt)-pb;                 // advances and credits still held
+  });
+  (typeof ledgerPayments!=='undefined'?ledgerPayments:[]).forEach(function(p){
+    if(!p||p.kind==='advance'||!(p.date>=from&&p.date<=to)||!inSet(p.customer))return;
+    var e=p.ledgerId==null?null:bill[String(p.ledgerId)];
+    b(e?_creditFuelKey(e):'NONE').recv+=+p.amount||0;
+    got[p.customer]=(got[p.customer]||0)+(+p.amount||0);
+  });
+  b('MSD'); b('HSD');                              // always shown, even at zero
+  var tot={given:0,bills:0,recv:0,unpaid:0};
+  var rows=MF_CREDIT_FUELS.map(function(d){
+    var x=F[d[0]]; if(!x)return null;
+    tot.given+=x.given; tot.bills+=x.bills; tot.recv+=x.recv; tot.unpaid+=x.unpaid;
+    return {key:d[0],label:d[1],short:d[2],given:_r2(x.given),bills:x.bills,recv:_r2(x.recv),unpaid:_r2(x.unpaid)};
+  }).filter(function(x){
+    return x&&(x.key==='MSD'||x.key==='HSD'||x.bills||Math.abs(x.given)>0.005||Math.abs(x.recv)>0.005||Math.abs(x.unpaid)>0.005);
+  });
+  var customers=Object.keys(cust).map(function(n){
+    var t=0; Object.keys(cust[n]).forEach(function(k){ t+=cust[n][k]; });
+    return {name:n,by:cust[n],total:_r2(t)};
+  }).sort(function(a,b){ return b.total-a.total||String(a.name).localeCompare(String(b.name)); });
+  return {from:from,to:to,rows:rows,customers:customers,received:got,
+    tot:{given:_r2(tot.given),bills:tot.bills,recv:_r2(tot.recv),unpaid:_r2(tot.unpaid)},
+    held:_r2(held),net:_r2(tot.unpaid-held)};
+}
+// The two tables printed under "3. Customer credit" in the business statement.
+function _stmtCreditFuelHtml(from,to,names){
+  var only=null; if(names){ only={}; names.forEach(function(n){ only[n]=1; }); }
+  var B=_creditByFuel(from,to,only);
+  if(!B.rows.some(function(r){ return r.bills||Math.abs(r.recv)>0.005||Math.abs(r.unpaid)>0.005; }))return '';
+  var hs=' style="page-break-after:avoid;break-after:avoid"';
+  var has=function(k){ return B.rows.some(function(r){ return r.key===k; }); };
+  var h='<h3'+hs+'>Credit by fuel</h3>'+
+    '<table class="st-t st-cf"><thead><tr><th>Fuel on the bill</th><th class="n">Bills in period</th><th class="n">Credit given in period</th><th class="n">Received in period</th><th class="n">Unpaid today</th></tr></thead><tbody>'+
+    B.rows.map(function(r){
+      return '<tr data-fuel="'+r.key+'"><td>'+_esc(r.label)+'</td><td class="n">'+(r.bills||'')+'</td><td class="n">'+_sAmt(r.given)+'</td><td class="n">'+_sAmt(r.recv)+'</td><td class="n">'+_sAmt(r.unpaid)+'</td></tr>';
+    }).join('')+
+    '<tr class="st-tot"><td><b>Total</b></td><td class="n"><b>'+B.tot.bills+'</b></td><td class="n"><b>'+_sN(B.tot.given)+'</b></td><td class="n"><b>'+_sN(B.tot.recv)+'</b></td><td class="n"><b>'+_sN(B.tot.unpaid)+'</b></td></tr></tbody></table>'+
+    '<p class="st-note st-cf-note">Read from the ledger, not estimated: each credit bill is saved with its fuel, and each payment with the bill it settled. Credit given and received are the totals of the table above, split. '+
+      'Unpaid today ₹ '+_sN(B.tot.unpaid)+', less advances and credits held ₹ '+_sN(B.held)+', is the balance today of ₹ '+_sN(B.net)+'.'+
+      (has('MIX')?' Bills saved as “MSD/HSD” were never split between petrol and diesel, and cannot be split now.':'')+
+      (has('NONE')?' “Not recorded against a bill” is money received that was not saved against a particular bill.':'')+'</p>';
+  if(B.customers.length){
+    var cols=MF_CREDIT_FUELS.filter(function(d){ return d[0]==='MSD'||d[0]==='HSD'||B.customers.some(function(c){ return Math.abs(c.by[d[0]]||0)>0.005; }); });
+    var ct={}; cols.forEach(function(d){ ct[d[0]]=0; });
+    h+='<h3'+hs+'>Credit given in the period — by customer and fuel</h3>'+
+      '<table class="st-t st-cfc"><thead><tr><th>Customer</th>'+cols.map(function(d){ return '<th class="n">'+_esc(d[2])+'</th>'; }).join('')+'<th class="n">Total</th></tr></thead><tbody>'+
+      B.customers.map(function(c){
+        return '<tr><td>'+_esc(c.name)+'</td>'+cols.map(function(d){ var v=c.by[d[0]]||0; ct[d[0]]+=v; return '<td class="n">'+_sAmt(v)+'</td>'; }).join('')+'<td class="n">'+_sN(c.total)+'</td></tr>';
+      }).join('')+
+      '<tr class="st-tot"><td><b>Total</b></td>'+cols.map(function(d){ return '<td class="n"><b>'+_sN(ct[d[0]])+'</b></td>'; }).join('')+'<td class="n"><b>'+_sN(B.tot.given)+'</b></td></tr></tbody></table>';
+  }
+  return h;
+}
+
 var _stmtLastRows=[];
 function renderStatement(){
   var paper=document.getElementById('stmt_paper'); if(!paper)return;
@@ -8737,7 +8840,8 @@ function renderStatement(){
         return '<tr'+(age>30&&c.out>0.5?' class="st-w"':'')+'><td>'+_esc(k)+'</td><td class="n">'+_sAmt(c.given)+'</td><td class="n">'+_sAmt(c.recv)+'</td><td class="n">'+_sAmt(c.adv)+'</td>'+
           '<td class="n">'+(c.out<-0.5?_sN(-c.out)+' adv':_sN(c.out))+'</td><td>'+(c.oldest&&c.out>0.5?_sD(c.oldest)+' ('+age+' days)':'—')+'</td></tr>';}).join('')+
       '<tr class="st-tot"><td><b>Total</b></td><td class="n"><b>'+_sN(ct.g)+'</b></td><td class="n"><b>'+_sN(ct.r)+'</b></td><td class="n"><b>'+_sN(ct.a)+'</b></td><td class="n"><b>'+_sN(ct.o)+'</b></td><td></td></tr></tbody></table>'+
-      '<p class="st-note">“Received” counts payments recorded with a date (shift collections and the ledger page). Balance today is net of advances held.</p>');
+      '<p class="st-note">“Received” counts payments recorded with a date (shift collections and the ledger page). Balance today is net of advances held.</p>'+
+      _stmtCreditFuelHtml(from,to,names));      // MF_CREDIT_FUEL_V1
   }
 
   // ── 4. Fuel stock register ──
@@ -9679,10 +9783,62 @@ function renderReportViews(from,to,recs){
 }
 function rvTab(k){ _rvSet('tab',k); if(_rvCtx)renderReportViews(_rvCtx.from,_rvCtx.to,_rvCtx.recs); }
 
+// ══════════════════════════════════════════════════════════════════
+// MF_CUSTOM_REPORT_V1 — A STATEMENT WITH ONLY WHAT WAS ASKED FOR
+// "The statement of oil stock, MSD and HSD credit and oil sales for
+// September" is not a new document. It is three sections of the business
+// report, for those dates. exportPeriodReport(opt) prints the sections named
+// in opt.sections, in the report's own order, renumbered — each built by the
+// same RV_BUILD function as the full report and the Reports page, so a figure
+// cannot differ between the three.
+// Customer credit by fuel becomes a section here and a view on Reports.
+// ══════════════════════════════════════════════════════════════════
+var MF_REPORT_SECTIONS=[['profit','Profit & loss'],['fuel','Petrol vs diesel'],['daily','Day by day'],['oil','Oil & stock'],
+  ['credit','Customer credit — by fuel'],['expenses','Expenses'],['dues','Dues — as of today'],['staff','Staff on duty vs cash'],
+  ['checks','Checks — where money can leak']];
+RV_TABS.push(['credit','💳 CREDIT BY FUEL']);
+RV_BUILD.credit=function(from,to){
+  var B=_creditByFuel(from,to);
+  var row=function(k){ return B.rows.filter(function(r){ return r.key===k; })[0]||{given:0,bills:0,recv:0,unpaid:0}; };
+  var has=function(k){ return B.rows.some(function(r){ return r.key===k; }); }, M=row('MSD'), H=row('HSD');
+  var bills=function(n){ return n+' bill'+(n!==1?'s':''); };
+  var cols=MF_CREDIT_FUELS.filter(function(d){ return d[0]==='MSD'||d[0]==='HSD'||B.customers.some(function(c){ return Math.abs(c.by[d[0]]||0)>0.005; }); });
+  var given={}; B.customers.forEach(function(c){ given[c.name]=c; });
+  var names=Object.keys(given); Object.keys(B.received).forEach(function(n){ if(!given[n]&&Math.abs(B.received[n])>0.005)names.push(n); });
+  var ct={}, rT=0, last=cols.length+1;
+  var rows=names.map(function(n){
+    var c=given[n]||{by:{},total:0}, rc=B.received[n]||0, net=_custPosition(n).net;
+    cols.forEach(function(d){ ct[d[0]]=(ct[d[0]]||0)+(c.by[d[0]]||0); }); rT+=rc;
+    return [n].concat(cols.map(function(d){ return c.by[d[0]]||null; }),
+      [c.total||null, rc||null, net<-0.5?{v:net,s:_rvMoney(-net)+' adv'}:(Math.abs(net)<=0.5?{v:0,s:'settled'}:{v:net,s:_rvMoney(net),c:'var(--diesel)'})]);
+  }).sort(function(a,b){ return (b[last]||0)-(a[last]||0)||String(a[0]).localeCompare(String(b[0])); });
+  return {cards:[['Credit given',_rvMoney(B.tot.given),'var(--diesel)',bills(B.tot.bills)+' in the period'],
+                 ['Petrol (MSD)',_rvMoney(M.given),'var(--petrol)',bills(M.bills)],
+                 ['Diesel (HSD)',_rvMoney(H.given),'var(--diesel)',bills(H.bills)],
+                 ['Received against bills',_rvMoney(B.tot.recv),'var(--green)','in the period'],
+                 ['Unpaid today',_rvMoney(B.tot.unpaid),B.tot.unpaid>0.5?'var(--red)':'var(--muted)','all bills, whenever raised'],
+                 ['Advances held',_rvMoney(B.held),'var(--blue)',B.net>=0?'net owed to you '+_rvMoney(B.net):'more held in advance than owed, by '+_rvMoney(-B.net)]],
+    blocks:[{key:'credit_fuel', h:'CREDIT BY FUEL',
+      note:'Read from the ledger, not estimated: each credit bill is saved with its fuel, and each payment with the bill it settled. Unpaid today is on every bill, whenever it was raised.'+
+        (has('MIX')?' Bills saved as “MSD/HSD” were never split between petrol and diesel, and cannot be split now.':'')+
+        (has('NONE')?' “Not recorded against a bill” is money received that was not saved against a particular bill.':''),
+      tbl:{cols:[{h:'Fuel on the bill',t:'t'},{h:'Bills',t:'n'},{h:'Credit given',t:'m'},{h:'Received',t:'m'},{h:'Unpaid today',t:'m'}],
+        rows:B.rows.map(function(r){ return [r.label,r.bills||null,r.given||null,r.recv||null,r.unpaid||null]; }),
+        foot:['Total',B.tot.bills,B.tot.given,B.tot.recv,B.tot.unpaid]}},
+     {key:'credit_customers', h:'BY CUSTOMER — CREDIT GIVEN AND RECEIVED IN THE PERIOD',
+      note:'“Owes today” is net of any advance held, and is as of today — not as of the last day of the period.',
+      tbl:{cols:[{h:'Customer',t:'t'}].concat(cols.map(function(d){ return {h:d[2],t:'m'}; }),[{h:'Total given',t:'m'},{h:'Received',t:'m'},{h:'Owes today',t:'m'}]),
+        rows:rows, foot:rows.length?['Total'].concat(cols.map(function(d){ return ct[d[0]]||null; }),[B.tot.given||null,rT||null,null]):null,
+        empty:'No credit was given or received in this period.'}}]};
+};
+
 // ── 4. Printable report for the chosen period ─────────────────────────────
-function exportPeriodReport(){
+function exportPeriodReport(opt){
+  // MF_CUSTOM_REPORT_V1 — opt {from, to, sections, title}: the same report for
+  // the dates given, with only the sections asked for. No opt: as before.
+  opt=(opt&&typeof opt==='object'&&!opt.target)?opt:{};
   if(typeof _isOwner!=='undefined'&&!_isOwner){ showToast('🔒 Owner access only'); return; }
-  var f=(document.getElementById('rep_from')||{}).value, t=(document.getElementById('rep_to')||{}).value;
+  var f=opt.from||(document.getElementById('rep_from')||{}).value, t=opt.to||(document.getElementById('rep_to')||{}).value;
   if(!f||!t){ var n=new Date(); f=_isoLocal(new Date(n.getFullYear(),n.getMonth(),1)); t=_isoLocal(n); }
   if(f>t){ showToast('The From date is after the To date'); return; }
   var recs=records.filter(function(r){ return r.date>=f&&r.date<=t; });
@@ -9730,25 +9886,36 @@ function exportPeriodReport(){
       return '<div class="wk-chk '+c.st+'" style="margin-bottom:4px"><b class="wk-ico">'+ico+'</b> <b class="wk-chk-t">'+_esc(c.t)+'</b><div class="wk-chk-d">'+_esc(c.d)+'</div></div>';
     }).join('');
   }catch(e){ checks='<p class="wk-p">Checks could not be run: '+_esc(e.message)+'</p>'; }
-  var doc='<div class="wk"><div class="wk-h"><div class="wk-title">'+_esc(bz.name||'Mani Fuels')+' — Business report</div>'+
+  // MF_CUSTOM_REPORT_V1 — the sections, in print order. With opt.sections only
+  // those are printed, renumbered. Without, the report as it always was:
+  // customer credit by fuel is printed on request, not added to it.
+  var pick=(Array.isArray(opt.sections)&&opt.sections.length)?opt.sections:null, ttl=opt.title||'Business report';
+  var use=MF_REPORT_SECTIONS.filter(function(s){ return pick?pick.indexOf(s[0])>=0:s[0]!=='credit'; });
+  if(!use.length){ showToast('Nothing to print — no such section'); return; }
+  var body={
+    profit:function(){ return pl; }, checks:function(){ return checks; },
+    fuel:function(){ return safe('fuel',[f,t,recs]); },
+    daily:function(){ return safe('table',[f,t,recs,{group:span>62?'month':'day'}]); },
+    oil:function(){ return safe('oil',[f,t,recs]); },
+    credit:function(){ return safe('credit',[f,t,recs]); },
+    expenses:function(){ return safe('exp',[f,t,recs]); },
+    dues:function(){ return safe('dues',[]); },
+    staff:function(){ return safe('staff',[f,t,recs]); }};
+  var doc='<div class="wk"><div class="wk-h"><div class="wk-title">'+_esc(bz.name||'Mani Fuels')+' — '+_esc(ttl)+'</div>'+
     '<div class="wk-meta">'+_esc(_rvDmy(f)+' to '+_rvDmy(t))+' · '+recs.length+' shifts · generated '+
       _esc(new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}))+
       ' by '+_esc(_currentUser?(_currentUser.display||_currentUser.username):'—')+
       (bz.gstin?' · GSTIN '+_esc(bz.gstin):'')+'</div></div>'+
-    '<div class="wk-sec">1. Profit &amp; loss</div>'+pl+
-    sec(2,'Petrol vs diesel',safe('fuel',[f,t,recs]))+
-    sec(3,span>62?'Month by month':'Day by day',safe('table',[f,t,recs,{group:span>62?'month':'day'}]))+
-    sec(4,'Oil & stock',safe('oil',[f,t,recs]))+
-    sec(5,'Expenses',safe('exp',[f,t,recs]))+
-    sec(6,'Dues — as of today',safe('dues',[]))+
-    sec(7,'Staff on duty vs cash',safe('staff',[f,t,recs]))+
-    '<div class="wk-sec">8. Checks — where money can leak</div>'+checks+
+    use.map(function(s,i){
+      var out=body[s[0]](), title=(s[0]==='daily'&&span>62)?'Month by month':s[1];
+      return typeof out==='string'?'<div class="wk-sec">'+(i+1)+'. '+_esc(title)+'</div>'+out:sec(i+1,title,out);
+    }).join('')+
     '</div>';
   var area=document.getElementById('pdf-print-area'); if(!area){ showToast('Print area missing'); return; }
   area.innerHTML=doc;
   if(typeof _mfAlignNums==='function')_mfAlignNums(area);
-  _mfPrintArea((bz.name||'Mani Fuels')+' · Business report · '+_rvDmy(f)+' – '+_rvDmy(t));
-  if(typeof logActivity==='function')logActivity('export_report','report',null,'Business report '+f+' → '+t);
+  _mfPrintArea((bz.name||'Mani Fuels')+' · '+ttl+' · '+_rvDmy(f)+' – '+_rvDmy(t));
+  if(typeof logActivity==='function')logActivity('export_report','report',null,ttl+' '+f+' → '+t+(pick?' ('+use.map(function(s){ return s[0]; }).join(', ')+')':''));
   setTimeout(function(){ window.print(); },300);
 }
 // ── CREDIT LEDGER ──
@@ -19206,9 +19373,10 @@ _aiTool('profit',{roles:['owner'],say:'Working out the profit…',
   }});
 
 _aiTool('credit',{roles:['owner','manager'],say:'Checking the credit ledger…',
-  d:'Customer credit overview: total outstanding, who owes most, overdue, ageing, advances held, payments in the last 7 days.',
-  p:{},
-  run:function(){
+  d:'Customer credit overview: total outstanding, who owes most, overdue, ageing, advances held, payments in the last 7 days. With a period: credit given and received in it, split by petrol (MSD) and diesel (HSD).',
+  p:_aiP({}),
+  run:function(a){
+    a=a||{};
     var names=[...new Set(ledger.map(function(e){ return e.customer; }))].filter(Boolean), today=_isoLocal();
     var list=names.map(function(n){
       var p=_custPosition(n), un=_custUnpaid(n), old=un.length?un[0].date:null, L=_custLimit(n);
@@ -19233,9 +19401,29 @@ _aiTool('credit',{roles:['owner','manager'],say:'Checking the credit ledger…',
             ['0–30 d',_aiMx(T[0])],['31–60 d',_aiMx(T[1]),T[1]>0.5?'a':''],['61–90 d',_aiMx(T[2]),T[2]>0.5?'a':''],['90+ d',_aiMx(T[3]),T[3]>0.5?'r':'']],
       tbl:owing.length?{h:['Customer','Owes','Oldest'],r:owing.slice(0,8).map(function(x){ return [x.n+(x.over?' ⚠':''),_aiM(x.net),x.age?x.age+' d'+(x.overdue?' !':''):'—']; })}:null,
       foot:(owing.length>8?'Top 8 of '+owing.length+'. ':'')+(overdue.length?'! = past the allowed days. ':'')+(owing.some(function(x){ return x.over; })?'⚠ = over credit limit.':'')}];
+    // Asked about a period: what went out on credit in it and what came back,
+    // by the fuel saved on each bill — the statement's own engine (_creditByFuel).
+    var pre='';
+    if((a.period||a.from||a.to)&&typeof _creditByFuel==='function'){
+      var R=_aiPeriod(a);
+      if(R.error)d.period_error=R.error;
+      else {
+        var B=_creditByFuel(R.from,R.to), act=B.rows.filter(function(r){ return r.bills||Math.abs(r.recv)>0.005; });
+        var one=function(k){ var r=B.rows.find(function(x){ return x.key===k; }); return r?r.given:0; }, rest=B.tot.given-one('MSD')-one('HSD');
+        d=Object.assign({in_period:{period:R.label,credit_given:_aiM(B.tot.given),bills:B.tot.bills,received_against_bills:_aiM(B.tot.recv),
+          by_fuel:act.map(function(r){ return {fuel:r.label,credit_given:_aiM(r.given),bills:r.bills,received:_aiM(r.recv),unpaid_today:_aiM(r.unpaid)}; }),
+          most_credit_taken:B.customers.slice(0,5).map(function(c){ return {customer:c.name,credit_given:_aiM(c.total)}; }),
+          note:'By the fuel saved on each bill; received is by the bill each payment settled. unpaid_today is on all bills, not only this period\'s.'}},d);
+        cards.unshift({t:'Credit by fuel · '+_aiSpan(R.from,R.to),s:B.tot.bills+' bill'+(B.tot.bills!==1?'s':'')+' in the period',page:'ledger',
+          rows:[['Credit given',_aiMx(B.tot.given),'a'],['Received against bills',_aiMx(B.tot.recv),'g']],
+          tbl:act.length?{h:['Fuel','Given','Received'],r:act.map(function(r){ return [r.short,_aiM(r.given),_aiM(r.recv)]; })}:null,
+          foot:'By the fuel saved on each bill. The business statement prints this customer by customer.'});
+        pre='Credit given '+R.label+' was '+_aiM(B.tot.given)+': petrol '+_aiM(one('MSD'))+', diesel '+_aiM(one('HSD'))+(rest>0.5?', other '+_aiM(rest):'')+'. ';
+      }
+    }
     return {data:d,cards:cards,
-      summary:owing.length?('Credit outstanding is '+_aiM(total)+' across '+owing.length+' customer'+(owing.length!==1?'s':'')+'. '+owing[0].n+' owes the most: '+_aiM(owing[0].net)+'.'+(overdue.length?' '+overdue.length+' overdue.':''))
-                          :'Nobody owes anything — the credit ledger is clear.'};
+      summary:pre+(owing.length?('Credit outstanding is '+_aiM(total)+' across '+owing.length+' customer'+(owing.length!==1?'s':'')+'. '+owing[0].n+' owes the most: '+_aiM(owing[0].net)+'.'+(overdue.length?' '+overdue.length+' overdue.':''))
+                          :'Nobody owes anything — the credit ledger is clear.')};
   }});
 
 _aiTool('customer',{roles:['owner','manager'],say:'Opening the customer account…',
@@ -19477,18 +19665,52 @@ var MF_AI_DOCS={
   // has: what is printed in it — the section headings of the document itself.
   // The model describes a document with these words and no others.
   business_statement:{label:'Business statement',btn:'OPEN STATEMENT',period:true,roles:['owner'],pair:'period_report',
-    has:'every transaction with a running balance, shift and meter register, customer credit given and received, fuel stock register, purchases and supplier dues, staff, profit and loss, exceptions'},
+    has:'every transaction with a running balance, shift and meter register, customer credit given and received with a split by petrol and diesel, fuel stock register, purchases and supplier dues, staff, profit and loss, exceptions'},
   period_report:{label:'Business report',btn:'OPEN & SAVE AS PDF',period:true,roles:['owner'],pair:'business_statement',
     has:'profit and loss, petrol against diesel, sales day by day, oil and pack sales with oil stock on hand, expenses, dues, staff on duty against cash, audit checks'},
+  // One PDF with only what was asked for: sections of the business report for
+  // the dates given. The app prints it (exportPeriodReport with sections); the
+  // assistant only chooses which sections.
+  custom_statement:{label:'Statement',btn:'OPEN & SAVE AS PDF',period:true,custom:true,roles:['owner']},
   staff_statement:{label:'Staff statement',btn:'OPEN STATEMENT',who:'staff',roles:['owner','manager']}
 };
+// The sections a statement can be made of, in print order, in the words used
+// to describe them. Keys are the app's own (MF_REPORT_SECTIONS).
+var MF_AI_SECTIONS={profit:'profit and loss',fuel:'petrol and diesel sold',daily:'sales day by day',
+  oil:'oil and pack sales by item, and oil stock on the shelf',credit:'customer credit by petrol and diesel, and by customer',
+  expenses:'expenses by head',dues:'what customers owe and what is owed to suppliers',staff:'staff on duty against cash',checks:'audit checks'};
+var MF_AI_SECTION_ALIAS={sales:'fuel',msd:'fuel',hsd:'fuel',petrol:'fuel',diesel:'fuel',fuel_sales:'fuel',oil_stock:'oil',oil_sales:'oil',stock:'oil',
+  lubricants:'oil',packs:'oil',pnl:'profit',pl:'profit',profit_and_loss:'profit',margin:'profit',expense:'expenses',exp:'expenses',
+  credit_by_fuel:'credit',customer_credit:'credit',due:'dues',suppliers:'dues',day_by_day:'daily',daily_sales:'daily',audit:'checks',check:'checks'};
+function _aiSections(x){      // what the model sent → known sections, in print order
+  var all=Object.keys(MF_AI_SECTIONS), got={};
+  (Array.isArray(x)?x:String(x==null?'':x).split(/[,;|]+/)).forEach(function(v){
+    var k=String(v||'').toLowerCase().trim().replace(/[\s-]+/g,'_');
+    if(k==='all'||k==='everything'){ all.forEach(function(a){ got[a]=1; }); return; }
+    k=MF_AI_SECTIONS[k]?k:MF_AI_SECTION_ALIAS[k]; if(k)got[k]=1;
+  });
+  return all.filter(function(a){ return got[a]; });
+}
+function _aiSectionsIn(text){ // what the person wrote → sections; none named → []
+  var s=' '+String(text||'').toLowerCase()+' ', got={}, has=function(re){ return re.test(s); };
+  if(has(/\boils?\b|lubricant|\bpacks?\b/))got.oil=1;
+  if(has(/credit/))got.credit=1;
+  if(has(/\bmsd\b|\bhsd\b|petrol|diesel|\blit(re|er)s?\b/)||(has(/\bsales?\b|\bsold\b/)&&!has(/(oil|pack) sales?/)))got.fuel=1;
+  if(has(/profit|p ?& ?l\b|\bmargins?\b/))got.profit=1;
+  if(has(/expens|\bspent\b/))got.expenses=1;
+  if(has(/\bdues?\b|suppliers?|payables?|outstanding|\bowe[sd]?\b/))got.dues=1;
+  if(has(/day by day|daily|each day|per day|day ?wise/))got.daily=1;
+  if(has(/audit|\bchecks?\b|leak/))got.checks=1;
+  return Object.keys(MF_AI_SECTIONS).filter(function(a){ return got[a]; });
+}
 _aiTool('document',{roles:['owner','manager'],say:'Preparing the document…',
-  d:'Prepare a printable PDF and show its button; the only way a document card appears. kind: customer_statement (a customer\'s whole account), customer_invoice (what a customer owes now), business_statement (transactions, credit, fuel stock, purchases for a period; owners), period_report (profit and loss, petrol vs diesel, oil sales and oil stock for a period; owners), staff_statement.',
-  p:_aiP({kind:{type:'string',enum:['customer_statement','customer_invoice','business_statement','period_report','staff_statement']},name:{type:'string',description:'customer or staff'}}),req:['kind'],
+  d:'Prepare a printable PDF and show its button; the only way a document card appears. kind: customer_statement (a customer\'s whole account), customer_invoice (what a customer owes now), business_statement (transactions, credit by customer and by petrol/diesel, fuel stock, purchases for a period; owners), period_report (profit and loss, petrol vs diesel, oil sales and oil stock for a period; owners), custom_statement (ONE PDF holding only the sections asked for, for a period; owners — use it whenever the person lists what they want in it, and pass sections), staff_statement.',
+  p:_aiP({kind:{type:'string',enum:['customer_statement','customer_invoice','business_statement','period_report','custom_statement','staff_statement']},name:{type:'string',description:'customer or staff'},
+    sections:{type:'array',items:{type:'string',enum:Object.keys(MF_AI_SECTIONS)},description:'custom_statement: what to put in it'}}),req:['kind'],
   run:function(a){
     var K=MF_AI_DOCS[a.kind]; if(!K)return {data:{error:'Unknown document. Kinds: '+Object.keys(MF_AI_DOCS).join(', ')+'.'}};
     if(K.roles.indexOf(_aiRole())<0)return {data:{error:'The '+K.label.toLowerCase()+' is for owners only. A manager can print a customer statement, a customer invoice or a staff statement.'}};
-    var doc={kind:a.kind,btn:K.btn}, d={ready:true}, note='', more=[];
+    var doc={kind:a.kind,btn:K.btn}, d={ready:true}, note='', more=[], tail='';
     if(K.who==='customer'){
       var f=_aiFind(a.name,_allCustomerNames()); if(!f.name)return {data:_aiNoName('customer',a.name,f)};
       var n=f.name, has=ledger.some(function(e){ return e.customer===n; }), p=_custPosition(n);
@@ -19509,6 +19731,21 @@ _aiTool('document',{roles:['owner','manager'],say:'Preparing the document…',
     } else {
       var R=_aiPeriod(a.period||a.from||a.to?a:{period:'this_month'}); if(R.error)return {data:{error:R.error}};
       var n2=_aiRecs(R).length, shifts=n2+' shift'+(n2!==1?'s':'');
+      if(K.custom){
+        // One PDF, only the sections asked for. Nothing named → all of them.
+        if(typeof MF_REPORT_SECTIONS==='undefined')return {data:{error:'This version of the app cannot print a statement by sections. Ask for the business report or the business statement.'}};
+        var secs=_aiSections(a.sections); if(!secs.length)secs=Object.keys(MF_AI_SECTIONS);
+        var what=secs.map(function(k){ return MF_AI_SECTIONS[k]; }).join('; ');
+        doc={kind:a.kind,btn:K.btn,from:R.from,to:R.to,sections:secs,t:K.label+' · '+_aiSpan(R.from,R.to),s:shifts+' in the period · one PDF with: '+what+'.'};
+        d.document=K.label+' for '+R.label; d.contains=what; d.sections=secs; d.shifts_in_period=n2;
+        // Three things in it are a snapshot of today, whatever the period.
+        var now=[]; if(secs.indexOf('oil')>=0)now.push('oil stock'); if(secs.indexOf('dues')>=0)now.push('dues'); if(secs.indexOf('credit')>=0)now.push('what each customer owes');
+        if(now.length&&R.to<_isoLocal()){
+          var nw=now.length>1?now.slice(0,-1).join(', ')+' and '+now[now.length-1]:now[0];
+          d.caution=nw.charAt(0).toUpperCase()+nw.slice(1)+' '+(now.length>1||now[0]==='dues'?'are':'is')+' printed as '+(now.length>1||now[0]==='dues'?'they stand':'it stands')+' today, not as on '+_aiDay(R.to)+'.';
+        }
+        tail=' In it: '+what+'.'+(d.caution?' '+d.caution:'');
+      } else {
       // The station prints two documents for a period and people ask for either
       // by either name, so both are offered — the one asked for first — each
       // saying what is in it. One tap each; nothing is opened until then.
@@ -19517,12 +19754,13 @@ _aiTool('document',{roles:['owner','manager'],say:'Preparing the document…',
       doc=mk(a.kind,K); doc.s=shifts+' in the period · '+doc.s;
       d.document=K.label+' for '+R.label; d.contains=K.has; d.shifts_in_period=n2;
       if(P2&&P2.roles.indexOf(_aiRole())>=0){ more=[mk(K.pair,P2)]; d.second_card={document:P2.label+' for the same period',contains:P2.has}; }
+      }
       if(!n2)note='No shift is saved in that period, so the document will be almost empty.';
     }
     d.how='A card with the button is shown under your answer. Tapping it opens the print dialog; choosing "Save as PDF" there saves the file.';
     if(note)d.note=note;
     return {data:d,docs:[doc].concat(more),
-      summary:(d.document||K.label)+(more.length?' and the '+MF_AI_DOCS[K.pair].label.toLowerCase()+' for the same period are':' is')+' ready — tap the button on '+(more.length?'a':'the')+' card, then choose "Save as PDF".'+(note?' '+note:'')};
+      summary:(d.document||K.label)+(more.length?' and the '+MF_AI_DOCS[K.pair].label.toLowerCase()+' for the same period are':' is')+' ready — tap the button on '+(more.length?'a':'the')+' card, then choose "Save as PDF".'+tail+(note?' '+note:'')};
   }});
 function _aiOpenDoc(itemId,idx){
   var it=MF_AI.items.find(function(x){ return x.id===itemId; }), d=it&&it.docs&&it.docs[idx]; if(!d)return;
@@ -19532,6 +19770,7 @@ function _aiOpenDoc(itemId,idx){
     if(d.kind==='customer_statement')generateCustomerStatement(d.name);
     else if(d.kind==='customer_invoice')generateCustomerInvoice(d.name);
     else if(d.kind==='staff_statement')staffStatement(d.id);
+    else if(d.kind==='custom_statement')exportPeriodReport({from:d.from,to:d.to,sections:d.sections,title:'Statement'});
     else if(d.kind==='business_statement'){
       openStatement();
       var f=document.getElementById('stmt_from'), t=document.getElementById('stmt_to');
@@ -19654,7 +19893,7 @@ var MF_AI_HELP={
   staff:'Attendance is marked while entering a shift. Payroll works out wages earned from attendance on the payroll rules set on the Staff page. Advances are loans recovered from salary, not an expense. Payslips and a per-person statement print from the Staff page. Salaries and pay are visible to owners and managers only.',
   stock:'Oil Stock is the counter list with quantity and rate; a purchase invoice in Oil Register adds to it. 40 ml packs come 6 units to a box and 40 packs to a unit — record units opened in the shift. Loose oil is drawn from opened bottles. An item is "low" when it has under 10 days of cover at the last 30 days\' rate of sale (or 2 or fewer left if it has not been selling).',
   roles:'Owner: everything. Manager: everything except Reports and profit, Owner Drawings, the Activity Log, the Business Statement, backups and Members; a manager can record and reverse payments, set credit limits and handle staff pay. Staff: shift entry and the day-to-day pages; staff cannot use the assistant. Roles are set by an owner under Members and enforced by the server.',
-  documents:'Customer statement and invoice PDFs: Credit Ledger → the customer → STATEMENT PDF / INVOICE PDF. Business Statement (owners): menu → Business Statement, pick the period and sections, then PRINT / SAVE PDF or CSV. Export Report (PDF) and the P&L workings are on Reports. Payslips are on the Staff page. In the print dialog choose "Save as PDF". The assistant can open these too: ask for "statement for <customer>" or "business statement for last month".',
+  documents:'Customer statement and invoice PDFs: Credit Ledger → the customer → STATEMENT PDF / INVOICE PDF. Business Statement (owners): menu → Business Statement, pick the period and sections, then PRINT / SAVE PDF or CSV. Export Report (PDF) and the P&L workings are on Reports. Payslips are on the Staff page. In the print dialog choose "Save as PDF". The assistant can open these too: ask for "statement for <customer>" or "business statement for last month". For one PDF with only what you need, say what goes in it and the month: "statement PDF of oil sales, oil stock and credit by petrol and diesel for September" — profit, petrol and diesel sales, day by day, oil, credit, expenses, dues, staff and audit checks can be combined (owners).',
   assistant:'The assistant answers from figures the app works out on this phone — the same code as the Reports and Ledger pages — and words them with a language model. The cards under an answer are the app\'s own figures. It can open statement PDFs, and can prepare a customer payment or a note that is recorded only when you tap CONFIRM. It cannot edit or delete shifts, loads, stock or staff records. Owners and managers only; profit is owner-only.'
 };
 _aiTool('help',{roles:['owner','manager'],say:'Looking it up…',
@@ -19870,6 +20109,12 @@ function _aiGuard(q,txt,item,ran,take){
       }
     }
   }
+  // The person listed what they wanted in it and the model prepared a stock
+  // document instead: the one that was asked for goes first.
+  if(want&&route.args.kind==='custom_statement'&&item.docs.length&&!item.docs.some(function(x){ return x.kind==='custom_statement'; })){
+    var n0=item.docs.length, rc=_aiRun('document',route.args); take(rc);
+    var mine=item.docs.splice(n0); if(mine.length){ Array.prototype.unshift.apply(item.docs,mine); out.text=(out.text?out.text+'\n\n':'')+rc.summary; }
+  }
   if(!item.props.length&&MF_AI_SAYS_CONFIRM.test(out.text))
     out.warn=(out.warn?out.warn+' ':'')+'Nothing was prepared to confirm, so nothing can be recorded from this answer. Say it again with the customer, the amount and how it was paid.';
   out.swapped=!!txt&&!out.model;      // the model did answer; its sentence was not used
@@ -19983,6 +20228,9 @@ function _aiRoute(text){
     if(has(/invoice/)&&cust)return {tool:'document',args:{kind:'customer_invoice',name:cust}};
     if(staffN&&!cust)return {tool:'document',args:{kind:'staff_statement',name:staffN}};
     if(cust)return {tool:'document',args:{kind:'customer_statement',name:cust}};
+    // "…of oil stock, MSD and HSD credit and oil sales": one PDF with those sections
+    var secs=(typeof MF_REPORT_SECTIONS!=='undefined')?_aiSectionsIn(s):[];
+    if(secs.length)return {tool:'document',args:Object.assign({kind:'custom_statement',sections:secs},per('this_month'))};
     if(has(/customer|party|\bstaff\b|salary|employee/))return null;      // somebody's document, and nobody was named: ask, do not guess
     // Oil, profit and expenses are printed in the report; money in and out,
     // credit and fuel stock in the statement. Either way both cards are shown.
@@ -19993,7 +20241,7 @@ function _aiRoute(text){
   if(has(/profit|margin|p ?& ?l\b|\bloss\b|earn/))return {tool:'profit',args:Object.assign({compare:has(/why|lower|higher|less|more|compare|\bvs\b|than|drop|fell|down|up\b/)},per('today'))};
   if(has(/supplier|tanker bill|we owe|payable|dues to|owe (to )?(ioc|bpc|hpc|supplier)/))return {tool:'suppliers',args:{}};
   if(cust&&!has(/sold|sale|litre|liter/))return {tool:'customer',args:{name:cust}};
-  if(has(/owe|credit|outstanding|overdue|debtor|receivable/))return {tool:'credit',args:{}};
+  if(has(/owe|credit|outstanding|overdue|debtor|receivable/))return {tool:'credit',args:(a.period&&has(/credit|given|gave|took|taken/))?{period:a.period}:{}};
   if(has(/\btank|order|run out|next (fuel |tanker )?load|need.{0,30}load|left in|in the tank|days left|dip\b/))return {tool:'tanks',args:{}};
   if(has(/salary|salaries|staff|wage|attendance|payroll/))return {tool:'staff',args:{}};
   if(has(/expens|spent|spend|drawing|money out/))return {tool:'expenses',args:per('this_month')};
@@ -20105,7 +20353,7 @@ function _aiExamples(){
   var own=_aiRole()==='owner', names=[], seen={};
   try{ ledger.slice().sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); }).forEach(function(e){ if(e.customer&&!seen[e.customer]&&names.length<1){ seen[e.customer]=1; names.push(e.customer); } }); }catch(e){}
   var n=names[0]||'a customer';
-  return own?['How much diesel did we sell this week?','Why was yesterday\'s profit lower?','Which fuel has the higher margin this month?','Who owes us the most?','Statement PDF for '+n,'When do we need the next load?']
+  return own?['How much diesel did we sell this week?','Why was yesterday\'s profit lower?','Which fuel has the higher margin this month?','Who owes us the most?','Statement PDF for '+n,'Statement PDF of oil sales and credit by petrol and diesel for last month','When do we need the next load?']
             :['How much diesel did we sell this week?','Which shifts were short this week?','Who owes us the most?','What do we owe suppliers?','Statement PDF for '+n,'When do we need the next load?'];
 }
 function _aiChips(){

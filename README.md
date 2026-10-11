@@ -55,7 +55,7 @@ when the connection comes back.
 ### Reports
 - **Profit & loss** from one engine (`_plCore`): revenue excluding credit repaid, weighted-average landed cost of fuel sold, line-level cost for oil, packs and counter stock, operating expenses, and gross and net margin.
 - **CA workings:** the full statement with Notes 1–8, shift-by-shift schedules, tie-outs, and a *"where money can leak"* checks section.
-- **Business statement:** a bank-statement-style ledger of every money movement with a running balance. Printable A4 and CSV.
+- **Business statement:** a bank-statement-style ledger of every money movement with a running balance. Printable A4 and CSV. Its customer-credit section splits credit given, received and unpaid by petrol and diesel, read from the fuel saved on each bill.
 - **Export report** of all business data, and a weekly profit comparison on the dashboard.
 - Every printed document paginates on A4 with repeated table headers and a "Page x of y" footer.
 
@@ -71,7 +71,7 @@ when the connection comes back.
 - **Ask in plain words** — *"how much diesel did we sell this week"*, *"who owes us the most"*, *"why was yesterday's profit lower"*, *"statement PDF for Kumar"*. Owners and managers only.
 - **Every figure is the app's own.** The assistant's tools wrap the same engines as Reports, the Credit Ledger and the Order Advisor; the language model only chooses a tool and words the result. Cards under each answer show the figures as the app worked them out, and a number in the sentence that is not among them is flagged ⚠.
 - **Nothing is recorded without a tap.** A payment or note is prepared as a card and saved only on CONFIRM, through the app's own save, with an Activity Log entry.
-- **Statement PDFs on request:** customer statement and invoice, business statement, business report, staff statement.
+- **Statement PDFs on request:** customer statement and invoice, business statement, business report, staff statement — or one PDF with only the sections you name ("statement of oil sales and credit by petrol and diesel for September").
 - **Works without the model too.** The ⚡ buttons, and the plain questions when there is no internet, are answered straight from the app.
 
 > Set up through [`docs/AI_ASSISTANT_SETUP.md`](docs/AI_ASSISTANT_SETUP.md): a free Groq key held by the `mf-ai` edge function, and `db/021_ai_assistant.sql`.
