@@ -11,6 +11,25 @@ not applied.
 Needs `db/021_ai_assistant.sql`, the `mf-ai` edge function and a free Groq key
 to answer typed questions — steps in `docs/AI_ASSISTANT_SETUP.md`. Without
 them the ⚡ buttons still work: they read the app directly.
+- **A promised card always exists** (fix, 11 Oct 2026). Asked for "the
+  statement pdf of oil stock, MSD, HSD credit, monthly oil sales … of last
+  month September", the model answered "tap the card below to download the
+  PDF" without calling `document`, so no card was drawn and the figure check
+  had nothing to catch. Now, once the model has spoken (`_aiGuard`): a
+  document that was asked for and not prepared is prepared by the app itself,
+  or its own refusal is shown ("for owners only…"); a sentence that promises a
+  document or a CONFIRM card that is not there is dropped or flagged ⚠; and
+  the meta line says when the AI's wording was set aside or when nothing was
+  looked up. A turn that ended in a card goes back to the model as the card,
+  not as "…is ready, tap the button", which it was repeating.
+- **A month by name is a period**: "September", "Sept 2026", `2026-09` — for
+  the model and for the no-model path, which used to print October for a
+  September request. "last moth" is read as last month.
+- **Period documents come as a pair**, each card listing its sections: the
+  business report (P&L, petrol vs diesel, oil sales and oil stock, expenses)
+  and the business statement (transactions, credit, fuel stock, purchases).
+- **Everyday words no longer pick a customer** in the no-model path ("oil",
+  "credit", "sales", month names); the full name still does.
 - **Ask in plain words**, from ✦ ASK in the header, the menu or the dashboard:
   sales and litres for any period, profit and why it moved, petrol vs diesel
   margin, who owes and who is overdue, one customer's account, supplier dues,

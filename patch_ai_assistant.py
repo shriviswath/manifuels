@@ -193,6 +193,30 @@ function _aiSpan(f,t){
 // Worked out here, never by the model: "last week" must mean the same dates
 // every time, and the same ones the Reports page uses.
 var MF_AI_PERIODS=['today','yesterday','this_week','last_week','last_7_days','last_30_days','this_month','last_month','this_fy','custom'];
+// A calendar month by name: "september", "sept 2026", "2026-09". Without a
+// year it is the most recent one — asked in October, "November" is last
+// year's. The current month stops at today; a month not yet begun is refused.
+var MF_AI_MONTHS=['january','february','march','april','may','june','july','august','september','october','november','december'];
+function _aiMonthIdx(w){
+  w=String(w||'').toLowerCase(); if(w==='sept')return 8; if(w.length<3)return -1;
+  for(var i=0;i<12;i++)if(MF_AI_MONTHS[i].indexOf(w)===0)return i;
+  return -1;
+}
+function _aiMonth(s){
+  s=String(s||'').toLowerCase().replace(/[_,.]+/g,' ').replace(/\s+/g,' ').trim();
+  var n=new Date(), y=null, mi=-1, m;
+  if((m=/^(\d{4})[- \/](\d{1,2})$/.exec(s))){ y=+m[1]; mi=+m[2]-1; }
+  else if((m=/^([a-z]{3,9})(?: (\d{4}))?$/.exec(s))){ mi=_aiMonthIdx(m[1]); if(m[2])y=+m[2]; }
+  else if((m=/^(\d{4}) ([a-z]{3,9})$/.exec(s))){ mi=_aiMonthIdx(m[2]); y=+m[1]; }
+  if(!(mi>=0&&mi<=11))return null;
+  if(y==null){ y=n.getFullYear(); if(mi>n.getMonth())y--; }
+  var f=_isoLocal(new Date(y,mi,1)), to=_isoLocal(new Date(y,mi+1,0)), t=_isoLocal();
+  if(f>t)return {error:'That month has not started yet.'};
+  var cur=to>=t; if(cur)to=t;
+  var name=MF_AI_MONTHS[mi].charAt(0).toUpperCase()+MF_AI_MONTHS[mi].slice(1)+' '+y;
+  // key: a whole month is compared with the whole month before it (_aiPrev)
+  return {from:f,to:to,key:cur?'this_month':'last_month',label:name+(cur?' so far':'')+' ('+_aiSpan(f,to)+')'};
+}
 function _aiPeriod(a){
   a=a||{};
   var p=String(a.period||'').toLowerCase().replace(/[\s-]+/g,'_'), t=_isoLocal(), n=new Date(), f, to, lbl;
@@ -216,7 +240,9 @@ function _aiPeriod(a){
     case 'this_month': f=_isoLocal(new Date(n.getFullYear(),n.getMonth(),1)); to=t; lbl='this month'; break;
     case 'last_month': f=_isoLocal(new Date(n.getFullYear(),n.getMonth()-1,1)); to=_isoLocal(new Date(n.getFullYear(),n.getMonth(),0)); lbl='last month'; break;
     case 'this_fy': f=_isoLocal(new Date(n.getMonth()>=3?n.getFullYear():n.getFullYear()-1,3,1)); to=t; lbl='this financial year'; break;
-    default: return {error:'Unknown period "'+p+'". Use one of: '+MF_AI_PERIODS.join(', ')+'.'};
+    default:
+      var M=_aiMonth(p); if(M)return M;
+      return {error:'Unknown period "'+p+'". Use one of: '+MF_AI_PERIODS.join(', ')+', or a month as YYYY-MM.'};
   }
   return {from:f,to:to,key:p||'today',label:lbl+' ('+_aiSpan(f,to)+')'};
 }
@@ -726,17 +752,21 @@ _aiTool('checks',{roles:['owner'],say:'Running the audit checks…',
 var MF_AI_DOCS={
   customer_statement:{label:'Account statement',btn:'OPEN & SAVE AS PDF',who:'customer',roles:['owner','manager']},
   customer_invoice:{label:'Invoice',btn:'CREATE INVOICE PDF',who:'customer',roles:['owner','manager']},
-  business_statement:{label:'Business statement',btn:'OPEN STATEMENT',period:true,roles:['owner']},
-  period_report:{label:'Business report',btn:'OPEN & SAVE AS PDF',period:true,roles:['owner']},
+  // has: what is printed in it — the section headings of the document itself.
+  // The model describes a document with these words and no others.
+  business_statement:{label:'Business statement',btn:'OPEN STATEMENT',period:true,roles:['owner'],pair:'period_report',
+    has:'every transaction with a running balance, shift and meter register, customer credit given and received, fuel stock register, purchases and supplier dues, staff, profit and loss, exceptions'},
+  period_report:{label:'Business report',btn:'OPEN & SAVE AS PDF',period:true,roles:['owner'],pair:'business_statement',
+    has:'profit and loss, petrol against diesel, sales day by day, oil and pack sales with oil stock on hand, expenses, dues, staff on duty against cash, audit checks'},
   staff_statement:{label:'Staff statement',btn:'OPEN STATEMENT',who:'staff',roles:['owner','manager']}
 };
 _aiTool('document',{roles:['owner','manager'],say:'Preparing the document…',
-  d:'Prepare a printable PDF and show its button. kind: customer_statement (a customer\'s whole account), customer_invoice (what a customer owes now), business_statement (bank-statement style, for a period; owners), period_report (profit and loss report for a period; owners), staff_statement.',
+  d:'Prepare a printable PDF and show its button; the only way a document card appears. kind: customer_statement (a customer\'s whole account), customer_invoice (what a customer owes now), business_statement (transactions, credit, fuel stock, purchases for a period; owners), period_report (profit and loss, petrol vs diesel, oil sales and oil stock for a period; owners), staff_statement.',
   p:_aiP({kind:{type:'string',enum:['customer_statement','customer_invoice','business_statement','period_report','staff_statement']},name:{type:'string',description:'customer or staff'}}),req:['kind'],
   run:function(a){
     var K=MF_AI_DOCS[a.kind]; if(!K)return {data:{error:'Unknown document. Kinds: '+Object.keys(MF_AI_DOCS).join(', ')+'.'}};
-    if(K.roles.indexOf(_aiRole())<0)return {data:{error:'The '+K.label.toLowerCase()+' is for owners only.'}};
-    var doc={kind:a.kind,btn:K.btn}, d={ready:true}, note='';
+    if(K.roles.indexOf(_aiRole())<0)return {data:{error:'The '+K.label.toLowerCase()+' is for owners only. A manager can print a customer statement, a customer invoice or a staff statement.'}};
+    var doc={kind:a.kind,btn:K.btn}, d={ready:true}, note='', more=[];
     if(K.who==='customer'){
       var f=_aiFind(a.name,_allCustomerNames()); if(!f.name)return {data:_aiNoName('customer',a.name,f)};
       var n=f.name, has=ledger.some(function(e){ return e.customer===n; }), p=_custPosition(n);
@@ -755,16 +785,22 @@ _aiTool('document',{roles:['owner','manager'],say:'Preparing the document…',
       var st=staffList.find(function(s){ return s.name===fs.name; });
       doc.id=st.id; doc.name=st.name; doc.t=K.label+' · '+st.name; doc.s='Earned, paid, advances and balance, month by month'; d.document=K.label+' for '+st.name;
     } else {
-      var R=_aiPeriod(a.period||a.from?a:{period:'this_month'}); if(R.error)return {data:{error:R.error}};
-      var n2=_aiRecs(R).length;
-      doc.from=R.from; doc.to=R.to; doc.t=K.label+' · '+_aiSpan(R.from,R.to);
-      doc.s=n2+' shift'+(n2!==1?'s':'')+' in the period'+(a.kind==='business_statement'?' · choose sections, then PRINT / SAVE PDF':'');
-      d.document=K.label+' for '+R.label; d.shifts_in_period=n2;
+      var R=_aiPeriod(a.period||a.from||a.to?a:{period:'this_month'}); if(R.error)return {data:{error:R.error}};
+      var n2=_aiRecs(R).length, shifts=n2+' shift'+(n2!==1?'s':'');
+      // The station prints two documents for a period and people ask for either
+      // by either name, so both are offered — the one asked for first — each
+      // saying what is in it. One tap each; nothing is opened until then.
+      var P2=MF_AI_DOCS[K.pair], mk=function(kind,D){ return {kind:kind,btn:D.btn,from:R.from,to:R.to,t:D.label+' · '+_aiSpan(R.from,R.to),
+        s:D.has.charAt(0).toUpperCase()+D.has.slice(1)+'.'+(kind==='business_statement'?' Choose sections, then PRINT / SAVE PDF.':'')}; };
+      doc=mk(a.kind,K); doc.s=shifts+' in the period · '+doc.s;
+      d.document=K.label+' for '+R.label; d.contains=K.has; d.shifts_in_period=n2;
+      if(P2&&P2.roles.indexOf(_aiRole())>=0){ more=[mk(K.pair,P2)]; d.second_card={document:P2.label+' for the same period',contains:P2.has}; }
       if(!n2)note='No shift is saved in that period, so the document will be almost empty.';
     }
     d.how='A card with the button is shown under your answer. Tapping it opens the print dialog; choosing "Save as PDF" there saves the file.';
     if(note)d.note=note;
-    return {data:d,docs:[doc],summary:(d.document||K.label)+' is ready — tap the button on the card, then choose "Save as PDF".'+(note?' '+note:'')};
+    return {data:d,docs:[doc].concat(more),
+      summary:(d.document||K.label)+(more.length?' and the '+MF_AI_DOCS[K.pair].label.toLowerCase()+' for the same period are':' is')+' ready — tap the button on '+(more.length?'a':'the')+' card, then choose "Save as PDF".'+(note?' '+note:'')};
   }});
 function _aiOpenDoc(itemId,idx){
   var it=MF_AI.items.find(function(x){ return x.id===itemId; }), d=it&&it.docs&&it.docs[idx]; if(!d)return;
@@ -987,11 +1023,11 @@ function _aiSystem(){
   return [
     'You are the assistant inside ManiFuels, the books of the Mani Fuels petrol station, talking to a station '+(own?'owner':'manager')+'.',
     '1. Figures: every amount, litre figure, percentage or count you state must be copied from a tool result in this conversation, exactly as written. Never estimate, re-round, convert to lakh, or work out a total, difference or percentage yourself. If it is not in a tool result, say the app does not have it.',
-    '2. Call the tool that covers the question before answering anything about the business, one tool at a time. Periods: today, yesterday, this_week, last_week, last_7_days, last_30_days, this_month, last_month, this_fy. Never work out dates yourself; use period=custom with from/to (YYYY-MM-DD) only when the person names exact dates.',
+    '2. Call the tool that covers the question before answering anything about the business, one tool at a time. Periods: today, yesterday, this_week, last_week, last_7_days, last_30_days, this_month, last_month, this_fy, or one calendar month as YYYY-MM (September 2026 is 2026-09). Never work out other dates yourself; use period=custom with from/to (YYYY-MM-DD) only when the person names exact dates.',
     '3. Keys ending _est are forecasts or estimates: say "about". Everything else is the app\'s calculated figure.',
     '4. If a result has a verdict, lead with it, even when the person assumed the opposite (asked why profit fell when it rose: say it rose). If it has a caution or an error, say so in one short sentence. If it has did_you_mean, ask which one. If it has next, do that.',
     '5. You cannot change records. propose_payment and propose_note only show a card; the person must tap CONFIRM. Say "tap CONFIRM on the card" and never say it was recorded or saved. Ask for a missing amount or payment mode; do not assume one.',
-    '6. For a PDF or statement use document; the card has the button.',
+    '6. For any PDF, statement, invoice or printout call document, every time one is asked for. A card with its button exists only when document returned ready in this turn; cards from earlier turns do not carry over. Describe a document only with the words in its contains. Never write that a card, button or PDF is there otherwise.',
     '7. For how the app works or what a figure means, call help. If the question is not about this station or app, say in one line that you only handle ManiFuels.',
     '8. Style: the answer first in one or two plain sentences, then at most four short bullets if they add something. Cards under your answer show the full figures, so do not repeat every row. **Bold** the one key figure. No tables, headings, greetings or offers of more help.',
     '9. Shifts are dated by the day they close: MORNING = 6 PM the evening before to 9 AM; NIGHT = 9 AM to 6 PM. Cash short/over is a shift\'s drawer tally, not profit. MSD = petrol, HSD = diesel.',
@@ -1065,6 +1101,59 @@ function _aiToolText(data){
   return s.length>5200?s.slice(0,5200):s;
 }
 
+// ── a card that is promised must exist ────────────────────────────────────
+// The figure check cannot see a sentence like "tap the card below" when no
+// card was made: the model answered without calling the tool, or the tool
+// refused and the model said yes anyway. A card is a fact; a sentence is not.
+// So once the model has spoken:
+//   • a document was asked for and none was prepared → the app prepares it
+//     itself, with the lookup the no-model path uses, or shows its refusal;
+//   • the sentence promises a document or a CONFIRM card that is not there →
+//     the promise is taken out, or flagged where the rest is worth keeping.
+// Two kinds of promise. "The card below" is fine when a figures card is there
+// (the model is told cards sit under its answer); "the PDF is ready" needs a
+// document card and nothing else will do.
+var MF_AI_SAYS_CARD=/\b(card|button)\s+(below|underneath|under\b)|\btap (on )?(the|that|this|a) (card|button)/i;
+var MF_AI_SAYS_DOC=new RegExp([
+  '\\b(pdf|statement|invoice|report|document)\\b[^.\\n]{0,50}\\b(is|are) (now )?(ready|attached|prepared|generated)',
+  '\\bhere(?:\'|’| i)?s (the|your|a)\\b[^.\\n]{0,60}\\b(pdf|invoice|document|printout)',
+  '\\bdownload (the|your|it|this)\\b'].join('|'),'i');
+var MF_AI_SAYS_CONFIRM=/\btap (on )?(the )?\**confirm\b/i;
+var MF_AI_HOWTO=/\bhow (do|can|to|should|does)\b|\bwhat (is|are|does|do)\b|\bwhere (is|are|do|can)\b|\bmeaning\b|\bexplain\b/;
+function _aiErrLine(d){
+  d=d||{};
+  var e=String(d.error||'That could not be prepared.').replace(/\s*(Say (so|it)\b|Call the tool\b).*$/,'');
+  if(d.did_you_mean&&d.did_you_mean.length)e+=' Did you mean '+d.did_you_mean.slice(0,4).join(', or ')+'?';
+  if(d.suggest)e+=' '+d.suggest;
+  return e;
+}
+function _aiGuard(q,txt,item,ran,take){
+  var out={text:txt,warn:'',model:!!txt};
+  var docRuns=ran.filter(function(r){ return r.tool==='document'; }), helped=ran.some(function(r){ return r.tool==='help'; });
+  var how=helped||MF_AI_HOWTO.test(String(q||'').toLowerCase());          // "how do I print a statement" wants words, not a card
+  var route=how?null:_aiRoute(q), want=!!(route&&route.tool==='document');
+  var says=!helped&&(MF_AI_SAYS_DOC.test(txt)||(MF_AI_SAYS_CARD.test(txt)&&!item.cards.length&&!item.props.length));
+  if(!item.docs.length&&(want||says)){
+    if(want&&!docRuns.length){
+      var r=_aiRun('document',route.args); take(r);
+      var made=!!(r.docs&&r.docs.length);
+      if(says||!txt){ out.text=made?'':_aiErrLine(r.data); out.model=false; }      // it described a document it never saw
+      else out.text=txt+'\n\n'+(made?r.summary:_aiErrLine(r.data));
+    } else if(says){
+      if(docRuns.length){ out.text=_aiErrLine(docRuns[docRuns.length-1].data); out.model=false; }
+      else {
+        var none='No document was prepared for that. Ask for it by name: "business statement for last month", "business report for September", "statement for" and the customer\'s name.';
+        if(ran.length)out.warn='No document was prepared in this answer, whatever the sentence says. '+none.slice(none.indexOf('Ask'));
+        else { out.text=none; out.model=false; }
+      }
+    }
+  }
+  if(!item.props.length&&MF_AI_SAYS_CONFIRM.test(out.text))
+    out.warn=(out.warn?out.warn+' ':'')+'Nothing was prepared to confirm, so nothing can be recorded from this answer. Say it again with the customer, the amount and how it was paid.';
+  out.swapped=!!txt&&!out.model;      // the model did answer; its sentence was not used
+  return out;
+}
+
 // One question, start to finish. The model may call up to MF_AI_ROUNDS tools,
 // one per round; every result is drawn as a card whatever the model then says.
 var MF_AI_ROUNDS=5, MF_AI_TIMEOUT=45000;
@@ -1077,9 +1166,15 @@ async function _aiAsk(text){
     (r.cards||[]).forEach(function(c){ item.cards.push(c); }); (r.docs||[]).forEach(function(d){ item.docs.push(d); }); (r.props||[]).forEach(function(p){ item.props.push(p); }); };
   var finish=function(body,note){
     if(!body)body=ran.map(function(r){ return r.summary; }).filter(Boolean).join(' ');
-    item.text=body||''; item.note=note||''; item.state='done';
+    item.text=body||''; item.note=note||''; item.state='done'; item.looked=ran.length;
     item.unverified=item.model?_aiVerify(item.text):[];
-    MF_AI.hist.push({role:'user',content:_aiTrim(text,400)}); MF_AI.hist.push({role:'assistant',content:_aiTrim(item.text||'(shown as cards)',700)});
+    // What goes back to the model next turn. A turn that ended in a card is
+    // remembered as the card, not as "…is ready, tap the button": handed that
+    // sentence, the model repeats it next time without making the card.
+    var said=_aiTrim(item.text||'(shown as cards)',700);
+    if(item.docs.length)said='(the app showed a document card: '+item.docs.map(function(d){ return d.t; }).join('; ')+'. A new card needs a new document call.)';
+    else if(item.props.length)said+=' (the app showed a CONFIRM card. A new card needs a new tool call.)';
+    MF_AI.hist.push({role:'user',content:_aiTrim(text,400)}); MF_AI.hist.push({role:'assistant',content:said});
     if(MF_AI.hist.length>8)MF_AI.hist=MF_AI.hist.slice(-8);
     MF_AI.busy=false; MF_AI.ctl=null; _aiRender();
   };
@@ -1091,7 +1186,10 @@ async function _aiAsk(text){
       finally{ clearTimeout(tm); }
       if(res.left_today!=null)MF_AI.left=res.left_today;
       var msg=res.message||{}, calls=Array.isArray(msg.tool_calls)?msg.tool_calls:[];
-      if(!calls.length){ var txt=String(msg.content||'').trim(); item.model=!!txt; return finish(txt); }      // no words → the tools' own sentences
+      if(!calls.length){      // the model has spoken; no words → the tools' own sentences
+        var G=_aiGuard(text,String(msg.content||'').trim(),item,ran,take);
+        item.model=G.model; item.warn=G.warn; item.swapped=G.swapped; return finish(G.text);
+      }
       turn.push({role:'assistant',content:msg.content||null,tool_calls:calls});
       for(var i=0;i<calls.length;i++){
         var c=calls[i], name=String((c&&c.function&&c.function.name)||'').replace(/^functions[.:]/,''), args={};   // some models prefix the name
@@ -1120,15 +1218,19 @@ async function _aiAsk(text){
 }
 
 // ── without the model: the plain questions, straight from the tools ───────
+var MF_AI_PLAIN=' oil oils stock stocks credit credits sale sales cash fuel fuels petrol diesel msd hsd statement statements invoice invoices pdf print report reports bill bills month monthly week weekly year yearly today yesterday last this need want give show send all everything full total account accounts customer customers staff the and for from with please pack packs load loads tank tanks station business company new old sri ';
 function _aiNameIn(s,names){
   // A name counts as mentioned when the whole of it is in the sentence, or a
   // word of it that belongs to nobody else ("kpr", "panchayat"). Two people
   // fitting equally well means nobody is picked.
   var k=' '+_aiNorm(s)+' ', owner={}, score={};
   names.forEach(function(n){ _aiNorm(n).split(' ').forEach(function(w){ if(w.length>=3)(owner[w]=owner[w]||{})[n]=1; }); });
+  // …and never on an everyday word: "oil stock and credit for September" must
+  // not open the account of Annai Oil Mills. The full name still works.
+  var plain=function(w){ return MF_AI_PLAIN.indexOf(' '+w+' ')>=0||_aiMonthIdx(w)>=0; };
   names.forEach(function(n){ var nk=_aiNorm(n); if(!nk)return;
     if(k.indexOf(' '+nk+' ')>=0){ score[n]=(score[n]||0)+3; return; }
-    nk.split(' ').forEach(function(w){ if(w.length>=3&&Object.keys(owner[w]||{}).length===1&&k.indexOf(' '+w+' ')>=0)score[n]=(score[n]||0)+1; }); });
+    nk.split(' ').forEach(function(w){ if(w.length>=3&&!plain(w)&&Object.keys(owner[w]||{}).length===1&&k.indexOf(' '+w+' ')>=0)score[n]=(score[n]||0)+1; }); });
   var hit=Object.keys(score).sort(function(a,b){ return score[b]-score[a]; });
   if(!hit.length||(hit.length>1&&score[hit[0]]===score[hit[1]]))return null;
   return hit[0];
@@ -1137,12 +1239,17 @@ function _aiRoute(text){
   var s=' '+String(text||'').toLowerCase()+' ', a={}, has=function(re){ return re.test(s); };
   // "compare this week with last week": the period asked about is THIS week
   var cmp=has(/compare|\bvs\b|than (last|the)|against|more than|less than/);
+  // a month by name — "september", "sept 2026", "in may" (not "managers may use it")
+  var mm=/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\.?(?:[ ,]+((?:19|20)\d\d)\b)?|\b(?:in|for|of|during) (may)\b(?:[ ,]+((?:19|20)\d\d)\b)?/.exec(s);
+  var named=mm?_aiMonth((mm[1]||mm[3])+((mm[2]||mm[4])?' '+(mm[2]||mm[4]):'')):null;
+  named=named&&!named.error?named.from.slice(0,7):null;
   if(cmp&&has(/this week/))a.period='this_week';
   else if(cmp&&has(/this month/))a.period='this_month';
+  else if(named)a.period=named;
   else if(has(/yesterday/))a.period='yesterday';
   else if(has(/last week/))a.period='last_week';
   else if(has(/this week/))a.period='this_week';
-  else if(has(/last month/))a.period='last_month';
+  else if(has(/last mon?th/))a.period='last_month';
   else if(has(/this month|month so far/))a.period='this_month';
   else if(has(/\b30 days|\bmonth\b/))a.period=has(/30 days/)?'last_30_days':'this_month';
   else if(has(/\b7 days|\bweek\b/))a.period='last_7_days';
@@ -1154,8 +1261,11 @@ function _aiRoute(text){
     if(has(/invoice/)&&cust)return {tool:'document',args:{kind:'customer_invoice',name:cust}};
     if(staffN&&!cust)return {tool:'document',args:{kind:'staff_statement',name:staffN}};
     if(cust)return {tool:'document',args:{kind:'customer_statement',name:cust}};
-    if(has(/report/))return {tool:'document',args:Object.assign({kind:'period_report'},per('this_month'))};
-    if(has(/business|bank|station|month|week|period|today|yesterday/))return {tool:'document',args:Object.assign({kind:'business_statement'},per('this_month'))};
+    if(has(/customer|party|\bstaff\b|salary|employee/))return null;      // somebody's document, and nobody was named: ask, do not guess
+    // Oil, profit and expenses are printed in the report; money in and out,
+    // credit and fuel stock in the statement. Either way both cards are shown.
+    if(has(/report|\boil\b|lubricant|profit|margin|p ?& ?l\b|expens/))return {tool:'document',args:Object.assign({kind:'period_report'},per('this_month'))};
+    if(a.period||has(/business|bank|station|month|week|period|everything|\bfull\b|complete|whole|overall|stock|credit|sales|\bmsd\b|\bhsd\b|petrol|diesel/))return {tool:'document',args:Object.assign({kind:'business_statement'},per('this_month'))};
     return null;
   }
   if(has(/profit|margin|p ?& ?l\b|\bloss\b|earn/))return {tool:'profit',args:Object.assign({compare:has(/why|lower|higher|less|more|compare|\bvs\b|than|drop|fell|down|up\b/)},per('today'))};
@@ -1258,6 +1368,7 @@ function _aiItemHtml(it){
   if(it.unverified&&it.unverified.length)
     h+='<div class="ai-warn">⚠ '+(it.unverified.length===1?'One figure':it.unverified.length+' figures')+' in this answer '+(it.unverified.length===1?'is':'are')+' not in the app\'s data: <b>'+
        it.unverified.slice(0,5).map(_esc).join(', ')+'</b>. Go by the cards'+((it.cards||[]).length?' below':'')+', not the sentence.</div>';
+  if(it.warn)h+='<div class="ai-warn">⚠ '+_esc(it.warn)+'</div>';
   (it.props||[]).forEach(function(pid){ h+=_aiPropHtml(pid); });
   (it.docs||[]).forEach(function(d,i){
     h+='<div class="ai-card ai-doc"><div class="ai-doc-i">📄</div><div class="ai-doc-b"><div class="ai-card-t">'+_esc(d.t)+'</div><div class="ai-card-s">'+_esc(d.s||'')+'</div>'+
@@ -1265,7 +1376,7 @@ function _aiItemHtml(it){
   });
   (it.cards||[]).forEach(function(c){ h+=_aiCardHtml(c,it.id); });
   if(it.text||(it.cards||[]).length)
-    h+='<div class="ai-meta">'+(it.model?'✦ Worded by AI · figures from the app':'⚡ Straight from the app · no AI used')+'</div>';
+    h+='<div class="ai-meta">'+(it.model?(it.looked===0?'✦ Worded by AI · nothing was looked up in the app':'✦ Worded by AI · figures from the app'):(it.swapped?'⚡ Straight from the app · the AI\'s wording was set aside':'⚡ Straight from the app · no AI used'))+'</div>';
   return h+'</div>';
 }
 function _aiExamples(){
