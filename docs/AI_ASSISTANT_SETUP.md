@@ -80,7 +80,7 @@ Open the app as an owner → **✦ ASK** (top of the screen, or in the menu) →
 | Oil and pack stock, anything needing attention | Oil Stock and the alert bell |
 | Staff pay for a month, expenses, tanker loads | Staff Register, shifts, Fuel Loads |
 | Audit checks — where money can leak | the CA workings' checks (owners only) |
-| "Statement PDF for …", "business statement for last month" | the app's own statement, invoice and report |
+| "Statement PDF for …", "business statement for September" | the app's own statement, invoice and report. For a period it shows two cards: the **business report** (profit and loss, petrol vs diesel, oil sales and oil stock, expenses) and the **business statement** (every transaction, customer credit, fuel stock, purchases) |
 | "Record ₹5,000 from Kumar by GPay", "make a note to …" | a card you must **CONFIRM** |
 | "What does cash short mean?", "how do I enter a price change?" | built-in notes on how this app works |
 
@@ -154,6 +154,9 @@ person, 800 a day for everyone.
 | "The free allowance … is used up for the moment" | Wait the seconds it says. The ⚡ buttons still work |
 | "You have used today's allowance" | The station's own limit; raise `per_user_day` if it is too tight |
 | ⚠ under an answer | The model wrote a figure the app did not give it. Use the card. If it happens often, tell Claude which question |
+| It says a PDF or card is there and none is shown | Fixed on 11 October 2026: the app now prepares the document itself when the model forgets to, or shows its own reason. If the phone still does it, it has the old app — close it fully and reopen |
+| "the AI's wording was set aside" under an answer | The model promised a document it had not prepared, so the app's own sentence and cards were shown instead. Nothing to do |
+| A month by name gives the wrong dates | "September", "Sept 2026" and "2026-09" all mean that whole month; without a year it is the most recent one |
 | An answer about the wrong customer | It asks when two names fit; if it picked wrongly, say the full name |
 | Nothing happens on CONFIRM | The card is older than 15 minutes — ask again |
 | The assistant is slow or fails often | Supabase → Edge Functions → `mf-ai` → **Logs** |
