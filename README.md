@@ -71,7 +71,7 @@ when the connection comes back.
 - **Ask in plain words** — *"how much diesel did we sell this week"*, *"who owes us the most"*, *"why was yesterday's profit lower"*, *"statement PDF for Kumar"*. Owners and managers only.
 - **Every figure is the app's own.** The assistant's tools wrap the same engines as Reports, the Credit Ledger and the Order Advisor; the language model only chooses a tool and words the result. Cards under each answer show the figures as the app worked them out, and a number in the sentence that is not among them is flagged ⚠.
 - **Nothing is recorded without a tap.** A payment or note is prepared as a card and saved only on CONFIRM, through the app's own save, with an Activity Log entry.
-- **Statement PDFs on request:** customer statement and invoice, business statement, business report, staff statement — or one PDF with only the sections you name ("statement of oil sales and credit by petrol and diesel for September").
+- **Statement PDFs on request:** customer statement and invoice, business statement, business report, staff statement — or one PDF with only the sections you name ("statement of oil sales and credit by petrol and diesel for September"). That statement can then be changed by saying so (remove a section or table, hide cost and margins, add a note, other dates); figures cannot be changed.
 - **Works without the model too.** The ⚡ buttons, and the plain questions when there is no internet, are answered straight from the app.
 
 > Set up through [`docs/AI_ASSISTANT_SETUP.md`](docs/AI_ASSISTANT_SETUP.md): a free Groq key held by the `mf-ai` edge function, and `db/021_ai_assistant.sql`.

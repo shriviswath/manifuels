@@ -9832,6 +9832,60 @@ RV_BUILD.credit=function(from,to){
         empty:'No credit was given or received in this period.'}}]};
 };
 
+// ══════════════════════════════════════════════════════════════════
+// MF_STATEMENT_EDIT_V1 — A STATEMENT CAN BE CUT DOWN, NEVER ALTERED
+// A statement asked for by sections (MF_CUSTOM_REPORT_V1) can then be shaped:
+// a whole table left out, the cost / margin / profit columns left out, a
+// heading, a note, the paper turned sideways. Every one of those removes or
+// labels; none of them touches a figure that stays on the page, because the
+// page is still printed from the entries by the same functions. A statement
+// that leaves something out says so under its heading.
+// ══════════════════════════════════════════════════════════════════
+var MF_REPORT_BUILD={fuel:'fuel',daily:'table',oil:'oil',credit:'credit',expenses:'exp',dues:'dues',staff:'staff'};
+// With cost hidden: these columns and cards go, these tables go whole, and
+// "Margin by fuel" is what is left of it — sales by fuel.
+var MF_RV_COST_COL=/^(landed cost \/ l|cost of sales|unit cost|cost|net profit|value)$|margin|profit/i;      // "Value" is stock at purchase cost
+var MF_RV_COST_CARD=/margin|profit|^average net per day$|^best day$|^weakest day$|^dead stock$|^slow stock$/i;
+var MF_RV_COST_DROP={fuel_revisions:1};
+var MF_RV_COST_NAME={fuel:'SALES BY FUEL'};
+var MF_RV_COST_SECTIONS={profit:1,checks:1};      // nothing would be left of these
+function _rvTrim(out,opt){
+  if(!out||typeof out!=='object'||!opt)return out;
+  var drop=Array.isArray(opt.drop)?opt.drop:[], hide=!!opt.hideCost;
+  if(!drop.length&&!hide)return out;
+  var res={cards:(out.cards||[]).filter(function(c){ return !(hide&&(MF_RV_COST_CARD.test(String(c[0]||''))||MF_RV_COST_CARD.test(String(c[3]||'')))); }),blocks:[]};
+  (out.blocks||[]).forEach(function(b){
+    if(b.key&&drop.indexOf(b.key)>=0)return;
+    if(!hide){ res.blocks.push(b); return; }
+    if(b.key&&MF_RV_COST_DROP[b.key])return;
+    var nb={key:b.key,h:(b.key&&MF_RV_COST_NAME[b.key])||b.h,note:b.note}, cutAny=false;
+    if(b.tbl){
+      var keep=[]; b.tbl.cols.forEach(function(c,i){ if(MF_RV_COST_COL.test(String(c.h||'')))cutAny=true; else keep.push(i); });
+      var cut=function(r){ return r?keep.map(function(i){ return r[i]; }):r; };
+      nb.tbl={cols:keep.map(function(i){ return b.tbl.cols[i]; }),rows:(b.tbl.rows||[]).map(cut),foot:cut(b.tbl.foot),empty:b.tbl.empty};
+    }
+    // the note under a table explains its columns; with some gone it would talk about what is not there
+    if(nb.note&&(cutAny||/margin|profit|landed cost|purchase price/i.test(nb.note)))nb.note=null;
+    res.blocks.push(nb);
+  });
+  return res;
+}
+// What a statement of these sections would hold: each section with its tables
+// (id and heading), for whoever is choosing what to leave out.
+function mfReportParts(from,to,sections,opt){
+  var recs=records.filter(function(r){ return r.date>=from&&r.date<=to; }), span=_rvDays(from,to)+1, hide=!!(opt&&opt.hideCost);
+  return MF_REPORT_SECTIONS.filter(function(s){ return (sections||[]).indexOf(s[0])>=0&&!(hide&&MF_RV_COST_SECTIONS[s[0]]); }).map(function(s){
+    var k=MF_REPORT_BUILD[s[0]], tables=[];
+    if(k){
+      try{
+        var out=RV_BUILD[k].apply(null,k==='dues'?[]:(k==='table'?[from,to,recs,{group:span>62?'month':'day'}]:[from,to,recs]));
+        ((hide?_rvTrim(out,{hideCost:true}):out).blocks||[]).forEach(function(b){ if(b.key&&b.tbl)tables.push({id:b.key,title:b.h||b.key}); });
+      }catch(e){}
+    }
+    return {key:s[0],title:(s[0]==='daily'&&span>62)?'Month by month':s[1],tables:tables};
+  });
+}
+
 // ── 4. Printable report for the chosen period ─────────────────────────────
 function exportPeriodReport(opt){
   // MF_CUSTOM_REPORT_V1 — opt {from, to, sections, title}: the same report for
@@ -9891,7 +9945,14 @@ function exportPeriodReport(opt){
   // customer credit by fuel is printed on request, not added to it.
   var pick=(Array.isArray(opt.sections)&&opt.sections.length)?opt.sections:null, ttl=opt.title||'Business report';
   var use=MF_REPORT_SECTIONS.filter(function(s){ return pick?pick.indexOf(s[0])>=0:s[0]!=='credit'; });
+  if(opt.hideCost)use=use.filter(function(s){ return !MF_RV_COST_SECTIONS[s[0]]; });      // MF_STATEMENT_EDIT_V1
   if(!use.length){ showToast('Nothing to print — no such section'); return; }
+  // what was left out, said on the page: a reader must be able to tell an extract from the whole
+  var cutN=[], dropN=Array.isArray(opt.drop)?opt.drop:[];
+  if(opt.hideCost)cutN.push('cost, margin and profit figures are not shown');
+  if(dropN.length){ var lost=[]; mfReportParts(f,t,use.map(function(s){ return s[0]; })).forEach(function(p){ p.tables.forEach(function(x){ if(dropN.indexOf(x.id)>=0)lost.push(x.title); }); });
+    if(lost.length)cutN.push('left out: '+lost.join('; ')); }
+  var noteT=String(opt.note==null?'':opt.note).replace(/\s+/g,' ').trim().slice(0,300);
   var body={
     profit:function(){ return pl; }, checks:function(){ return checks; },
     fuel:function(){ return safe('fuel',[f,t,recs]); },
@@ -9906,16 +9967,19 @@ function exportPeriodReport(opt){
       _esc(new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}))+
       ' by '+_esc(_currentUser?(_currentUser.display||_currentUser.username):'—')+
       (bz.gstin?' · GSTIN '+_esc(bz.gstin):'')+'</div></div>'+
+    (noteT?'<p class="wk-p wk-note"><b>Note:</b> '+_esc(noteT)+'</p>':'')+
+    (cutN.length?'<p class="wk-p wk-f wk-cut">This statement is an extract — '+_esc(cutN.join('; '))+'.</p>':'')+
     use.map(function(s,i){
-      var out=body[s[0]](), title=(s[0]==='daily'&&span>62)?'Month by month':s[1];
+      var out=_rvTrim(body[s[0]](),opt), title=(s[0]==='daily'&&span>62)?'Month by month':s[1];
       return typeof out==='string'?'<div class="wk-sec">'+(i+1)+'. '+_esc(title)+'</div>'+out:sec(i+1,title,out);
     }).join('')+
     '</div>';
   var area=document.getElementById('pdf-print-area'); if(!area){ showToast('Print area missing'); return; }
   area.innerHTML=doc;
   if(typeof _mfAlignNums==='function')_mfAlignNums(area);
-  _mfPrintArea((bz.name||'Mani Fuels')+' · '+ttl+' · '+_rvDmy(f)+' – '+_rvDmy(t));
-  if(typeof logActivity==='function')logActivity('export_report','report',null,ttl+' '+f+' → '+t+(pick?' ('+use.map(function(s){ return s[0]; }).join(', ')+')':''));
+  _mfPrintArea((bz.name||'Mani Fuels')+' · '+ttl+' · '+_rvDmy(f)+' – '+_rvDmy(t),opt.orient==='landscape'?'landscape':undefined);
+  if(typeof logActivity==='function')logActivity('export_report','report',null,ttl+' '+f+' → '+t+(pick?' ('+use.map(function(s){ return s[0]; }).join(', ')+')':'')+
+    (opt.hideCost?' · cost hidden':'')+(dropN.length?' · without '+dropN.join(', '):'')+(noteT?' · note: '+noteT.slice(0,80):''));
   setTimeout(function(){ window.print(); },300);
 }
 // ── CREDIT LEDGER ──
@@ -19048,7 +19112,7 @@ body:has(#mf-ai.open) .toast{bottom:150px}      /* keep toasts off the question 
 //   • No connection, or the free allowance used up: the same tools still
 //     answer the common questions directly, without the model.
 var MF_AI_FN='mf-ai';
-var MF_AI={open:false,busy:false,items:[],hist:[],nums:[],pending:{},seq:0,ctl:null,left:null,stopped:false};
+var MF_AI={open:false,busy:false,items:[],hist:[],nums:[],pending:{},seq:0,ctl:null,left:null,stopped:false,draft:null,turn:0,lastUser:''};
 var MF_AI_TOOLS={}, MF_AI_ORDER=[];
 
 function _aiRole(){ return (typeof _currentUser!=='undefined'&&_currentUser&&_currentUser.role)||''; }
@@ -19735,16 +19799,10 @@ _aiTool('document',{roles:['owner','manager'],say:'Preparing the document…',
         // One PDF, only the sections asked for. Nothing named → all of them.
         if(typeof MF_REPORT_SECTIONS==='undefined')return {data:{error:'This version of the app cannot print a statement by sections. Ask for the business report or the business statement.'}};
         var secs=_aiSections(a.sections); if(!secs.length)secs=Object.keys(MF_AI_SECTIONS);
-        var what=secs.map(function(k){ return MF_AI_SECTIONS[k]; }).join('; ');
-        doc={kind:a.kind,btn:K.btn,from:R.from,to:R.to,sections:secs,t:K.label+' · '+_aiSpan(R.from,R.to),s:shifts+' in the period · one PDF with: '+what+'.'};
-        d.document=K.label+' for '+R.label; d.contains=what; d.sections=secs; d.shifts_in_period=n2;
-        // Three things in it are a snapshot of today, whatever the period.
-        var now=[]; if(secs.indexOf('oil')>=0)now.push('oil stock'); if(secs.indexOf('dues')>=0)now.push('dues'); if(secs.indexOf('credit')>=0)now.push('what each customer owes');
-        if(now.length&&R.to<_isoLocal()){
-          var nw=now.length>1?now.slice(0,-1).join(', ')+' and '+now[now.length-1]:now[0];
-          d.caution=nw.charAt(0).toUpperCase()+nw.slice(1)+' '+(now.length>1||now[0]==='dues'?'are':'is')+' printed as '+(now.length>1||now[0]==='dues'?'they stand':'it stands')+' today, not as on '+_aiDay(R.to)+'.';
-        }
-        tail=' In it: '+what+'.'+(d.caution?' '+d.caution:'');
+        // The statement as asked for. It is kept, so the next message can change it (edit_statement).
+        var sp={from:R.from,to:R.to,label:R.label,sections:secs,title:'',note:'',hideCost:false,drop:[],orient:'',turn:MF_AI.turn};
+        MF_AI.draft=sp;
+        var SC=_aiStmtCard(sp); doc=SC.doc; Object.keys(SC.data).forEach(function(k){ d[k]=SC.data[k]; }); tail=SC.tail;
       } else {
       // The station prints two documents for a period and people ask for either
       // by either name, so both are offered — the one asked for first — each
@@ -19762,6 +19820,119 @@ _aiTool('document',{roles:['owner','manager'],say:'Preparing the document…',
     return {data:d,docs:[doc].concat(more),
       summary:(d.document||K.label)+(more.length?' and the '+MF_AI_DOCS[K.pair].label.toLowerCase()+' for the same period are':' is')+' ready — tap the button on '+(more.length?'a':'the')+' card, then choose "Save as PDF".'+tail+(note?' '+note:'')};
   }});
+// A statement by sections, as a card: what it holds, what was left out, and
+// what in it is a snapshot of today. Used when one is prepared and again each
+// time it is changed.
+function _aiCap(t){ t=String(t||''); return t.charAt(0).toUpperCase()+t.slice(1); }
+// A table's name for the model and the router. One table shares its id with
+// its section ("fuel"), and a bare "fuel" must always mean the section.
+function _aiTblShow(id){ return MF_AI_SECTIONS[id]?id+'_table':id; }
+function _aiStmtCard(sp){
+  var K=MF_AI_DOCS.custom_statement, n=_aiRecs(sp).length, shifts=n+' shift'+(n!==1?'s':'');
+  var secs=sp.sections.filter(function(k){ return !(sp.hideCost&&(k==='profit'||k==='checks')); });
+  var what=secs.map(function(k){ return MF_AI_SECTIONS[k]; }).join('; '), tables=[], lost=[], can=typeof mfReportParts==='function';
+  if(can)mfReportParts(sp.from,sp.to,secs,{hideCost:sp.hideCost}).forEach(function(p){ p.tables.forEach(function(x){
+    if(sp.drop.indexOf(x.id)>=0)lost.push(x.title.toLowerCase()); else tables.push(_aiTblShow(x.id)+' = '+x.title.toLowerCase()); }); });
+  var extra=[]; if(sp.hideCost)extra.push('cost, margin and profit figures are not shown'); if(lost.length)extra.push('left out: '+lost.join('; '));
+  if(sp.note)extra.push('note: “'+sp.note+'”'); if(sp.orient==='landscape')extra.push('landscape');
+  var name=sp.title||K.label;
+  var doc={kind:'custom_statement',btn:K.btn,from:sp.from,to:sp.to,sections:secs,title:sp.title,note:sp.note,hideCost:sp.hideCost,drop:sp.drop.slice(),orient:sp.orient,
+    t:name+' · '+_aiSpan(sp.from,sp.to),s:shifts+' in the period · one PDF with: '+what+'.'+(extra.length?' '+_aiCap(extra.join('; '))+'.':'')};
+  if(can)doc.hint='To change it, say so: “remove the petrol section”, “leave out stock health”, “hide cost and margins”, “add a note: …”, “make it for August”. Figures cannot be changed.';
+  var d={document:name+' for '+sp.label,contains:what,sections:secs,shifts_in_period:n};
+  if(tables.length)d.tables=tables;                // ids that can be left out with edit_statement
+  if(extra.length)d.shaped=extra;
+  // Three things in it are a snapshot of today, whatever the period.
+  var now=[]; if(secs.indexOf('oil')>=0&&sp.drop.indexOf('oil_health')<0)now.push('oil stock'); if(secs.indexOf('dues')>=0)now.push('dues');
+  if(secs.indexOf('credit')>=0&&sp.drop.indexOf('credit_customers')<0)now.push('what each customer owes');
+  if(now.length&&sp.to<_isoLocal()){
+    var nw=now.length>1?now.slice(0,-1).join(', ')+' and '+now[now.length-1]:now[0], many=now.length>1||now[0]==='dues';
+    d.caution=_aiCap(nw)+' '+(many?'are':'is')+' printed as '+(many?'they stand':'it stands')+' today, not as on '+_aiDay(sp.to)+'.';
+  }
+  return {doc:doc,data:d,empty:!n,tail:' In it: '+what+'.'+(extra.length?' '+_aiCap(extra.join('; '))+'.':'')+(d.caution?' '+d.caution:'')};
+}
+
+// ── changing a statement that was just prepared ───────────────────────────
+// The assistant may shape the statement: leave a section or a table out, put
+// one back, re-date it, head it, add the person's own note, hide cost and
+// margin columns, turn the paper. It may not change a figure, and there is no
+// way to ask it to: every table is printed from the entries by the app. The
+// words of a note must be the person's — a number in it that they did not
+// type is refused, so the model cannot write a figure onto the page that way.
+var MF_AI_NO_FIGURE='A figure in a statement cannot be changed here. It is printed from the entries, so correct the entry in the app — that change is logged — and ask for the statement again. What can be changed: sections, tables, the dates, the heading, a note, and whether cost and margins are shown.';
+var MF_AI_TABLE_ALIAS={fuel:/margin by fuel|sales by fuel/,fuel_rates:/pump rates?|rate periods?/,fuel_revisions:/price revisions?|stock gain|price changes?/,
+  table_day:/day by day table|by day table|daily table/,oil_sales:/oil sales|sales by item|item ?wise/,oil_health:/stock health|oil stock|stock on (hand|the shelf)|shelf stock|dead stock/,
+  credit_fuel:/credit by fuel|fuel ?wise credit/,credit_customers:/by customer|customer ?wise|customers? (list|table)|each customer/,
+  exp_heads:/by head|expense heads?/,exp_days:/highest.spend|spend days?/,exp_notcost:/not a cost/,
+  dues_customers:/customers? (dues|owing|ageing|aging)|by age/,dues_advances:/advances?/,dues_suppliers:/suppliers?/,staff_cash:/cash difference/};
+function _aiStmtItem(v,known){      // a word from the model or the person → {section} or {table}, tables first: the narrower thing wins
+  var raw=String(v==null?'':v).toLowerCase().trim(), id=raw.replace(/[\s-]+/g,'_'), words=' '+raw.replace(/_/g,' ')+' ', hit=null;
+  known.forEach(function(x){ if(hit)return; var al=MF_AI_TABLE_ALIAS[x.id];
+    if(_aiTblShow(x.id)===id||x.title.toLowerCase()===raw||(al&&al.test(words)))hit=x; });
+  if(hit)return {table:hit};
+  var k=MF_AI_SECTIONS[id]?id:MF_AI_SECTION_ALIAS[id]; if(!k){ var g=_aiSectionsIn(words); if(g.length===1)k=g[0]; }
+  return k?{section:k}:null;
+}
+_aiTool('edit_statement',{roles:['owner'],say:'Changing the statement…',
+  d:'Change the statement prepared earlier in this conversation and show its new card. add / remove: sections, or a table by its id from the last statement result. Also: other dates (period), title, note (only the person\'s own words; "" removes it), hide_cost (leave out cost, margin and profit), landscape. It cannot change any figure: say so if asked.',
+  p:_aiP({add:{type:'array',items:{type:'string'}},remove:{type:'array',items:{type:'string'}},title:{type:'string'},note:{type:'string'},hide_cost:{type:'boolean'},landscape:{type:'boolean'}}),
+  run:function(a){
+    a=a||{};
+    if(a.figure)return {data:{error:MF_AI_NO_FIGURE}};
+    if(typeof mfReportParts!=='function')return {data:{error:'This version of the app cannot change a statement. Ask for a new one with the sections wanted.'}};
+    var cur=MF_AI.draft;
+    if(!cur)return {data:{error:'No statement has been prepared in this conversation yet.',next:'Ask what should be in it and for which period, then call document with kind=custom_statement.'}};
+    var sp={from:cur.from,to:cur.to,label:cur.label,sections:cur.sections.slice(),title:cur.title,note:cur.note,hideCost:cur.hideCost,drop:cur.drop.slice(),orient:cur.orient,turn:MF_AI.turn};
+    var did=[], miss=[], all=Object.keys(MF_AI_SECTIONS), list=function(x){ return Array.isArray(x)?x:(x==null||x===''?[]:String(x).split(/[,;|]+/)); };
+    if(a.period||a.from||a.to){
+      var R=_aiPeriod(a); if(R.error)return {data:{error:R.error}};
+      if(R.from!==sp.from||R.to!==sp.to){ sp.from=R.from; sp.to=R.to; sp.label=R.label; did.push('now for '+R.label); }
+    }
+    var known=[]; mfReportParts(sp.from,sp.to,all).forEach(function(p){ p.tables.forEach(function(x){ known.push({id:x.id,title:x.title,section:p.key}); }); });
+    var title=function(k){ return MF_AI_SECTIONS[k]; }, sibs=function(sec){ return known.filter(function(x){ return x.section===sec; }); };
+    list(a.remove).forEach(function(v){
+      var it=_aiStmtItem(v,known); if(!it){ miss.push(String(v)); return; }
+      if(it.section){ var i=sp.sections.indexOf(it.section); if(i<0){ miss.push(String(v)); return; }
+        sp.sections.splice(i,1); sp.drop=sp.drop.filter(function(id){ return !sibs(it.section).some(function(x){ return x.id===id; }); }); did.push('removed '+title(it.section)); }
+      else { var t=it.table; if(sp.sections.indexOf(t.section)<0||sp.drop.indexOf(t.id)>=0){ miss.push(String(v)); return; }
+        sp.drop.push(t.id); did.push('left out the table “'+t.title.toLowerCase()+'”');
+        if(sibs(t.section).every(function(x){ return sp.drop.indexOf(x.id)>=0; })){      // its last table: the section goes with it
+          sp.sections.splice(sp.sections.indexOf(t.section),1); sp.drop=sp.drop.filter(function(id){ return !sibs(t.section).some(function(x){ return x.id===id; }); }); } }
+    });
+    list(a.add).forEach(function(v){
+      var it=_aiStmtItem(v,known); if(!it){ miss.push(String(v)); return; }
+      if(it.section){ if(sp.sections.indexOf(it.section)>=0){ var back=sibs(it.section).filter(function(x){ return sp.drop.indexOf(x.id)>=0; });
+          if(!back.length)return; sp.drop=sp.drop.filter(function(id){ return !back.some(function(x){ return x.id===id; }); }); did.push('put back all of '+title(it.section)); return; }
+        sp.sections.push(it.section); did.push('added '+title(it.section)); }
+      else { var t=it.table;
+        if(sp.sections.indexOf(t.section)<0){ sp.sections.push(t.section); sibs(t.section).forEach(function(x){ if(x.id!==t.id&&sp.drop.indexOf(x.id)<0)sp.drop.push(x.id); }); did.push('added the table “'+t.title.toLowerCase()+'”'); }
+        else if(sp.drop.indexOf(t.id)>=0){ sp.drop.splice(sp.drop.indexOf(t.id),1); did.push('put back the table “'+t.title.toLowerCase()+'”'); } }
+    });
+    sp.sections=all.filter(function(k){ return sp.sections.indexOf(k)>=0; });
+    // what the person typed is the only source for words printed on the page
+    var mine=_aiNumsIn(MF_AI.lastUser||''), foreign=function(t){ return _aiNumsIn(t).filter(function(v){ return mine.indexOf(v)<0; }); };
+    if(a.title!=null){ var tt=String(a.title).replace(/\s+/g,' ').trim().replace(/^["“]|["”.]$/g,'').slice(0,70);
+      if(foreign(tt).length)return {data:{error:'A heading can only carry the words that were typed; "'+foreign(tt)[0]+'" was not typed. Type the heading exactly as it should be printed.'}};
+      if(tt!==sp.title){ sp.title=tt; did.push(tt?'heading set to “'+tt+'”':'heading back to “Statement”'); } }
+    if(a.note!=null){ var nt=String(a.note).replace(/\s+/g,' ').trim().replace(/^["“]|["”]$/g,'').slice(0,300);
+      if(foreign(nt).length)return {data:{error:'A note can only carry the words that were typed; "'+foreign(nt)[0]+'" was not typed. Type the note exactly as it should be printed.'}};
+      if(nt!==sp.note){ sp.note=nt; did.push(nt?'note added':'note removed'); } }
+    if(a.hide_cost!=null&&!!a.hide_cost!==sp.hideCost){ sp.hideCost=!!a.hide_cost; did.push(sp.hideCost?'cost, margin and profit figures hidden':'cost and margin figures shown again'); }
+    if(a.landscape!=null&&(a.landscape?'landscape':'')!==sp.orient){ sp.orient=a.landscape?'landscape':''; did.push(a.landscape?'paper turned sideways':'paper upright again'); }
+    if(!sp.sections.filter(function(k){ return !(sp.hideCost&&(k==='profit'||k==='checks')); }).length)return {data:{error:'That would leave nothing in the statement. Nothing was changed.'}};
+    if(!did.length){
+      var cc=_aiStmtCard(cur);
+      return {data:{error:miss.length?('“'+miss.join('”, “')+'” '+(miss.length>1?'are':'is')+' not in this statement, so nothing was changed.'):'No change was understood, so nothing was changed.',
+        can_change:'add or remove a section or a table, the dates, the heading, a note, hide cost and margins, landscape',sections:cc.data.sections,tables:cc.data.tables}};
+    }
+    MF_AI.draft=sp;
+    var SC=_aiStmtCard(sp), d={ready:true,changed:did};
+    Object.keys(SC.data).forEach(function(k){ d[k]=SC.data[k]; });
+    if(miss.length)d.not_found=miss;
+    d.how='The changed statement is a new card under your answer. No figure in it was touched.';
+    return {data:d,docs:[SC.doc],summary:'Changed — '+did.join('; ')+'. '+d.document+' is ready — tap the button on the card, then choose "Save as PDF".'+SC.tail+
+      (miss.length?' Not found, so left alone: '+miss.join(', ')+'.':'')+(SC.empty?' No shift is saved in that period, so the document will be almost empty.':'')};
+  }});
 function _aiOpenDoc(itemId,idx){
   var it=MF_AI.items.find(function(x){ return x.id===itemId; }), d=it&&it.docs&&it.docs[idx]; if(!d)return;
   var K=MF_AI_DOCS[d.kind]; if(!K||K.roles.indexOf(_aiRole())<0){ showToast('🔒 Not available to your role'); return; }
@@ -19770,7 +19941,7 @@ function _aiOpenDoc(itemId,idx){
     if(d.kind==='customer_statement')generateCustomerStatement(d.name);
     else if(d.kind==='customer_invoice')generateCustomerInvoice(d.name);
     else if(d.kind==='staff_statement')staffStatement(d.id);
-    else if(d.kind==='custom_statement')exportPeriodReport({from:d.from,to:d.to,sections:d.sections,title:'Statement'});
+    else if(d.kind==='custom_statement')exportPeriodReport({from:d.from,to:d.to,sections:d.sections,title:d.title||'Statement',note:d.note,hideCost:d.hideCost,drop:d.drop,orient:d.orient});
     else if(d.kind==='business_statement'){
       openStatement();
       var f=document.getElementById('stmt_from'), t=document.getElementById('stmt_to');
@@ -19893,7 +20064,7 @@ var MF_AI_HELP={
   staff:'Attendance is marked while entering a shift. Payroll works out wages earned from attendance on the payroll rules set on the Staff page. Advances are loans recovered from salary, not an expense. Payslips and a per-person statement print from the Staff page. Salaries and pay are visible to owners and managers only.',
   stock:'Oil Stock is the counter list with quantity and rate; a purchase invoice in Oil Register adds to it. 40 ml packs come 6 units to a box and 40 packs to a unit — record units opened in the shift. Loose oil is drawn from opened bottles. An item is "low" when it has under 10 days of cover at the last 30 days\' rate of sale (or 2 or fewer left if it has not been selling).',
   roles:'Owner: everything. Manager: everything except Reports and profit, Owner Drawings, the Activity Log, the Business Statement, backups and Members; a manager can record and reverse payments, set credit limits and handle staff pay. Staff: shift entry and the day-to-day pages; staff cannot use the assistant. Roles are set by an owner under Members and enforced by the server.',
-  documents:'Customer statement and invoice PDFs: Credit Ledger → the customer → STATEMENT PDF / INVOICE PDF. Business Statement (owners): menu → Business Statement, pick the period and sections, then PRINT / SAVE PDF or CSV. Export Report (PDF) and the P&L workings are on Reports. Payslips are on the Staff page. In the print dialog choose "Save as PDF". The assistant can open these too: ask for "statement for <customer>" or "business statement for last month". For one PDF with only what you need, say what goes in it and the month: "statement PDF of oil sales, oil stock and credit by petrol and diesel for September" — profit, petrol and diesel sales, day by day, oil, credit, expenses, dues, staff and audit checks can be combined (owners).',
+  documents:'Customer statement and invoice PDFs: Credit Ledger → the customer → STATEMENT PDF / INVOICE PDF. Business Statement (owners): menu → Business Statement, pick the period and sections, then PRINT / SAVE PDF or CSV. Export Report (PDF) and the P&L workings are on Reports. Payslips are on the Staff page. In the print dialog choose "Save as PDF". The assistant can open these too: ask for "statement for <customer>" or "business statement for last month". For one PDF with only what you need, say what goes in it and the month: "statement PDF of oil sales, oil stock and credit by petrol and diesel for September" — profit, petrol and diesel sales, day by day, oil, credit, expenses, dues, staff and audit checks can be combined (owners). Then change it by saying so: "remove the petrol section", "leave out stock health", "hide cost and margins", "add a note to the statement: …", "change the heading to …", "make it for August", "landscape". Each change gives a new card. A figure cannot be changed in a statement: correct the entry in the app and print it again.',
   assistant:'The assistant answers from figures the app works out on this phone — the same code as the Reports and Ledger pages — and words them with a language model. The cards under an answer are the app\'s own figures. It can open statement PDFs, and can prepare a customer payment or a note that is recorded only when you tap CONFIRM. It cannot edit or delete shifts, loads, stock or staff records. Owners and managers only; profit is owner-only.'
 };
 _aiTool('help',{roles:['owner','manager'],say:'Looking it up…',
@@ -19988,7 +20159,9 @@ function _aiSystem(){
     '3. Keys ending _est are forecasts or estimates: say "about". Everything else is the app\'s calculated figure.',
     '4. If a result has a verdict, lead with it, even when the person assumed the opposite (asked why profit fell when it rose: say it rose). If it has a caution or an error, say so in one short sentence. If it has did_you_mean, ask which one. If it has next, do that.',
     '5. You cannot change records. propose_payment and propose_note only show a card; the person must tap CONFIRM. Say "tap CONFIRM on the card" and never say it was recorded or saved. Ask for a missing amount or payment mode; do not assume one.',
-    '6. For any PDF, statement, invoice or printout call document, every time one is asked for. A card with its button exists only when document returned ready in this turn; cards from earlier turns do not carry over. Describe a document only with the words in its contains. Never write that a card, button or PDF is there otherwise.',
+    '6. For any PDF, statement, invoice or printout call document, every time one is asked for. A card with its button exists only when document returned ready in this turn; cards from earlier turns do not carry over. Describe a document only with the words in its contains. Never write that a card, button or PDF is there otherwise.'+
+      // only once there is a statement to change: these words cost allowance on every question
+      (MF_AI.draft?' To change the statement already prepared, call edit_statement: things can be left out, put back, re-dated, headed, and the person\'s own note added; a figure can never be changed.':''),
     '7. For how the app works or what a figure means, call help. If the question is not about this station or app, say in one line that you only handle ManiFuels.',
     '8. Style: the answer first in one or two plain sentences, then at most four short bullets if they add something. Cards under your answer show the full figures, so do not repeat every row. **Bold** the one key figure. No tables, headings, greetings or offers of more help.',
     '9. Shifts are dated by the day they close: MORNING = 6 PM the evening before to 9 AM; NIGHT = 9 AM to 6 PM. Cash short/over is a shift\'s drawer tally, not profit. MSD = petrol, HSD = diesel.',
@@ -19998,7 +20171,7 @@ function _aiSystem(){
   ].join('\n');
 }
 function _aiToolDefs(){
-  return MF_AI_ORDER.filter(_aiCan).map(function(n){ var t=MF_AI_TOOLS[n];
+  return MF_AI_ORDER.filter(_aiCan).filter(function(n){ return n!=='edit_statement'||!!MF_AI.draft; }).map(function(n){ var t=MF_AI_TOOLS[n];
     return {type:'function',function:{name:n,description:t.d,parameters:{type:'object',properties:t.p||{},required:t.req||[]}}}; });
 }
 function _aiNowLine(){
@@ -20090,13 +20263,13 @@ function _aiErrLine(d){
 }
 function _aiGuard(q,txt,item,ran,take){
   var out={text:txt,warn:'',model:!!txt};
-  var docRuns=ran.filter(function(r){ return r.tool==='document'; }), helped=ran.some(function(r){ return r.tool==='help'; });
+  var docRuns=ran.filter(function(r){ return r.tool==='document'||r.tool==='edit_statement'; }), helped=ran.some(function(r){ return r.tool==='help'; });
   var how=helped||MF_AI_HOWTO.test(String(q||'').toLowerCase());          // "how do I print a statement" wants words, not a card
-  var route=how?null:_aiRoute(q), want=!!(route&&route.tool==='document');
+  var route=how?null:_aiRoute(q), want=!!(route&&(route.tool==='document'||route.tool==='edit_statement'));
   var says=!helped&&(MF_AI_SAYS_DOC.test(txt)||(MF_AI_SAYS_CARD.test(txt)&&!item.cards.length&&!item.props.length));
   if(!item.docs.length&&(want||says)){
     if(want&&!docRuns.length){
-      var r=_aiRun('document',route.args); take(r);
+      var r=_aiRun(route.tool,route.args); take(r);
       var made=!!(r.docs&&r.docs.length);
       if(says||!txt){ out.text=made?'':_aiErrLine(r.data); out.model=false; }      // it described a document it never saw
       else out.text=txt+'\n\n'+(made?r.summary:_aiErrLine(r.data));
@@ -20111,8 +20284,11 @@ function _aiGuard(q,txt,item,ran,take){
   }
   // The person listed what they wanted in it and the model prepared a stock
   // document instead: the one that was asked for goes first.
-  if(want&&route.args.kind==='custom_statement'&&item.docs.length&&!item.docs.some(function(x){ return x.kind==='custom_statement'; })){
-    var n0=item.docs.length, rc=_aiRun('document',route.args); take(rc);
+  // …and a change was asked for and the model prepared something else: the change is made, and goes first.
+  var asked=want&&((route.tool==='document'&&route.args.kind==='custom_statement'&&!item.docs.some(function(x){ return x.kind==='custom_statement'; }))||
+                   (route.tool==='edit_statement'&&!ran.some(function(x){ return x.tool==='edit_statement'; })));
+  if(asked&&item.docs.length){
+    var n0=item.docs.length, rc=_aiRun(route.tool,route.args); take(rc);
     var mine=item.docs.splice(n0); if(mine.length){ Array.prototype.unshift.apply(item.docs,mine); out.text=(out.text?out.text+'\n\n':'')+rc.summary; }
   }
   if(!item.props.length&&MF_AI_SAYS_CONFIRM.test(out.text))
@@ -20127,6 +20303,7 @@ var MF_AI_ROUNDS=5, MF_AI_TIMEOUT=45000;
 async function _aiAsk(text){
   var item=_aiPush({role:'bot',state:'think',say:'Thinking…',cards:[],docs:[],props:[]});
   MF_AI.busy=true; MF_AI.stopped=false; _aiRender();
+  MF_AI.turn++; MF_AI.lastUser=String(text||'');      // what the person typed: the only source for a note or heading on a statement
   _aiHarvest(text);
   var ran=[], turn=[{role:'user',content:text+'\n\n'+_aiNowLine()}], sys={role:'system',content:_aiSystem()}, tools=_aiToolDefs();
   var take=function(r){ ran.push(r);
@@ -20202,6 +20379,58 @@ function _aiNameIn(s,names){
   if(!hit.length||(hit.length>1&&score[hit[0]]===score[hit[1]]))return null;
   return hit[0];
 }
+// A message that changes the statement just prepared → the arguments for
+// edit_statement, or null. Read only while a statement is fresh in the
+// conversation (or is named), so an ordinary question is never taken for an
+// edit. The words of a note or a heading are lifted out first: nothing inside
+// them is read as an instruction.
+var MF_AI_EDIT_RM=/\b(remove|without|drop|delete|take out|take off|exclude|leave out|hide|omit|skip|no need (?:of|for)|don'?t need|not needed|don'?t want)\b/g;
+var MF_AI_EDIT_ADD=/\b(add|include|put in|put back|bring back|plus|restore|show again)\b/g;
+function _aiEditIn(text,period){
+  var D=MF_AI.draft; if(!D||typeof mfReportParts!=='function')return null;
+  var raw=String(text||'').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/\s+/g,' ').trim(), low0=raw.toLowerCase();
+  var named=/\b(pdf|statement|report)\b|\b(from|in|to|on|of) (it|that|this)\b/.test(low0);
+  if(!named&&(MF_AI.turn-(D.turn||0))>2)return null;                                            // the statement is no longer what is being talked about
+  if(/^(does|is|are|what|how|which|who|why|when|did|do|where)\b/.test(low0)&&!/^(what|how) about\b/.test(low0))return null;   // a question about it, not a change
+  if(/\b(new|another|separate|fresh|one more)\b.{0,24}\b(statement|pdf|report)\b/.test(low0))return null;                    // a different statement
+  var a={}, m, cuts=[];
+  var NOTE=/\b(?:note|remark)\b\s*(?:saying|that says|which says|to (?:it|the (?:pdf|statement|report))|on (?:it|the (?:pdf|statement|report))|in (?:it|the (?:pdf|statement|report)))?\s*(?:saying|that says|as|:|-|–)?\s*"?(.+?)"?\s*$/i;
+  var HEAD=/\b(?:title|heading|header|headline)\b(?:\s+(?:of (?:it|the (?:pdf|statement|report))))?\s*(?:to|as|is|should be|:|-|–)?\s*"?(.+?)"?\s*$/i;
+  if((m=/\b(?:remove|delete|drop|no|without)\s+(?:the\s+)?(?:note|remark)\b/i.exec(raw))){ a.note=''; raw=raw.slice(0,m.index)+' '+raw.slice(m.index+m[0].length); }
+  // whichever of the two comes later in the sentence runs to its end, so it is taken first
+  var iN=named?raw.search(/\b(?:note|remark)\b/i):-1, iH=raw.search(/\b(?:title|heading|header|headline)\b/i);
+  var lift=function(re,key){ var x=re.exec(raw); if(!x||x[1].replace(/\b(and|,)\s*$/i,'').trim().length<2)return;
+    a[key]=x[1].replace(/\s*\b(and|,)\s*$/i,'').trim(); raw=raw.slice(0,x.index).replace(/\s*\b(add|put|write|with|and|include|change|set|make|give it)(\s+(a|the))?\s*$/i,'').replace(/\s*\b(and|,)\s*$/i,''); };
+  if(a.note==null&&iN>=0&&iN>iH){ lift(NOTE,'note'); if(iH>=0)lift(HEAD,'title'); }
+  else { if(iH>=0)lift(HEAD,'title'); if(a.note==null&&iN>=0&&raw.search(/\b(?:note|remark)\b/i)>=0)lift(NOTE,'note'); }
+  var low=' '+raw.toLowerCase()+' ', marks=[];
+  MF_AI_EDIT_RM.lastIndex=0; while((m=MF_AI_EDIT_RM.exec(low)))marks.push({i:m.index,e:m.index+m[0].length,rm:true});
+  MF_AI_EDIT_ADD.lastIndex=0; while((m=MF_AI_EDIT_ADD.exec(low)))marks.push({i:m.index,e:m.index+m[0].length,rm:false});
+  marks.sort(function(x,y){ return x.i-y.i; });
+  marks=marks.filter(function(k,j){ return !j||k.i>=marks[j-1].e; });                           // "without" is not also "with…"
+  var rm=[], add=[];
+  marks.forEach(function(k,j){
+    var chunk=' '+low.slice(k.e,j+1<marks.length?marks[j+1].i:low.length)+' ';
+    if(/₹|\brs\.?\s?\d|\d{3,}/.test(chunk))return;                                              // an amount: this is about a record, not the page
+    var out=k.rm?rm:add, tabs=Object.keys(MF_AI_TABLE_ALIAS).filter(function(id){ return MF_AI_TABLE_ALIAS[id].test(chunk); });
+    var whole=/\b(section|whole|entire|all of)\b/.test(chunk), secs=_aiSectionsIn(chunk);
+    if(/\bmargins?\b|\bcosts?\b|purchase price|buying price|landed/.test(chunk)){ a.hide_cost=k.rm;
+      if(!/profit|p ?& ?l\b/.test(chunk))secs=secs.filter(function(x){ return x!=='profit'; }); }
+    var owner={fuel:'fuel',fuel_rates:'fuel',fuel_revisions:'fuel',table_day:'daily',oil_sales:'oil',oil_health:'oil',credit_fuel:'credit',credit_customers:'credit',
+               exp_heads:'expenses',exp_days:'expenses',exp_notcost:'expenses',dues_customers:'dues',dues_advances:'dues',dues_suppliers:'dues',staff_cash:'staff'};
+    if(!whole)secs=secs.filter(function(sn){ return !tabs.some(function(id){ return owner[id]===sn; }); });      // the table was named: only the table
+    else tabs=tabs.filter(function(id){ return secs.indexOf(owner[id])<0; });
+    secs.concat(tabs.map(_aiTblShow)).forEach(function(x){ if(out.indexOf(x)<0)out.push(x); });
+  });
+  if(rm.length)a.remove=rm; if(add.length)a.add=add;
+  if(period&&/\b(instead|make it|change|same|redo|again|about)\b/.test(low)){ var R=_aiPeriod({period:period}); if(!R.error&&(R.from!==D.from||R.to!==D.to))a.period=period; }
+  if(/\blandscape\b|sideways/.test(low))a.landscape=true; else if(/\bportrait\b|upright/.test(low))a.landscape=false;
+  if(Object.keys(a).length)return a;
+  // nothing above, but it asks for a number on the page to be different
+  if(named&&/\b(change|edit|alter|make|set|replace|correct|increase|reduce|decrease|round|adjust|modify|update|show)\b/.test(low)&&
+     (/\d/.test(low)||/\b(amount|figure|number|value|total|balance|rate|litres?|quantity)s?\b/.test(low)))return {figure:true};
+  return null;
+}
 function _aiRoute(text){
   var s=' '+String(text||'').toLowerCase()+' ', a={}, has=function(re){ return re.test(s); };
   // "compare this week with last week": the period asked about is THIS week
@@ -20223,6 +20452,7 @@ function _aiRoute(text){
   else if(has(/this year|financial year|\bfy\b/))a.period='this_fy';
   else if(has(/today|now\b/))a.period='today';
   var per=function(def){ var o={}; o.period=a.period||def; return o; };
+  var ed=_aiEditIn(text,a.period); if(ed)return {tool:'edit_statement',args:ed};      // "remove the petrol section", "add a note to it: …"
   var cust=_aiNameIn(text,_allCustomerNames()), staffN=_aiNameIn(text,staffList.map(function(x){ return x.name; }));
   if(has(/statement|invoice|\bpdf\b|print/)){
     if(has(/invoice/)&&cust)return {tool:'document',args:{kind:'customer_invoice',name:cust}};
@@ -20274,7 +20504,7 @@ var MF_AI_PAGES={history:'HISTORY',report:'REPORTS',ledger:'CREDIT LEDGER',fuell
 function _aiPush(it){ it.id='m'+(++MF_AI.seq); MF_AI.items.push(it); return it; }
 function _aiReset(){
   if(MF_AI.ctl){ MF_AI.stopped=true; try{ MF_AI.ctl.abort(); }catch(e){} }
-  MF_AI.items=[]; MF_AI.hist=[]; MF_AI.nums=[]; MF_AI.pending={}; MF_AI.busy=false; MF_AI.ctl=null; MF_AI.info=false;
+  MF_AI.items=[]; MF_AI.hist=[]; MF_AI.nums=[]; MF_AI.pending={}; MF_AI.busy=false; MF_AI.ctl=null; MF_AI.info=false; MF_AI.draft=null; MF_AI.turn=0; MF_AI.lastUser='';
 }
 // Bold, bullets and line breaks only — and always escaped first: the model's
 // text is never trusted as HTML.
@@ -20342,7 +20572,8 @@ function _aiItemHtml(it){
   (it.props||[]).forEach(function(pid){ h+=_aiPropHtml(pid); });
   (it.docs||[]).forEach(function(d,i){
     h+='<div class="ai-card ai-doc"><div class="ai-doc-i">📄</div><div class="ai-doc-b"><div class="ai-card-t">'+_esc(d.t)+'</div><div class="ai-card-s">'+_esc(d.s||'')+'</div>'+
-       '<button class="ai-confirm" onclick="_aiOpenDoc(\''+it.id+'\','+i+')">'+_esc(d.btn)+'</button></div></div>';
+       '<button class="ai-confirm" onclick="_aiOpenDoc(\''+it.id+'\','+i+')">'+_esc(d.btn)+'</button>'+
+       (d.hint?'<div class="ai-card-f">'+_esc(d.hint)+'</div>':'')+'</div></div>';
   });
   (it.cards||[]).forEach(function(c){ h+=_aiCardHtml(c,it.id); });
   if(it.text||(it.cards||[]).length)
